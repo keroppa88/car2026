@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>CAR2 LOOP DRIVE</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8ecbef; }
+  canvas { display: block; }
+  #hud, #loading, #map-select { font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif; user-select: none; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    background: #16202a; color: #cfe6f5; font-size: 18px; letter-spacing: 2px;
+  }
+  #loading .err { text-align: center; line-height: 2; }
+  #loading code { color: #ffd479; }
+
+  /* タイトル / マップ選択 */
+  #map-select {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center; color: #20252a; overflow: hidden;
+    background:
+      radial-gradient(circle at 74% 18%, rgba(255,255,255,0.88), transparent 28%),
+      linear-gradient(135deg, #fff9df 0%, #eee2b9 58%, #d8c991 100%);
+  }
+  #map-select::before {
+    content: ""; position: absolute; left: -8%; right: -8%; top: 43%; height: 70px;
+    transform: rotate(-4deg) skewX(-18deg);
+    background: repeating-linear-gradient(
+      to bottom,
+      #d92120 0 7px, transparent 7px 12px,
+      #f14b22 12px 18px, transparent 18px 24px
+    );
+    filter: drop-shadow(0 3px 0 rgba(108,20,15,0.22));
+  }
+  #map-select::after {
+    content: ""; position: absolute; width: 58%; height: 8px; top: 28%; left: -8%;
+    transform: rotate(-5deg); background: #168bb8; box-shadow: 0 12px 0 #65bdd3;
+    opacity: 0.9;
+  }
+  body.title #map-select { display: flex; }
+  body.title #loading, body.title #demo, body.title #help,
+  body.title #meter, body.title #signal { display: none !important; }
+  .title-card { position: relative; z-index: 1; width: min(800px, calc(100vw - 36px)); text-align: center; }
+  .title-logo {
+    position: relative; display: inline-flex; align-items: flex-end;
+    padding: 24px 34px 4px 12px; transform: skewX(-9deg);
+  }
+  .logo-kicker {
+    position: absolute; top: 0; left: 23px; color: #168ab7;
+    font: 900 clamp(12px, 2vw, 18px)/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.18em; text-shadow: 1px 1px 0 #fff;
+  }
+  .logo-name {
+    font: 900 clamp(50px, 10vw, 98px)/0.82 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: -0.08em; font-style: italic;
+    color: #f26719; -webkit-text-stroke: 2px #9d2115;
+    text-shadow: 3px 3px 0 #fff7d7, 6px 6px 0 #b62918, 9px 9px 0 rgba(84,25,14,0.26);
+  }
+  .logo-t {
+    display: inline-block; margin-left: 0.02em; font-size: 1.45em; line-height: 0.7;
+    color: #ef451b; -webkit-text-stroke: 3px #9a1d12;
+  }
+  .title-sub { margin: 14px 0 12px; color: #176f96; letter-spacing: 0.34em; font-size: 13px; font-weight: 800; }
+  .course-label { margin-top: 24px; }
+  .car-choices { display: flex; justify-content: center; gap: 14px; }
+  .car-choice {
+    min-width: 190px; padding: 13px 22px; border: 2px solid rgba(117,77,39,0.32);
+    border-radius: 9px; color: #293139; background: rgba(255,251,230,0.9);
+    font: 800 18px/1.2 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    cursor: pointer; transition: 140ms ease;
+  }
+  .car-choice:hover { transform: translateY(-2px); border-color: #168bb8; }
+  .car-choice.active {
+    color: #fff; border-color: #c6321b; background: linear-gradient(135deg, #ef6b20, #d5351b);
+    box-shadow: 0 8px 18px rgba(123,37,18,0.28), 0 0 0 3px rgba(22,139,184,0.16);
+  }
+  .map-choices { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .map-choice {
+    min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #222a30; text-decoration: none; border: 2px solid rgba(117,77,39,0.28);
+    border-radius: 10px; background: rgba(255,251,230,0.94);
+    box-shadow: 0 12px 25px rgba(91,57,25,0.24); transition: 150ms ease;
+  }
+  .map-choice:first-child { border-top: 7px solid #e9421d; }
+  .map-choice:last-child { border-top: 7px solid #e9421d; }
+  .map-choice:hover, .map-choice:focus-visible {
+    transform: translateY(-4px) skewX(-2deg); border-color: #df3d1e; background: #fffdf0;
+    box-shadow: 0 16px 32px rgba(91,57,25,0.32), 0 0 0 3px rgba(22,139,184,0.18);
+  }
+  .map-choice strong { font-size: 30px; letter-spacing: 0.14em; }
+  .map-choice span { margin-top: 12px; color: #56636b; font-size: 13px; line-height: 1.6; }
+  @media (max-width: 600px) {
+    .title-logo { padding: 22px 12px 3px 4px; }
+    .logo-kicker { left: 10px; }
+    .logo-name { font-size: clamp(40px, 13vw, 58px); -webkit-text-stroke-width: 1.5px; }
+    .logo-t { -webkit-text-stroke-width: 2px; }
+    .car-choices { flex-direction: column; gap: 8px; }
+    .car-choice { width: 100%; min-width: 0; padding: 10px 16px; }
+    .map-choices { grid-template-columns: 1fr; }
+    .map-choice { min-height: 120px; }
+  }
+
+  /* タイトル画面「イニシャルT」(黒バック・オレンジ基調。ロゴは踏襲) */
+  #title-t {
+    position: fixed; inset: 0; z-index: 30; cursor: pointer; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4.2vh;
+    background: radial-gradient(circle at 68% 16%, #26160a 0%, transparent 42%),
+                linear-gradient(180deg, #0d0c0e 0%, #131114 55%, #0a090b 100%);
+    font-family: "Arial Black", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    user-select: none;
+  }
+  /* オレンジのスピードライン(斜めの帯) */
+  #title-t .tt-stripe {
+    position: absolute; left: -10%; right: -10%; height: 64px; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      #ff7a1a 0 7px, transparent 7px 13px,
+      #e8420f 13px 19px, transparent 19px 26px
+    );
+    filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5));
+    opacity: 0.9;
+  }
+  /* 車両選択ボタンに被らないよう、下側の帯は画面最下部寄りに置く */
+  #title-t .tt-stripe1 { top: 26%; transform: rotate(-5deg) skewX(-18deg); }
+  #title-t .tt-stripe2 { bottom: 4%; transform: rotate(4deg) skewX(-18deg); opacity: 0.65; }
+  #title-t .tt-logo { display: inline-block; white-space: nowrap; position: relative; }
+  /* 普通の配置: オレンジ+白縁の文字を水平にそのまま並べる */
+  #title-t .tt-k, #title-t .tt-t {
+    display: inline-block;
+    font-weight: 900;
+    font-size: clamp(46px, 11vw, 120px);
+    color: #ef4a1f;
+    -webkit-text-stroke: 5px #fff;
+    paint-order: stroke fill;
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
+  }
+  #title-t .tt-t {
+    font-size: clamp(78px, 19vw, 210px);
+    margin-left: 0.06em;
+    color: #ee3d17;
+    -webkit-text-stroke: 7px #fff;
+  }
+  #title-t .tt-label {
+    font-weight: 900;
+    font-size: clamp(13px, 1.8vw, 18px); letter-spacing: 0.4em;
+    color: #ff8c1a; margin-top: 1vh;
+  }
+  #title-t .tt-cars { display: flex; gap: 16px; }
+  #title-t .tt-car {
+    min-width: 180px; padding: 12px 26px; text-align: center; text-decoration: none;
+    border: 2px solid rgba(255, 140, 26, 0.55); border-radius: 9px;
+    color: #ffcf99; background: rgba(28, 22, 16, 0.85);
+    font-weight: 800; font-size: 18px; transition: 140ms ease;
+  }
+  #title-t .tt-car:hover { transform: translateY(-2px); border-color: #ff8c1a; }
+  #title-t .tt-car.active {
+    color: #fff; border-color: #ff9d3f;
+    background: linear-gradient(135deg, #ff7a1a, #d5350f);
+    box-shadow: 0 8px 18px rgba(232, 66, 15, 0.35), 0 0 0 3px rgba(255, 140, 26, 0.2);
+  }
+  #title-t .tt-press {
+    font-weight: 800; font-size: clamp(15px, 2.4vw, 22px);
+    letter-spacing: 6px; color: #ff8c1a; margin-top: 1.5vh;
+    text-shadow: 0 0 12px rgba(255, 122, 26, 0.45);
+    animation: ttBlink 1.05s steps(1, end) infinite;
+  }
+  @keyframes ttBlink { 50% { opacity: 0; } }
+  #title-t .tt-copy {
+    position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
+    font-weight: 700; font-size: 13px; letter-spacing: 2px; color: #a06a34;
+  }
+
+  .panel {
+    position: fixed; z-index: 5; color: #fff;
+    background: rgba(12, 22, 32, 0.55); border-radius: 10px;
+    padding: 10px 14px; backdrop-filter: blur(3px);
+  }
+
+  #meter { right: 16px; bottom: 16px; text-align: right; min-width: 190px; }
+  #speed { font-size: 52px; font-weight: 700; font-family: "Courier New", monospace; line-height: 1; }
+  #speed-unit { font-size: 13px; opacity: 0.75; margin-left: 4px; }
+
+  #rpm-bar { margin-top: 8px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.18); overflow: hidden; }
+  #rpm-fill { height: 100%; width: 0; background: #6fd66f; border-radius: 4px; transition: width 60ms linear; }
+  #rpm-fill.red { background: #ff5a48; }
+
+  #gears { margin-top: 10px; display: flex; gap: 6px; justify-content: flex-end; }
+  #gears span {
+    display: inline-block; width: 24px; padding: 3px 0; text-align: center;
+    border-radius: 5px; font-size: 13px; font-weight: 700;
+    background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.55);
+  }
+  #gears span.on { background: #ffd043; color: #22303c; }
+
+  #drift {
+    margin-top: 8px; text-align: right; font-size: 14px; font-weight: 700;
+    letter-spacing: 3px; color: #ff8a3c; opacity: 0; transition: opacity 120ms;
+  }
+  #drift.on { opacity: 1; text-shadow: 0 0 8px rgba(255,120,40,0.8); }
+
+  /* 接近中の交差点の信号(自分の進行方向) */
+  #signal {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 5; display: none; gap: 12px; align-items: center;
+    background: rgba(16, 22, 28, 0.82); border: 2px solid #3a4046;
+    border-radius: 999px; padding: 9px 16px;
+  }
+  #signal .slamp {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #23282c; transition: background 120ms, box-shadow 120ms;
+  }
+  #sig-g.on { background: #00c878; box-shadow: 0 0 14px #00c878; }
+  #sig-y.on { background: #ffc400; box-shadow: 0 0 14px #ffc400; }
+  #sig-r.on { background: #ff4438; box-shadow: 0 0 14px #ff4438; }
+
+  #help { left: 16px; bottom: 16px; font-size: 12.5px; line-height: 1.9; opacity: 0.92; }
+  #help b {
+    display: inline-block; min-width: 52px; text-align: center;
+    background: rgba(255,255,255,0.15); border-radius: 4px;
+    padding: 1px 6px; margin-right: 8px; font-family: monospace;
+  }
+
+  /* デモ画面 */
+  #demo { position: fixed; inset: 0; z-index: 6; display: none; pointer-events: none; }
+  body.demo #demo { display: block; }
+  #demo .word {
+    position: absolute; top: 50%; transform: translateY(-50%); left: 0; right: 0; text-align: center;
+    font-weight: 800; font-size: 64px; letter-spacing: 10px; color: #fff;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.65);
+    animation: demoBlink 1.05s steps(1, end) infinite;
+  }
+  #demo .hint {
+    position: absolute; top: 48%; left: 0; right: 0; text-align: center;
+    font-size: 15px; letter-spacing: 3px; color: rgba(255,255,255,0.85);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+  }
+  @keyframes demoBlink { 0%,49.9%{opacity:1} 50%,100%{opacity:0} }
+
+  /* デモ中は操作パネル類を隠す */
+  body.demo #help, body.demo #meter, body.demo #signal { display: none !important; }
+
+  /* 緊急指令ポップアップ(黒背景・白文字)と追跡中バナー */
+  #mission-popup {
+    position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%) scale(0.96);
+    z-index: 8; max-width: min(680px, 90vw); padding: 20px 28px; border-radius: 12px;
+    background: rgba(0, 0, 0, 0.9); color: #fff; text-align: center;
+    font-size: 20px; line-height: 1.7; letter-spacing: 1px;
+    border: 2px solid rgba(255, 255, 255, 0.22); box-shadow: 0 12px 44px rgba(0, 0, 0, 0.6);
+    opacity: 0; visibility: hidden; transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  #mission-popup.show { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+  #mission-popup .head {
+    display: block; font-size: 13px; letter-spacing: 5px; font-weight: 700;
+    margin-bottom: 10px; color: #ff5a48;
+  }
+  #mission-popup.caught { background: rgba(9, 34, 15, 0.92); border-color: rgba(120, 230, 140, 0.5); }
+  #mission-popup.caught .head { color: #6fe08c; }
+
+  #mission-obj {
+    position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 5;
+    display: none; padding: 7px 16px; border-radius: 999px;
+    background: rgba(12, 22, 32, 0.72); color: #fff; font-size: 13px; letter-spacing: 1px;
+    border: 1px solid rgba(255, 90, 72, 0.6); backdrop-filter: blur(3px);
+  }
+  #mission-obj.show { display: block; }
+  body.demo #mission-popup, body.demo #mission-obj,
+  body.title #mission-popup, body.title #mission-obj { display: none !important; }
+</style>
+</head>
+<body>
+<div id="map-select">
+  <main class="title-card">
+    <div class="title-logo" aria-label="イニシャルT">
+      <span class="logo-kicker">TOUGE DRIFT RACING</span>
+      <span class="logo-name">イニシャル<span class="logo-t">T</span></span>
+    </div>
+    <div class="title-sub">SELECT CAR</div>
+    <div class="car-choices" role="group" aria-label="ユーザー車を選択">
+      <button class="car-choice active" type="button" data-car="toyota86" aria-pressed="true">Toyota 86</button>
+      <button class="car-choice" type="button" data-car="volvo240" aria-pressed="false">Volvo 240</button>
+    </div>
+    <div class="title-sub course-label">SELECT COURSE</div>
+    <div class="map-choices">
+      <a class="map-choice" href="?map=city">
+        <strong>ワンダーランド</strong>
+        <span>環状都市・森林コース・峠の連続ヘアピン</span>
+      </a>
+      <a class="map-choice" href="?map=nihonbashi.gltf">
+        <strong>日本橋</strong>
+        <span>Tokyo・日本橋周辺マップ</span>
+      </a>
+      <a class="map-choice" href="?map=suzuka">
+        <strong>鈴鹿</strong>
+        <span>立体交差と高低差を持つサーキットコース</span>
+      </a>
+    </div>
+  </main>
+</div>
+
+<!-- タイトル画面「イニシャルT」: 黒バック・オレンジ基調。何かのボタンでゲーム開始 -->
+<div id="title-t">
+  <div class="tt-stripe tt-stripe1"></div>
+  <div class="tt-stripe tt-stripe2"></div>
+  <div class="tt-logo">
+    <span class="tt-k">イ</span>
+    <span class="tt-k">ニ</span>
+    <span class="tt-k">シ</span>
+    <span class="tt-k">ャ</span>
+    <span class="tt-k">ル</span>
+    <span class="tt-t">T</span>
+  </div>
+  <div class="tt-label">SELECT CAR</div>
+  <div class="tt-cars">
+    <a class="tt-car" data-car="toyota86" href="?map=map.gltf&amp;car=toyota86">Toyota 86</a>
+    <a class="tt-car" data-car="volvo240" href="?map=map.gltf&amp;car=volvo240">Volvo 240</a>
+  </div>
+  <div class="tt-press">PUSH ANY BUTTON</div>
+  <div class="tt-copy">&copy;keroppa88</div>
+</div>
+
+<div id="loading">LOADING&hellip; 車を組み立て中</div>
+
+<div id="demo">
+  <div class="word">Demo</div>
+  <div class="hint">何かキーを押すとスタート</div>
+</div>
+
+<div id="mission-obj"></div>
+<div id="mission-popup"></div>
+
+<div id="signal">
+  <div class="slamp" id="sig-g"></div>
+  <div class="slamp" id="sig-y"></div>
+  <div class="slamp" id="sig-r"></div>
+</div>
+
+<div id="meter" class="panel">
+  <span id="speed">0</span><span id="speed-unit">km/h</span>
+  <div id="rpm-bar"><div id="rpm-fill"></div></div>
+  <div id="gears">
+    <span>R</span><span>N</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+  </div>
+  <div id="drift">DRIFT!</div>
+</div>
+
+<div id="mirror-frame" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 34vw; height: calc(34vw * 0.26 + 4px); border: 2px solid rgba(255,255,255,0.55);
+  border-radius: 6px; display: none; pointer-events: none; z-index: 4;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);"></div>
+<div id="help" class="panel">
+  <div><b>A</b>ブレーキ</div>
+  <div><b>S</b>アクセル</div>
+  <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
+  <div><b>← / →</b>ハンドル</div>
+  <div><b>SPACE</b>サイドブレーキ(ドリフト)</div>
+  <div><b>ドラッグ</b>カメラ視点&nbsp;&nbsp;<b>ホイール</b>ズーム</div>
+  <div><b>M</b>音楽選択</div>
+  <div><b>T</b>真上から地図表示</div>
+  <div><b>N</b>夜間 ON/OFF</div>
+  <div><b>V</b>ボンネットカメラ</div>
+  <div><b>F</b>バックミラー</div>
+  <div><b>Y</b>自動運転</div>
+  <div><b>G</b>表示の切替</div>
+  <div><b>J/K/L</b>曲を戻す/停止/送る</div>
+  <div><b>I/O</b>前の曲/次の曲</div>
+  <div><b>ESC</b>一時停止</div>
+  <div><b>B</b>音声切替(エンジン/車内/無音)</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js" } }
+</script>
+<script type="module">
+  const query = new URLSearchParams(location.search);
+  const mapParam = query.get('map');
+  if (mapParam === null) {
+    query.set('map', 'map.gltf');
+    query.set('car', query.get('car') || 'toyota86');
+    location.replace(location.pathname + '?' + query.toString());
+  } else {
+    document.getElementById('map-select').remove();
+    // Bump this value whenever main.js changes so GitHub Pages/CDN caches do
+    // not keep an older vehicle list or loader implementation.
+    import('./js/main.js?v=20260718-car2-59');
+
+    // タイトル画面: 何かのボタン(キー/クリック)でゲーム開始。
+    // 5秒放置するとデモ画面へ移り、デモから戻るとタイトルを再表示する
+    // (ゲーム側が window.__titleT.show() を呼ぶ)。
+    // 開始操作がゲーム側の操作として拾われないよう capture で止める。
+    // SELECT CAR のボタンだけは開始せず、車を切り替えて再読み込みする。
+    const titleEl = document.getElementById('title-t');
+    const selectedCar = query.get('car') || 'toyota86';
+    for (const btn of titleEl.querySelectorAll('.tt-car')) {
+      btn.classList.toggle('active', btn.dataset.car === selectedCar);
+    }
+    let titleShown = true;
+    let gameStarted = false;
+    let idleTimer = 0;
+    const armIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!gameStarted && titleShown && window.__car2Demo && window.__car2Demo.enter()) {
+          titleShown = false;
+          titleEl.style.display = 'none';
+        } else if (!gameStarted) {
+          armIdleTimer();   // ゲーム読み込み中はデモに入れないので再試行
+        }
+      }, 5000);
+    };
+    armIdleTimer();
+    window.__titleT = {
+      show() {
+        if (gameStarted) return;
+        titleShown = true;
+        titleEl.style.display = 'flex';
+        armIdleTimer();
+      },
+    };
+    const startFromTitle = (e) => {
+      if (!titleShown) return;   // デモ中のボタンはゲーム側が処理してタイトルへ戻す
+      if (e.target && e.target.closest && e.target.closest('.tt-car')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      gameStarted = true;
+      titleShown = false;
+      clearTimeout(idleTimer);
+      titleEl.remove();
+      window.removeEventListener('keydown', startFromTitle, true);
+      window.removeEventListener('pointerdown', startFromTitle, true);
+    };
+    window.addEventListener('keydown', startFromTitle, true);
+    window.addEventListener('pointerdown', startFromTitle, true);
+  }
+</script>
+</body>
+</html>
+
