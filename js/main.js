@@ -55,7 +55,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
   let startGame = function () {};   // init 内で本体を差し込む
   let gameSpawn = null;             // デモ解除時に戻る通常スポーン {x,y?,z,heading}
   let topView = false;               // 全マップ共通の真上からの全体表示
-  let bonnetView = false;            // V: ボンネットカメラ(一人称視点)
+  let bonnetView = 0;                // V: 0=通常 1=ボンネット 2=視点のみ(車体非表示)
   let hudState = 0;                  // G: 0=全表示 1=操作説明なし 2=メーターもなし
   let mirrorView = false;            // F: 画面上部のバックミラー
   let pauseMode = false;             // ESC: ゲーム一時停止(操作説明を表示)
@@ -66,7 +66,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
       for (const key of Object.keys(keys)) keys[key] = false;   // 押しっぱなし解除
       if (helpEl) helpEl.style.display = '';   // 表示切替で消していても出す
     } else if (helpEl) {
-      helpEl.style.display = hudState >= 1 ? 'none' : '';
+      helpEl.style.display = hudState === 0 ? '' : 'none';
     }
     let overlay = document.getElementById('pause-overlay');
     if (!overlay) {
@@ -183,7 +183,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
       if (k === 'ArrowDown') shiftDown = true;
       if (k.toLowerCase() === 'n') { nightMode = !nightMode; applyNight(); }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
-      if (k.toLowerCase() === 'v') bonnetView = !bonnetView;
+      // V: 通常 → ボンネットカメラ → 視点のみ(車体非表示・マウスで視点操作) → 通常
+      if (k.toLowerCase() === 'v') bonnetView = (bonnetView + 1) % 3;
       // 曲操作は運転中も有効。I/O で前の曲/次の曲。
       if (k.toLowerCase() === 'j') musicSeek(-10);
       if (k.toLowerCase() === 'k') musicTogglePlay();
@@ -201,14 +202,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
         document.body.dataset.autoDrive = String(autoDrive);
       }
       if (k.toLowerCase() === 'g') {
-        // 表示切替: 0=全表示 → 1=操作説明を消す → 2=曲名も消す
-        //           → 3=スピード表示も消す → 0 に戻る
-        hudState = (hudState + 1) % 4;
+        // 表示切替 5状態:
+        //   0=操作表+音楽+スピード / 1=音楽+スピード / 2=スピードのみ
+        //   3=音楽のみ / 4=何もなし → 0 へ戻る
+        hudState = (hudState + 1) % 5;
         const helpEl = document.getElementById('help');
         const meterEl = document.getElementById('meter');
-        if (helpEl) helpEl.style.display = hudState >= 1 ? 'none' : '';
-        if (meterEl) meterEl.style.display = hudState >= 3 ? 'none' : '';
-        updateNowPlayingVisibility();   // 曲名は state2 以降で消える
+        if (helpEl) helpEl.style.display = hudState === 0 ? '' : 'none';
+        if (meterEl) meterEl.style.display = hudState <= 2 ? '' : 'none';
+        updateNowPlayingVisibility();   // 音楽(曲名)は 0/1/3 で表示
       }
     }
     keys[k.toLowerCase()] = true;
@@ -1385,6 +1387,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
     cam.lastDrag = performance.now();
   });
   window.addEventListener('wheel', (e) => {
+    if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
     cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, 28);
   }, { passive: true });
 
@@ -2575,6 +2578,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
     const hint = document.querySelector('#demo .hint');
     if (hint) hint.textContent = '何かボタンでタイトルへ / スワイプでカメラ';
     demoDayNightAt = performance.now() + 10000;
+    bonnetView = 0;                  // デモは通常カメラで車を映す
     autoIdx = -1;                    // 自動運転をデモ開始位置から再同期
     demoPrevSoundMode = soundMode;   // デモ中の音声は車内音
     soundMode = 1;
@@ -2667,8 +2671,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
   let nowPlayingEl = null;
   let nowPlayingText = '';
   function updateNowPlayingVisibility() {
+    // 音楽(曲名)表示は hudState 0/1/3 のとき(2=スピードのみ, 4=何もなし)
+    const musicVisible = hudState === 0 || hudState === 1 || hudState === 3;
     if (nowPlayingEl) {
-      nowPlayingEl.style.display = (nowPlayingText && hudState < 2) ? 'block' : 'none';
+      nowPlayingEl.style.display = (nowPlayingText && musicVisible) ? 'block' : 'none';
     }
   }
   function setNowPlaying(text) {
@@ -2875,59 +2881,119 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
     if (!musicListEl) return;
     const rows = musicListEl.children;
     for (let i = 0; i < rows.length; i++) {
-      rows[i].style.background = i === musicSel ? 'rgba(46,230,200,0.92)' : 'transparent';
-      rows[i].style.color = i === musicSel ? '#0c1a18' : '#2ee6c8';   // 青緑色文字
+      // 緑液晶に濃いグレーの太字。選択中は反転表示+行頭を▶に(他は■)
+      rows[i].style.background = i === musicSel ? '#2e342e' : 'transparent';
+      rows[i].style.color = i === musicSel ? '#33CC33' : '#2e342e';
+      const item = musicItems[i];
+      if (item) rows[i].textContent = (i === musicSel ? '▶ ' : '■ ') + item.label;
     }
     const row = rows[musicSel];
-    if (row) musicListEl.scrollTop = row.offsetTop - musicListEl.clientHeight / 2;
+    // offsetTop は共通の親基準なのでリスト自身の位置を引いて中央に合わせる
+    if (row) {
+      musicListEl.scrollTop = (row.offsetTop - musicListEl.offsetTop) - musicListEl.clientHeight / 2 + 14;
+    }
   }
 
   function openMusicMenu() {
     if (!musicMenuEl) {
       musicMenuEl = document.createElement('div');
       musicMenuEl.style.cssText = 'position:fixed;inset:0;z-index:8;display:flex;'
-        + 'align-items:center;justify-content:center;background:rgba(8,14,20,0.55);';
+        + 'align-items:center;justify-content:center;background:rgba(8,14,20,0.22);';
+      // 80年代のオーディオ機器風: 黒パネル+白の二重枠、等幅フォントの見出し、
+      // オレンジ液晶の音量メーター、青緑液晶の曲リスト。
+      // ゲーム画面より小さいコンパクトな窓(縦長にしない。リストは少行数+高速スクロール)
       const panel = document.createElement('div');
-      panel.style.cssText = 'width:min(640px,90vw);max-height:78vh;display:flex;flex-direction:column;'
-        + 'background:rgba(12,22,32,0.94);border-radius:12px;padding:14px 18px;color:#fff;'
+      panel.style.cssText = 'width:min(520px,76vw);max-height:60vh;display:flex;flex-direction:column;'
+        + 'background:#0a0a0a;border:3px double #fff;border-radius:0;padding:10px 14px;color:#fff;'
         + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
       const title = document.createElement('div');
-      title.textContent = '♪ 音楽選択  (↑↓: 選ぶ / Enter: 再生 / M: 閉じる)';
-      title.style.cssText = 'font-weight:700;margin-bottom:10px;letter-spacing:1px;';
+      title.textContent = '♪ MUSIC SELECT';
+      title.style.cssText = 'font-weight:700;margin-bottom:12px;letter-spacing:2px;'
+        + 'font-family:"Courier New",monospace;color:#fff;'
+        + 'border-bottom:1px solid #fff;padding-bottom:8px;';
       panel.appendChild(title);
-      // 音量スライダー: ゲーム効果音(エンジン等)と音楽
+      // 音量メーター: オレンジ液晶バックに黒(濃いグレー)のセグメントが横に連なる
       const makeSlider = (labelText, value, oninput) => {
-        const wrap = document.createElement('label');
+        const wrap = document.createElement('div');
         wrap.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:13px;margin:0 0 8px;';
         const caption = document.createElement('span');
         caption.textContent = labelText;
-        caption.style.cssText = 'width:120px;flex:none;';
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '0'; slider.max = '100';
-        slider.value = String(Math.round(value * 100));
-        slider.style.cssText = 'flex:1;';
-        slider.addEventListener('input', () => oninput(Number(slider.value) / 100));
+        caption.style.cssText = 'width:120px;flex:none;color:#333029;font-weight:900;'
+          + 'letter-spacing:1px;font-size:19px;'
+          + 'font-family:"MS Gothic","ＭＳ ゴシック","Courier New",monospace;';
+        const SEGS = 24;
+        const meter = document.createElement('div');
+        meter.style.cssText = 'flex:1;display:flex;gap:3px;align-items:center;height:28px;'
+          + 'padding:5px 8px;box-sizing:border-box;cursor:pointer;'
+          + 'border:1px solid rgba(0,0,0,0.35);';
+        const cells = [];
+        for (let i = 0; i < SEGS; i++) {
+          const cell = document.createElement('div');
+          cell.style.cssText = 'flex:1;height:14px;';
+          meter.appendChild(cell);
+          cells.push(cell);
+        }
+        // 音量の数値表示(%)
+        const readout = document.createElement('span');
+        readout.style.cssText = 'width:60px;flex:none;text-align:right;color:#333029;'
+          + 'font-family:"MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
+          + 'font-weight:900;font-size:19px;';
+        const render = (v) => {
+          const lit = Math.round(v * SEGS);
+          cells.forEach((cell, i) => {
+            // 点灯セグメント=濃いグレー(黒) / 消灯=液晶のゴースト表示
+            cell.style.background = i < lit ? '#333029' : 'rgba(0,0,0,0.12)';
+          });
+          readout.textContent = Math.round(v * 100) + '%';
+        };
+        render(value);
+        const setFromEvent = (ev) => {
+          const rect = meter.getBoundingClientRect();
+          const v = Math.max(0, Math.min(1, (ev.clientX - rect.left - 8) / (rect.width - 16)));
+          render(v);
+          oninput(v);
+        };
+        let meterDragging = false;
+        meter.addEventListener('pointerdown', (ev) => {
+          meterDragging = true;
+          meter.setPointerCapture(ev.pointerId);
+          setFromEvent(ev);
+        });
+        meter.addEventListener('pointermove', (ev) => { if (meterDragging) setFromEvent(ev); });
+        meter.addEventListener('pointerup', () => { meterDragging = false; });
         wrap.appendChild(caption);
-        wrap.appendChild(slider);
+        wrap.appendChild(meter);
+        wrap.appendChild(readout);
         return wrap;
       };
-      panel.appendChild(makeSlider('エンジン音など', engineVolume, (v) => {
+      // 音量部分: 全体をオレンジ液晶の1パネルにまとめる
+      const volPanel = document.createElement('div');
+      volPanel.style.cssText = 'background:linear-gradient(180deg,#ffb62e,#f79a10);'
+        + 'border:1px solid #666;padding:9px 12px 3px;margin:0 0 10px;';
+      volPanel.appendChild(makeSlider('環境音量', engineVolume, (v) => {
         engineVolume = v;
         AUDIO.setVolume(v);
         interiorLow.volume = interiorHigh.volume = 0.85 * v;
       }));
-      panel.appendChild(makeSlider('音楽音量', musicVolume, (v) => {
+      volPanel.appendChild(makeSlider('音楽音量', musicVolume, (v) => {
         musicVolume = v;
         applyMusicVolume();
       }));
+      panel.appendChild(volPanel);
       musicListEl = document.createElement('div');
-      musicListEl.style.cssText = 'overflow-y:auto;font-size:14px;line-height:1.85;';
+      // 曲リスト: 青緑液晶バックに濃いグレーの太字(液晶風の等幅ゴシック)。
+      // スクロールバーは表示しない(十字キー上下の高速閲覧で移動する)。
+      musicListEl.style.cssText = 'overflow-y:hidden;font-size:19px;line-height:1.55;'
+        + 'height:314px;flex:none;margin-top:4px;padding:6px 4px;border:1px solid #666;'
+        + 'font-family:"MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
+        + 'font-weight:900;-webkit-text-stroke:0.5px currentColor;'
+        + 'background:#33CC33;';
       musicItems.forEach((it, i) => {
         const row = document.createElement('div');
-        row.textContent = (it.type === 'playlist' ? '📁 ' : it.type === 'yt' ? '▶ ' : '📻 ') + it.label;
-        row.style.cssText = 'padding:1px 10px;border-radius:5px;white-space:nowrap;'
-          + 'overflow:hidden;text-overflow:ellipsis;color:#2ee6c8;cursor:pointer;';
+        // 行頭は ■ で統一し、カーソルが合っている行だけ ▶ にする(refreshで更新)
+        row.textContent = '■ ' + it.label;
+        row.style.cssText = 'padding:1px 10px;border-radius:0;white-space:nowrap;'
+          + 'overflow:hidden;color:#2e342e;cursor:pointer;';
         // マウス操作: クリックで選択、ダブルクリックで再生
         row.addEventListener('click', () => { musicSel = i; musicMenuRefresh(); });
         row.addEventListener('dblclick', () => {
@@ -2937,6 +3003,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
         musicListEl.appendChild(row);
       });
       panel.appendChild(musicListEl);
+      // マウスホイールで選択を上下に送る(1ノッチ=1行)
+      musicMenuEl.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        if (!musicItems.length) return;
+        const step = Math.sign(ev.deltaY);
+        musicSel = (musicSel + step + musicItems.length) % musicItems.length;
+        musicMenuRefresh();
+      }, { passive: false });
       musicMenuEl.appendChild(panel);
       document.body.appendChild(musicMenuEl);
     }
@@ -3474,7 +3548,30 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
     return group;
   }
 
+  // ボンネットカメラ用の画面下部カバー。車体のピッチ/バウンドでボンネットが
+  // 浮き、画面最下部に路面が見えてしまう隙間を車体色の帯で覆う。
+  let bonnetCoverEl = null;
+  function updateBonnetCover() {
+    if (!bonnetCoverEl) {
+      bonnetCoverEl = document.createElement('div');
+      bonnetCoverEl.style.cssText = 'position:fixed;left:0;right:0;bottom:0;height:9vh;'
+        + 'z-index:3;pointer-events:none;display:none;';
+      document.body.appendChild(bonnetCoverEl);
+    }
+    const show = bonnetView === 1;
+    bonnetCoverEl.style.display = show ? 'block' : 'none';
+    if (show) {
+      const isVolvo = PLAYER_CAR_KEY === 'volvo240';
+      bonnetCoverEl.style.background = nightMode
+        ? (isVolvo ? '#3c0708' : '#2b2d30')     // 夜はボンネットの暗い見え方に合わせる
+        : (isVolvo ? '#d40707' : '#ececec');    // Toyota=白 / Volvo=赤
+    }
+  }
+
   function updateCamera(dt) {
+    // 視点のみモード(V 2回目)では自車(影・ランプ含む)を一切映さない
+    if (player.group) player.group.visible = bonnetView !== 2;
+    updateBonnetCover();
     if (!crimMarker) { crimMarker = makeMapMarker(0xff2020); scene.add(crimMarker); }
     if (!selfMarker) { selfMarker = makeMapMarker(0x00d9ff); scene.add(selfMarker); }
     crimMarker.visible = false;
@@ -3553,8 +3650,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
         cam.dist += (11 - cam.dist) * Math.min(1, dt * 1.5);
       }
       }
-    } else if (bonnetView) {
-      // V: ボンネットカメラ。ボンネット先端付近から進行方向を見る一人称視点。
+    } else if (bonnetView === 1) {
+      // V(1回目): ボンネットカメラ。ボンネット先端付近から進行方向を見る一人称視点。
       const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
       camera.position.set(
         player.pos.x + fx * 1.2,
@@ -3565,6 +3662,22 @@ import { CAR2_CPU_ROUTE } from './car2-route.js?v=20260718-1';
         player.pos.x + fx * 50,
         player.pos.y + 0.9,
         player.pos.z + fz * 50
+      );
+      sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
+      sun.target.position.copy(player.pos);
+      return;
+    } else if (bonnetView === 2) {
+      // V(2回目): 視点のみ。車体は映さず、マウスドラッグで視点を自由に動かす。
+      // ドラッグの角度系は追従カメラと同じ cam.yaw / cam.pitch を使う
+      // (cam.pitch=0.34 を正面として上下に振る)。
+      const lookYaw = player.heading + cam.yaw;
+      const lookPitch = 0.34 - cam.pitch;   // 上ドラッグで上を向く
+      const cp = Math.cos(lookPitch);
+      camera.position.set(player.pos.x, player.pos.y + 1.2, player.pos.z);
+      camera.lookAt(
+        player.pos.x + Math.sin(lookYaw) * cp * 50,
+        player.pos.y + 1.2 + Math.sin(lookPitch) * 50,
+        player.pos.z + Math.cos(lookYaw) * cp * 50
       );
       sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
       sun.target.position.copy(player.pos);
