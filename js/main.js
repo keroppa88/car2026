@@ -2070,7 +2070,7 @@ import { CAR2_CPU_ROUTE, CAR2_MOUNTAIN_ROUTE } from './car2-route.js?v=20260720-
       tris.push({ a: vA.clone(), b: vB.clone(), c: vC.clone(), area });
       totalArea += area;
     }
-    const TARGET = 600;
+    const TARGET = 400;
     const density = totalArea > 0 ? TARGET / totalArea : 0;
     const SECTORS = 10;
     const sectorLists = Array.from({ length: SECTORS }, () => []);
