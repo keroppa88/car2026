@@ -163,6 +163,19 @@
     background: linear-gradient(135deg, #ff7a1a, #d5350f);
     box-shadow: 0 8px 18px rgba(232, 66, 15, 0.35), 0 0 0 3px rgba(255, 140, 26, 0.2);
   }
+  #title-t .tt-courses { display: flex; gap: 16px; }
+  #title-t .tt-course {
+    min-width: 180px; padding: 12px 26px; text-align: center; text-decoration: none;
+    border: 2px solid rgba(255, 140, 26, 0.55); border-radius: 9px;
+    color: #ffcf99; background: rgba(28, 22, 16, 0.85);
+    font-weight: 800; font-size: 18px; transition: 140ms ease;
+  }
+  #title-t .tt-course:hover { transform: translateY(-2px); border-color: #ff8c1a; }
+  #title-t .tt-course.active {
+    color: #fff; border-color: #ff9d3f;
+    background: linear-gradient(135deg, #ff7a1a, #d5350f);
+    box-shadow: 0 8px 18px rgba(232, 66, 15, 0.35), 0 0 0 3px rgba(255, 140, 26, 0.2);
+  }
   #title-t .tt-press {
     font-weight: 800; font-size: clamp(15px, 2.4vw, 22px);
     letter-spacing: 6px; color: #ff8c1a; margin-top: 1.5vh;
@@ -173,6 +186,42 @@
   #title-t .tt-copy {
     position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
     font-weight: 700; font-size: 13px; letter-spacing: 2px; color: #a06a34;
+  }
+  /* スマホ専用の表示(PC専用ゲームの案内)。PC では隠す */
+  #title-t .tt-pconly {
+    display: none;
+    font-weight: 900; font-size: clamp(14px, 3.6vw, 20px); letter-spacing: 4px;
+    color: #ff3b3b; text-shadow: 0 0 12px rgba(255, 60, 60, 0.5);
+    border: 2px solid rgba(255, 59, 59, 0.6); border-radius: 6px; padding: 6px 18px;
+    margin-top: 0.5vh; background: rgba(40, 10, 10, 0.4);
+  }
+  body.is-mobile #title-t .tt-pconly { display: inline-block; }
+  body.is-mobile #title-t .tt-press { display: none; }
+  /* 右下の「説明」ボタン(PCのみ表示)。クリックで説明画像を全画面表示する */
+  #title-t .tt-guide-btn {
+    position: absolute; right: 18px; bottom: 18px; z-index: 2;
+    width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;
+    border: 2px solid rgba(255, 140, 26, 0.65); border-radius: 6px; color: #ff8c1a;
+    font-weight: 800; font-size: 16px; letter-spacing: 1px; cursor: pointer;
+    background: rgba(20, 14, 8, 0.6);
+  }
+  #title-t .tt-guide-btn:hover { border-color: #ff8c1a; background: rgba(40, 24, 10, 0.85); }
+  body.is-mobile #title-t .tt-guide-btn { display: none; }
+  #tt-guide-overlay {
+    position: fixed; inset: 0; z-index: 40; display: none; cursor: pointer;
+    align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.94);
+  }
+  #tt-guide-overlay.show { display: flex; }
+  #tt-guide-overlay img {
+    max-width: 92vw; max-height: 92vh; object-fit: contain;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  }
+  /* 狭い画面(スマホ縦持ちなど)ではロゴ・車選択を縦に詰めてコンパクトにする */
+  @media (max-width: 480px) {
+    #title-t { gap: 2.2vh; padding: 0 14px; box-sizing: border-box; }
+    #title-t .tt-cars, #title-t .tt-courses { flex-direction: column; gap: 10px; width: 100%; max-width: 260px; }
+    #title-t .tt-car, #title-t .tt-course { min-width: 0; width: 100%; box-sizing: border-box; }
+    #title-t .tt-stripe { height: 32px; }
   }
 
   .panel {
@@ -316,12 +365,20 @@
   </div>
   <div class="tt-label">SELECT CAR</div>
   <div class="tt-cars">
-    <a class="tt-car" data-car="toyota86" href="?map=map.gltf&amp;car=toyota86">Toyota 86</a>
-    <a class="tt-car" data-car="volvo240" href="?map=map.gltf&amp;car=volvo240">Volvo 240</a>
+    <a class="tt-car" data-car="toyota86" href="?car=toyota86">Toyota 86</a>
+    <a class="tt-car" data-car="volvo240" href="?car=volvo240">Volvo 240</a>
+  </div>
+  <div class="tt-label">SELECT COURSE</div>
+  <div class="tt-courses">
+    <a class="tt-course" data-map="map.gltf" href="?map=map.gltf">首都高速</a>
+    <a class="tt-course" data-map="map2.gltf" href="?map=map2.gltf">山岳地帯</a>
   </div>
   <div class="tt-press">PUSH ANY BUTTON</div>
+  <div class="tt-pconly">PC PLAY ONLY</div>
   <div class="tt-copy">&copy;keroppa88</div>
+  <div class="tt-guide-btn">説明</div>
 </div>
+<div id="tt-guide-overlay"><img src="説明.png" alt="説明"></div>
 
 <div id="loading">LOADING&hellip; 車を組み立て中</div>
 
@@ -360,7 +417,6 @@
   <div><b>SPACE</b>サイドブレーキ(ドリフト)</div>
   <div><b>ドラッグ</b>カメラ視点&nbsp;&nbsp;<b>ホイール</b>ズーム</div>
   <div><b>M</b>音楽選択</div>
-  <div><b>T</b>真上から地図表示</div>
   <div><b>N</b>夜間 ON/OFF</div>
   <div><b>V</b>カメラ切替(後方/ボンネット/視点のみ)</div>
   <div><b>F</b>バックミラー</div>
@@ -384,54 +440,87 @@
     location.replace(location.pathname + '?' + query.toString());
   } else {
     document.getElementById('map-select').remove();
-    // Bump this value whenever main.js changes so GitHub Pages/CDN caches do
-    // not keep an older vehicle list or loader implementation.
-    import('./js/main.js?v=20260718-car2-69');
+    import('./js/main.js?v=20260720-car2-79');
 
-    // タイトル画面: 何かのボタン(キー/クリック)でゲーム開始。
-    // 5秒放置するとデモ画面へ移り、デモから戻るとタイトルを再表示する
-    // (ゲーム側が window.__titleT.show() を呼ぶ)。
-    // 開始操作がゲーム側の操作として拾われないよう capture で止める。
-    // SELECT CAR のボタンだけは開始せず、車を切り替えて再読み込みする。
+    const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    if (isMobileUA) document.body.classList.add('is-mobile');
+
+    // --- タイトルBGM ---
+    const titleAudio = new Audio('sound/car2026.m4a');
+    titleAudio.loop = false; // PC/スマホともにループさせない
+    titleAudio.volume = 0.8;
+    setTimeout(() => titleAudio.play().catch(() => {}), 3000); // タイトル表示完了3秒後に再生
+
     const titleEl = document.getElementById('title-t');
+    const currentMap = query.get('map') || 'map.gltf';
     const selectedCar = query.get('car') || 'toyota86';
     for (const btn of titleEl.querySelectorAll('.tt-car')) {
       btn.classList.toggle('active', btn.dataset.car === selectedCar);
+      btn.href = '?map=' + encodeURIComponent(currentMap) + '&car=' + btn.dataset.car;
+      if (isMobileUA) btn.addEventListener('click', (e) => e.preventDefault());
     }
+    for (const btn of titleEl.querySelectorAll('.tt-course')) {
+      btn.classList.toggle('active', btn.dataset.map === currentMap);
+      btn.href = '?map=' + encodeURIComponent(btn.dataset.map) + '&car=' + encodeURIComponent(selectedCar);
+      if (isMobileUA) btn.addEventListener('click', (e) => e.preventDefault());
+    }
+
+    const guideBtn = titleEl.querySelector('.tt-guide-btn');
+    const guideOverlay = document.getElementById('tt-guide-overlay');
+    let guideOpen = false;
+    if (!isMobileUA) {
+      guideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        guideOpen = true;
+        guideOverlay.classList.add('show');
+      });
+    }
+
     let titleShown = true;
     let gameStarted = false;
-    let idleTimer = 0;
-    const armIdleTimer = () => {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        if (!gameStarted && titleShown && window.__car2Demo && window.__car2Demo.enter()) {
-          titleShown = false;
-          titleEl.style.display = 'none';
-        } else if (!gameStarted) {
-          armIdleTimer();   // ゲーム読み込み中はデモに入れないので再試行
-        }
-      }, 5000);
+    const enterDemo = () => {
+      if (!gameStarted && titleShown && window.__car2Demo && window.__car2Demo.enter()) {
+        titleShown = false;
+        titleEl.style.display = 'none';
+      }
     };
-    armIdleTimer();
+    // PC/スマホ共通: 音楽を1度だけ再生し、終了0.5秒後にデモへ
+    titleAudio.addEventListener('ended', () => {
+      if (!gameStarted && titleShown) setTimeout(enterDemo, 500);
+    });
     window.__titleT = {
       show() {
         if (gameStarted) return;
         titleShown = true;
         titleEl.style.display = 'flex';
-        armIdleTimer();
+        titleAudio.currentTime = 0; // 再表示時は最初から再生し直す
+        setTimeout(() => titleAudio.play().catch(() => {}), 3000); // タイトル表示完了3秒後に再生
       },
     };
-    const startFromTitle = (e) => {
-      if (!titleShown) return;   // デモ中のボタンはゲーム側が処理してタイトルへ戻す
-      if (e.target && e.target.closest && e.target.closest('.tt-car')) return;
-      e.stopPropagation();
-      e.preventDefault();
+    const beginGame = () => {
+      titleAudio.pause(); // ゲーム開始時に停止
       gameStarted = true;
       titleShown = false;
-      clearTimeout(idleTimer);
       titleEl.remove();
       window.removeEventListener('keydown', startFromTitle, true);
       window.removeEventListener('pointerdown', startFromTitle, true);
+    };
+    const startFromTitle = (e) => {
+      titleAudio.play().catch(() => {}); // 操作開始時に再生
+      if (isMobileUA) return;
+      if (guideOpen) {
+        guideOpen = false;
+        guideOverlay.classList.remove('show');
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      if (!titleShown) return;
+      if (e.target && e.target.closest
+          && (e.target.closest('.tt-car') || e.target.closest('.tt-course') || e.target.closest('.tt-guide-btn'))) return;
+      e.stopPropagation();
+      e.preventDefault();
+      beginGame();
     };
     window.addEventListener('keydown', startFromTitle, true);
     window.addEventListener('pointerdown', startFromTitle, true);
