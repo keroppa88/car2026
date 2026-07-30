@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
-import { AUDIO } from './audio.js?v=20260730-demo-engine-reset-1';
+import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260729-forest-road-seam-113';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
@@ -28,6 +28,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy'];
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
+  // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
+  // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
+  const DEMO_EMBEDDED = pageQuery.get('demoEmbedded') === '1';
   const requestedDemoStage = Number.parseInt(pageQuery.get('demoStage') || '', 10);
   const courseDemoStage = DEMO_SEQUENCE.indexOf(COURSE_KEY);
   const DEMO_SEQUENCE_STAGE = Number.isInteger(requestedDemoStage)
@@ -6440,25 +6443,30 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 冪等なので毎回適用する。初期モードと一致する場合に飛ばすと、
     // ?demoTrack= 起動や曲を引き継いだ再読込みで空設定が入らない。
     applyDemoTrackMode();
-    // 曲名は「再生開始の3秒後」に、通常の再生中表示と同じ見た目で出す。
     clearTimeout(demoTrackLabelTimer);
     const label = data.label || DEMO_TRACK_LABELS[index] || '';
-    const show = () => {
-      if (!demoActive) return;
-      setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
+    // デモシェルの中で動いている時、曲名はシェル側が出す。コース切替のたびに
+    // このページは読み込み直されるので、ここで出すと切替のあいだ曲名が消える。
+    if (DEMO_EMBEDDED) {
       document.body.dataset.demoTrackLabel = label;
-    };
-    // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。既に流れている曲の
-    // 引き継ぎ(labelDelayMs=0。コース切替でのページ再読込)は、音が鳴っている
-    // 状態なので従来どおり即表示する。
-    let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
-    if (index === 0 && delayMs > 0) {
-      delayMs = Math.max(
-        0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
-      );
+    } else {
+      // 単独起動(?demo=1 や ?demoTrack= での確認)では従来どおりここで出す。
+      // 曲名は「再生開始の3秒後」に、通常の再生中表示と同じ見た目で出す。
+      const show = () => {
+        if (!demoActive) return;
+        setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
+        document.body.dataset.demoTrackLabel = label;
+      };
+      // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。
+      let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
+      if (index === 0 && delayMs > 0) {
+        delayMs = Math.max(
+          0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
+        );
+      }
+      if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
+      else show();
     }
-    if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
-    else show();
     // 曲3は海岸線だけを走る。別コースにいるなら海岸線へ移す。
     if (demoTrackMode === 'sea-sunset' && COURSE_KEY !== 'sea') {
       jumpDemoToCourse('sea');
@@ -6479,7 +6487,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(Math.max(0, DEMO_SEQUENCE.indexOf(course))));
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
-    if (pageQuery.get('demoEmbedded') === '1') nextQuery.set('demoEmbedded', '1');
+    if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
     location.replace(`${location.pathname}?${nextQuery}`);
   }
@@ -6593,7 +6601,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     nextQuery.set('demoStage', String(nextStage));
     // 流れている曲の見せ方をコース切替後も引き継ぐ（親からの通知が届く前の初期値）。
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
-    if (pageQuery.get('demoEmbedded') === '1') nextQuery.set('demoEmbedded', '1');
+    if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
     document.body.dataset.demoNextCar = nextCar;
     location.replace(`${location.pathname}?${nextQuery}`);
@@ -8031,8 +8039,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
       return hit;
     }
-    // 海岸線は交通量を優先し、CPU車とユーザー車は相互にすり抜ける。
-    if (COURSE_KEY !== 'sea') {
+    // 自動運転中(Yキー・デモ)はCPU車とすり抜ける。ユーザー車はルート上を、
+    // CPU車は走行ライン上を、どちらも毎フレーム強制されるため、当たり判定を
+    // 効かせると押し合いになって両方その場で止まってしまう。
+    // ユーザーが操作している間は従来どおり当たり判定あり（ぶつかれば避ける）。
+    // 海岸線は交通量を優先し、操作中も相互にすり抜ける。
+    const cpuCollisionOff = COURSE_KEY === 'sea' || demoActive || autoDrive;
+    document.body.dataset.playerCpuCollisionMode = cpuCollisionOff ? 'pass' : 'solid';
+    if (!cpuCollisionOff) {
       for (const ai of aiCars) {
         // 出番待ちの車（非表示）には当たらない。位置が残ったままなので、
         // 判定すると見えない車に衝突する。

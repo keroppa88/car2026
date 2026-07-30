@@ -162,7 +162,8 @@ function audioModule() {
   // クロスフェード長。0.25秒でも段差は消えるが、0.5秒だと継ぎ目前後の音量差も
   // ほぼ0dBに収まった(freeway1: +3.13dB → -0.09dB)。長すぎると同じ音の重なりが増える。
   const INTERIOR_XFADE_S = 0.5;       // ループ継ぎ目のクロスフェード長
-  const INTERIOR_SWITCH_S = 0.3;      // 低速/高速を乗り換える時間
+  // 低速/高速を乗り換える時間。この間は2つの音が重なって鳴る。
+  const INTERIOR_SWITCH_S = 0.6;
   const interiorBuffers = new Map();  // url -> 加工済み AudioBuffer
   const interiorLoading = new Map();  // url -> Promise (二重ロード防止)
   let interiorVolume = 0.85;
@@ -218,15 +219,35 @@ function audioModule() {
     for (const url of urls) loadInterior(url).catch(() => {});
   }
 
-  function fadeOutInterior(sec) {
+  // 低速↔高速の乗り換えは「等パワークロスフェード」で重ねる。
+  // 指数カーブ(0.0001↔音量)で交差させると、中間で両方が -33dB まで落ちて
+  // 0.2秒ほど無音の穴があく。sin/cos なら二乗和が常に1で、road noise のような
+  // 無相関の2音を重ねても音量が凹まない。
+  const XFADE_POINTS = 64;
+  function equalPowerCurve(peak, rising) {
+    const curve = new Float32Array(XFADE_POINTS);
+    for (let i = 0; i < XFADE_POINTS; i++) {
+      const phase = (i / (XFADE_POINTS - 1)) * Math.PI / 2;
+      curve[i] = peak * (rising ? Math.sin(phase) : Math.cos(phase));
+    }
+    return curve;
+  }
+
+  // 走行中のカーブ予約を安全に打ち切る(音量スライダー等が重なった時用)。
+  function cancelGain(param, t) {
+    if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(t);
+    else param.cancelScheduledValues(t);
+  }
+
+  function fadeOutInterior(sec, at) {
     const node = interiorNode;
     interiorNode = null;
     if (!node) return;
-    const t = ctx.currentTime;
+    const t = at ?? ctx.currentTime;
     const g = node.gain.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(Math.max(0.0001, g.value), t);
-    g.exponentialRampToValueAtTime(0.0001, t + sec);
+    const from = g.value;
+    cancelGain(g, t);
+    g.setValueCurveAtTime(equalPowerCurve(from, false), t, sec);
     node.src.stop(t + sec + 0.02);
   }
 
@@ -238,12 +259,15 @@ function audioModule() {
     loadInterior(url).then((buf) => {
       // 読み込み中に別の音へ切り替わった/停止した場合は捨てる。
       if (!ctx || (interiorNode && interiorNode.url === url)) return;
-      fadeOutInterior(INTERIOR_SWITCH_S);
+      // 新旧を同じ時刻から重ねる。片方だけ先に始まると合計音量が波打つ。
       const t = ctx.currentTime;
+      fadeOutInterior(INTERIOR_SWITCH_S, t);
       const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, interiorVolume),
-                                             t + INTERIOR_SWITCH_S);
+      gain.gain.value = 0;             // カーブ開始前に鳴らさない
+      gain.gain.setValueCurveAtTime(
+        equalPowerCurve(interiorVolume, true), t, INTERIOR_SWITCH_S);
+      // カーブ終了後の値を固定しておく(以降の音量変更の基準になる)。
+      gain.gain.setValueAtTime(interiorVolume, t + INTERIOR_SWITCH_S + 0.001);
       gain.connect(ctx.destination);   // 効果音のmasterとは独立(従来のAudio要素と同じ扱い)
       const src = ctx.createBufferSource();
       src.buffer = buf;
@@ -270,8 +294,10 @@ function audioModule() {
   function setInteriorVolume(v) {
     interiorVolume = Math.max(0, Math.min(1, v));
     if (interiorNode) {
-      interiorNode.gain.gain.setTargetAtTime(
-        Math.max(0.0001, interiorVolume), ctx.currentTime, 0.05);
+      // 乗り換えのカーブ中に呼ばれても例外にならないよう、先に予約を打ち切る。
+      const t = ctx.currentTime;
+      cancelGain(interiorNode.gain.gain, t);
+      interiorNode.gain.gain.setTargetAtTime(interiorVolume, t, 0.05);
     }
   }
 
