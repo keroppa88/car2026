@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
-import { AUDIO } from './audio.js?v=20260730-demo-engine-reset-1';
+import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260729-forest-road-seam-113';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
@@ -28,6 +28,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy'];
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
+  // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
+  // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
+  const DEMO_EMBEDDED = pageQuery.get('demoEmbedded') === '1';
   const requestedDemoStage = Number.parseInt(pageQuery.get('demoStage') || '', 10);
   const courseDemoStage = DEMO_SEQUENCE.indexOf(COURSE_KEY);
   const DEMO_SEQUENCE_STAGE = Number.isInteger(requestedDemoStage)
@@ -6407,23 +6410,12 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       : 0;
   let demoTrackMode = DEMO_TRACK_MODES[DEMO_TRACK_INDEX];
   let demoTrackLabelTimer = 0;
-  // 曲名は一度出したら、その曲が終わるまで出しっぱなしにする。コース切替は
-  // ページ再読込なので、表示済みか(demoTrackLabelShown)／まだ待ちの残り時間か
-  // (demoTrackLabelDueAt)をURLで次のページへ引き継ぐ。
-  let demoTrackLabelShown = false;
-  let demoTrackLabelDueAt = 0;
   let demoTrackCameraAt = 0;
   const DEMO_TRACK_CAMERA_INTERVAL_MS = 20000;
   const DEMO_TRACK_LABEL_DELAY_MS = 3000;   // 再生開始から曲名を出すまで
   // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
   // 「再生開始から3秒」だと音が鳴る前に曲名が出てしまう。
   const DEMO_TRACK1_LABEL_AT_MS = 12000;
-  // コース切替で引き継いだ曲名の状態。表示済みなら再読込直後から即出し、
-  // まだ待ちの途中なら残り時間だけ待つ（切替のたびに数え直さない）。
-  const DEMO_TRACK_LABEL_CARRIED_SHOWN = pageQuery.get('demoTrackShown') === '1';
-  const carriedTrackLabelIn = Number.parseInt(pageQuery.get('demoTrackLabelIn') || '', 10);
-  const DEMO_TRACK_LABEL_CARRIED_IN_MS =
-    Number.isInteger(carriedTrackLabelIn) && carriedTrackLabelIn >= 0 ? carriedTrackLabelIn : -1;
   // 曲3の空。パネルの各メーター%をそのままHSLへ直した値。
   const DEMO_SUNSET_HORIZON = { h: 0.10, s: 1.00, meter: 0.20 };
   const DEMO_SUNSET_SKY = { h: 0.95, s: 0.95, meter: 0.35 };
@@ -6461,33 +6453,30 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 冪等なので毎回適用する。初期モードと一致する場合に飛ばすと、
     // ?demoTrack= 起動や曲を引き継いだ再読込みで空設定が入らない。
     applyDemoTrackMode();
-    // 曲名は「再生開始の3秒後」に、通常の再生中表示と同じ見た目で出す。
     clearTimeout(demoTrackLabelTimer);
     const label = data.label || DEMO_TRACK_LABELS[index] || '';
-    demoTrackLabelShown = false;
-    demoTrackLabelDueAt = 0;
-    const show = () => {
-      if (!demoActive) return;
-      setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
+    // デモシェルの中で動いている時、曲名はシェル側が出す。コース切替のたびに
+    // このページは読み込み直されるので、ここで出すと切替のあいだ曲名が消える。
+    if (DEMO_EMBEDDED) {
       document.body.dataset.demoTrackLabel = label;
-      // 一度出したら、次の曲に変わるまで消さない（コース切替もまたぐ）。
-      demoTrackLabelShown = true;
-      demoTrackLabelDueAt = 0;
-    };
-    // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。既に流れている曲の
-    // 引き継ぎ(labelDelayMs=0。コース切替でのページ再読込)は、音が鳴っている
-    // 状態なので従来どおり即表示する。
-    let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
-    // carried はコース切替で引き継いだ残り時間。曲1でも数え直さない。
-    if (index === 0 && delayMs > 0 && !data.carried) {
-      delayMs = Math.max(
-        0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
-      );
+    } else {
+      // 単独起動(?demo=1 や ?demoTrack= での確認)では従来どおりここで出す。
+      // 曲名は「再生開始の3秒後」に、通常の再生中表示と同じ見た目で出す。
+      const show = () => {
+        if (!demoActive) return;
+        setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
+        document.body.dataset.demoTrackLabel = label;
+      };
+      // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。
+      let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
+      if (index === 0 && delayMs > 0) {
+        delayMs = Math.max(
+          0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
+        );
+      }
+      if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
+      else show();
     }
-    if (delayMs > 0) {
-      demoTrackLabelDueAt = performance.now() + delayMs;
-      demoTrackLabelTimer = setTimeout(show, delayMs);
-    } else show();
     // 曲3は海岸線だけを走る。別コースにいるなら海岸線へ移す。
     if (demoTrackMode === 'sea-sunset' && COURSE_KEY !== 'sea') {
       jumpDemoToCourse('sea');
@@ -6499,18 +6488,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return Number.isInteger(shown) ? shown : DEMO_TRACK_INDEX;
   }
 
-  // 流れている曲の見せ方と曲名表示の状態を、コース切替後のページへ引き継ぐ
-  // （親からの通知が届く前の初期値）。
-  function setDemoTrackQuery(nextQuery) {
-    nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
-    if (demoTrackLabelShown) {
-      nextQuery.set('demoTrackShown', '1');
-    } else if (demoTrackLabelDueAt > 0) {
-      const remain = Math.max(0, Math.round(demoTrackLabelDueAt - performance.now()));
-      nextQuery.set('demoTrackLabelIn', String(remain));
-    }
-  }
-
   function jumpDemoToCourse(course) {
     if (demoSequenceLeaving) return;
     demoSequenceLeaving = true;
@@ -6519,8 +6496,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     nextQuery.set('course', course);
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(Math.max(0, DEMO_SEQUENCE.indexOf(course))));
-    setDemoTrackQuery(nextQuery);
-    if (pageQuery.get('demoEmbedded') === '1') nextQuery.set('demoEmbedded', '1');
+    nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
+    if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
     location.replace(`${location.pathname}?${nextQuery}`);
   }
@@ -6599,18 +6576,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // コース切替で読み込み直された直後は、既に流れている曲を教えてもらう。
     // 親がいない直接起動や ?demoTrack= 指定では、その曲の設定で始める。
     postDemoShellMessage('vox-demo-ready');
-    // コース切替で引き継いだ曲は、曲名表示の待ち時間を数え直さない。
-    // 表示済みなら即出し（再読込のたびに消えないように）、待ちの途中なら残りだけ待つ。
-    const carried = DEMO_TRACK_LABEL_CARRIED_SHOWN || DEMO_TRACK_LABEL_CARRIED_IN_MS >= 0;
-    let labelDelayMs = DEMO_TRACK_LABEL_DELAY_MS;
-    if (DEMO_TRACK_LABEL_CARRIED_SHOWN) labelDelayMs = 0;
-    else if (DEMO_TRACK_LABEL_CARRIED_IN_MS >= 0) labelDelayMs = DEMO_TRACK_LABEL_CARRIED_IN_MS;
     setDemoTrack({
       index: DEMO_TRACK_INDEX,
       mode: DEMO_TRACK_MODES[DEMO_TRACK_INDEX],
       label: DEMO_TRACK_LABELS[DEMO_TRACK_INDEX],
-      labelDelayMs,
-      carried,
+      labelDelayMs: DEMO_TRACK_LABEL_DELAY_MS,
     });
     setTimeout(() => {
       if (demoActive && DEMO_SEQUENCE_ACTIVE && !demoSequenceLeaving) {
@@ -6654,8 +6624,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     nextQuery.set('course', DEMO_SEQUENCE[nextStage]);
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(nextStage));
-    setDemoTrackQuery(nextQuery);
-    if (pageQuery.get('demoEmbedded') === '1') nextQuery.set('demoEmbedded', '1');
+    // 流れている曲の見せ方をコース切替後も引き継ぐ（親からの通知が届く前の初期値）。
+    nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
+    if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
     document.body.dataset.demoNextCar = nextCar;
     location.replace(`${location.pathname}?${nextQuery}`);
@@ -6817,9 +6788,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     if (!nowPlayingEl) {
       // 大きめ・細字・くっきりした青緑。にじむ影ではなく締まった輪郭で読ませる。
       nowPlayingEl = document.createElement('div');
-      // z-indexはLOADING(10)より上。コース切替の読込中も曲名を出したままにする。
       nowPlayingEl.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);'
-        + 'z-index:11;color:#00ffd5;font-weight:400;font-size:21px;letter-spacing:1.5px;'
+        + 'z-index:5;color:#00ffd5;font-weight:400;font-size:21px;letter-spacing:1.5px;'
         + 'text-shadow:0 1px 2px rgba(0,0,0,0.95),0 0 1px rgba(0,0,0,0.9);'
         + 'pointer-events:none;white-space:nowrap;'
         + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
@@ -6827,17 +6797,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     }
     nowPlayingEl.textContent = nowPlayingText ? '♪ ' + nowPlayingText : '';
     updateNowPlayingVisibility();
-  }
-
-  // デモのコース切替はページ再読込なので、そのままではマップ読込中(LOADING)に
-  // 曲名が消える。切替前に出ていた曲は、読込中から同じ曲名を出したままにする。
-  if (DEMO_SEQUENCE_ACTIVE && DEMO_TRACK_LABEL_CARRIED_SHOWN) {
-    const carriedTrackLabel = DEMO_TRACK_LABELS[DEMO_TRACK_INDEX] || '';
-    if (carriedTrackLabel) {
-      setNowPlaying(carriedTrackLabel);
-      document.body.dataset.demoTrackLabel = carriedTrackLabel;
-      demoTrackLabelShown = true;
-    }
   }
 
   function stopMusic() {
@@ -8105,8 +8064,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
       return hit;
     }
-    // 海岸線は交通量を優先し、CPU車とユーザー車は相互にすり抜ける。
-    if (COURSE_KEY !== 'sea') {
+    // 自動運転中(Yキー・デモ)はCPU車とすり抜ける。ユーザー車はルート上を、
+    // CPU車は走行ライン上を、どちらも毎フレーム強制されるため、当たり判定を
+    // 効かせると押し合いになって両方その場で止まってしまう。
+    // ユーザーが操作している間は従来どおり当たり判定あり（ぶつかれば避ける）。
+    // 海岸線は交通量を優先し、操作中も相互にすり抜ける。
+    const cpuCollisionOff = COURSE_KEY === 'sea' || demoActive || autoDrive;
+    document.body.dataset.playerCpuCollisionMode = cpuCollisionOff ? 'pass' : 'solid';
+    if (!cpuCollisionOff) {
       for (const ai of aiCars) {
         // 出番待ちの車（非表示）には当たらない。位置が残ったままなので、
         // 判定すると見えない車に衝突する。
