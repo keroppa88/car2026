@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
-import { AUDIO } from './audio.js?v=20260730-interior-seamless-1';
+import { AUDIO } from './audio.js?v=20260730-demo-engine-reset-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260729-forest-road-seam-113';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
@@ -1892,6 +1892,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let demoRoute = null;
   let demoIdx = 1;
   const demoCam = { nextChange: 0, until: 0, yaw: 0, pitch: 0.3, dist: 12 };
+  let demoCamUserHeld = false;       // ドラッグでユーザーがカメラを握っているか
   let demoSequenceStartedAt = 0;
   let demoSequenceActionCount = 0;
   let demoSequenceWeatherCount = 0;
@@ -6399,6 +6400,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let demoTrackCameraAt = 0;
   const DEMO_TRACK_CAMERA_INTERVAL_MS = 20000;
   const DEMO_TRACK_LABEL_DELAY_MS = 3000;   // 再生開始から曲名を出すまで
+  // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
+  // 「再生開始から3秒」だと音が鳴る前に曲名が出てしまう。
+  const DEMO_TRACK1_LABEL_AT_MS = 12000;
   // 曲3の空。パネルの各メーター%をそのままHSLへ直した値。
   const DEMO_SUNSET_HORIZON = { h: 0.10, s: 1.00, meter: 0.20 };
   const DEMO_SUNSET_SKY = { h: 0.95, s: 0.95, meter: 0.35 };
@@ -6444,7 +6448,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
       document.body.dataset.demoTrackLabel = label;
     };
-    if (data.labelDelayMs > 0) demoTrackLabelTimer = setTimeout(show, data.labelDelayMs);
+    // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。既に流れている曲の
+    // 引き継ぎ(labelDelayMs=0。コース切替でのページ再読込)は、音が鳴っている
+    // 状態なので従来どおり即表示する。
+    let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
+    if (index === 0 && delayMs > 0) {
+      delayMs = Math.max(
+        0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
+      );
+    }
+    if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
     else show();
     // 曲3は海岸線だけを走る。別コースにいるなら海岸線へ移す。
     if (demoTrackMode === 'sea-sunset' && COURSE_KEY !== 'sea') {
@@ -6544,6 +6557,26 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return true;
   }
 
+  // デモ画面はドラッグでカメラを動かせるが、その操作はブラウザの音声ロックを
+  // 解除する(AUDIO.unlock)ため、以降エンジン音が鳴り続けてしまう。コースが
+  // 切り替わる(ページ再読込)と消えるが、曲3は海岸線に留まるので消えない。
+  // そこで「デモがカメラアングルを強制的に切り替える」タイミングで音を戻す。
+  function resetDemoEngineSound() {
+    if (!DEMO_SEQUENCE_ACTIVE || !demoActive) return;
+    demoCamUserHeld = false;
+    stopInterior();
+    AUDIO.silence();
+    document.body.dataset.demoEngineSoundResets = String(
+      Number(document.body.dataset.demoEngineSoundResets || 0) + 1
+    );
+  }
+
+  // デモの演出によるカメラ視点(V相当)の強制切り替え。
+  function switchDemoCameraView() {
+    bonnetView = (bonnetView + 1) % 3;
+    resetDemoEngineSound();
+  }
+
   function advanceDemoSequence() {
     if (demoSequenceLeaving) return;
     demoSequenceLeaving = true;
@@ -6581,7 +6614,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     } else if (COURSE_KEY === 'sea') {
       const expectedViews = Math.min(2, Math.floor(elapsed / 5));
       while (demoSequenceActionCount < expectedViews) {
-        bonnetView = (bonnetView + 1) % 3;  // V相当: 5秒/10秒
+        switchDemoCameraView();             // V相当: 5秒/10秒
         demoSequenceActionCount++;
       }
       const expectedWeather = Math.min(3, Math.floor(elapsed / 4));
@@ -6591,7 +6624,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
     } else if (COURSE_KEY === 'forest') {
       if (elapsed >= 10 && demoSequenceActionCount === 0) {
-        bonnetView = (bonnetView + 1) % 3;  // V相当: 10秒
+        switchDemoCameraView();             // V相当: 10秒
         demoSequenceActionCount = 1;
       }
     } else if (COURSE_KEY === 'indy') {
@@ -6613,7 +6646,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // カメラだけを20秒ごとに切り替えて見せ場を変える。
       if (now - demoTrackCameraAt >= DEMO_TRACK_CAMERA_INTERVAL_MS) {
         demoTrackCameraAt = now;
-        bonnetView = (bonnetView + 1) % 3;
+        switchDemoCameraView();
         document.body.dataset.demoTrackCameraSwitches = String(
           Number(document.body.dataset.demoTrackCameraSwitches || 0) + 1
         );
@@ -9225,7 +9258,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // スワイプ(ドラッグ)中とその直後はユーザーのカメラ操作を優先する
       const t = performance.now();
       if (cam.dragging || t - cam.lastDrag < 2500) {
-        // 何もしない(ユーザーの視点を保持)
+        // 何もしない(ユーザーの視点を保持)。実際にドラッグされた時だけ印を付ける
+        // (lastDrag=0 の起動直後を「今ドラッグした」と数えないため)。
+        demoCamUserHeld = cam.lastDrag > 0;
+      } else if (demoCamUserHeld) {
+        // デモがカメラを取り戻す = アングルの強制切り替え。
+        // ドラッグで鳴り始めたエンジン音もここで消す(首都高/森林/インディ用)。
+        demoCamUserHeld = false;
+        resetDemoEngineSound();
       } else if (DEMO_SEQUENCE_ACTIVE) {
         const elapsed = Math.max(0, (t - demoSequenceStartedAt) / 1000);
         let targetYaw = 0;

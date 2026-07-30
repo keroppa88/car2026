@@ -258,6 +258,15 @@ function audioModule() {
     if (ctx) fadeOutInterior(0.12);
   }
 
+  // フェードを待たずに車内音を切る(silence() で suspend する時間軸は進まないため)。
+  function stopInteriorNow() {
+    const node = interiorNode;
+    interiorNode = null;
+    if (!node) return;
+    try { node.src.stop(); } catch (e) { /* 既に停止している */ }
+    node.gain.disconnect();
+  }
+
   function setInteriorVolume(v) {
     interiorVolume = Math.max(0, Math.min(1, v));
     if (interiorNode) {
@@ -286,6 +295,22 @@ function audioModule() {
   // master 直結のまま残るので、車内音モード・無音モードでも鳴る。
   function setEngineMuted(v) {
     engineMuted = !!v;
+  }
+
+  // 鳴っている音を全て止め、次のユーザー操作(unlock)まで無音へ戻す。
+  // ページ再読込で音が消えるのと同じ状態を、再読込せずに作る。
+  // デモ画面が「ドラッグで鳴り始めたエンジン音」を消すために使う。
+  function silence() {
+    if (!ctx) return;
+    stopInteriorNow();
+    const t = ctx.currentTime;
+    for (const g of [engGain, engNoiseGain, screechGain]) {
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(0, t);
+    }
+    rpmSmooth = 0;
+    revN = 0;
+    if (ctx.state === 'running') ctx.suspend();
   }
 
   /*
@@ -344,7 +369,7 @@ function audioModule() {
   }
 
   return {
-    unlock, toggle, setEngineMuted, setVolume, update,
+    unlock, toggle, setEngineMuted, setVolume, update, silence,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
     _debug() {
