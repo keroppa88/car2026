@@ -6339,6 +6339,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return true;
   }
 
+  // スマホは操作があるまで音付き再生が許可されず、デモは放置から始まるので
+  // そのままでは曲が鳴らない。デモ中の操作を外枠(デモシェル)へ伝えて音を出す。
+  function notifyDemoUserGesture() {
+    if (!DEMO_SEQUENCE_ACTIVE) return;
+    postDemoShellMessage('vox-demo-user-gesture');
+  }
+  window.addEventListener('pointerdown', notifyDemoUserGesture, { capture: true });
+  window.addEventListener('touchstart', notifyDemoUserGesture, { capture: true, passive: true });
+  window.addEventListener('keydown', notifyDemoUserGesture, { capture: true });
+
   function requestDemoBackgroundMusic() {
     if (postDemoShellMessage('vox-demo-bgm-start')) return;
     // demoShellを経由しないデバッグURLでも、指定曲の再生を試みる。
