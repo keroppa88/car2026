@@ -168,6 +168,20 @@ U字は窓+7でだけ検出できる（idx33-35, 209-223などの合計180度区
 
 一周の総時間 60秒 → 88秒。
 
+### ドラッグで鳴り出すエンジン音のリセット（全4曲共通）
+
+デモ中のドラッグ（カメラ操作）はブラウザの音声ロックを解除する（`AUDIO.unlock`）ため、以降エンジン音が鳴り続ける。コース切替＝ページ再読込では消えるが、**曲3は海岸線に留まるので消えない**。そこで「デモがカメラアングルを強制的に切り替える」タイミングで音を無音へ戻す（`AUDIO.silence()`＝鳴っている音を止めて `AudioContext` を suspend。次のドラッグで再び鳴り、また切替で消える）。
+
+| 契機                                | 対象               |
+| --------------------------------- | ---------------- |
+| 演出によるカメラ視点切替（V相当。海岸線5秒/10秒、森林10秒） | 曲1〜4             |
+| 曲3の20秒ごとのアングル切替                   | 曲3               |
+| ドラッグ終了2.5秒後にデモがカメラを取り戻した時          | 首都高・森林・インディなど全コース |
+
+- 強制的なV切替が無いコース（首都高・インディ）は3番目の「カメラの取り戻し」で消える
+- 判定用に実際にドラッグされた時だけ印を付ける（`cam.lastDrag > 0`）。起動直後の `lastDrag=0` を「今ドラッグした」と数えると、デモ開始1.5秒で無駄なリセットが1回入る
+- 観測用：`document.body.dataset.demoEngineSoundResets`（リセット回数）
+
 ### BGM 4曲構成（曲がデモの見せ方を決める）
 
 親シェル（`?demoShell=1`）を YouTube IFrame API に切り替え、曲の終了を検知して次へ送る。
@@ -179,7 +193,9 @@ U字は窓+7でだけ検出できる（idx33-35, 209-223などの合計180度区
 | 3   | I7mI-HYHDbM | Elton John,Understanding Women    | **海岸線のみ・指定の空・20秒ごとにアングル切替** |
 | 4   | 4k6YWc59Se4 | 井上陽水,今夜、私に                        | **常に夜(Nモード)**・コースとカメラは通常どおり |
 
-- 各曲とも**再生開始3秒後**に、通常の再生中表示と同じ見た目（`♪ 曲名`）で曲名を出す（`setNowPlaying` が♪を自動付与）
+- 曲2〜4は**再生開始3秒後**に、通常の再生中表示と同じ見た目（`♪ 曲名`）で曲名を出す（`setNowPlaying` が♪を自動付与）
+- **曲1だけは「デモ突入から12秒後」**（`DEMO_TRACK1_LABEL_AT_MS`）。BGMはデモ突入の7秒後に鳴り始めるので、「再生開始から3秒」だと音が鳴る前に曲名が出てしまう。曲1は再生開始の基準時刻がデモ突入前に確定しないため、突入からの経過時間で数える
+- コース切替（ページ再読込）で既に流れている曲を引き継ぐ場合（`labelDelayMs=0`）は、曲1でも音が鳴っている状態なので従来どおり即表示する
 - 1曲目のAO3uZdHDpNQは所有者が外部埋め込み禁止のため、同じ曲の埋め込み可能版N9JN4aqMduoを使用
 - **ENDEDの重複発火対策**：次の曲が実際にPLAYINGになるまで曲送りを受け付けない（これがないと1曲目の直後に3曲先まで飛び、4曲目だけが残る＝実際に発生した）
 - **再生エラー時は1曲目へ戻る**（飛ばさない）。1曲目自体が鳴らない時は往復せず停止（`demoTrackStalled`）
@@ -205,5 +221,5 @@ horizon明暗20%なので薄暗さも連動して dusk=0.75（かなり薄暗い
 - Playwright + SwiftShader は2〜3fpsしか出ず、**FPSは実機の目安にならない**。draw callと三角形数で判断する
 - **すれ違い頻度・曲送りはこの環境で実測できない**（60秒でゲーム内128m＝一周の3%しか進まない／YouTubeが再生されない）
 - 負荷実測：昼15台 draw62/三角形19万、夜15台 279/20万、インディ10台 draw213/7.6万。10台と15台で描画量がほぼ同じ（フォグと視界で同時描画数が頭打ち）
-- 観測用 dataset：`tokyoCpu*`（Encounters/LaneShifts/MinPairGapMeters/ActiveRanks等）、`indyCpu*`（CurrentSpeedsKmh/MaxDriftSpeedKmh/MaxAccel等）、`cpuMaxJumpMeters`、`weatherDuskLevel`、`demoTrack*`
+- 観測用 dataset：`tokyoCpu*`（Encounters/LaneShifts/MinPairGapMeters/ActiveRanks等）、`indyCpu*`（CurrentSpeedsKmh/MaxDriftSpeedKmh/MaxAccel等）、`cpuMaxJumpMeters`、`weatherDuskLevel`、`demoTrack*`、`demoEngineSoundResets`
 - URLパラメータ：`?cpuCars=N`（首都高の台数）、`?laneSpacing=`（レーン間隔）、`?demoTrack=N`（デモの曲指定）、`?course=`、`?demo=1`、`?demoShell=1`、`?debugMap=1`
