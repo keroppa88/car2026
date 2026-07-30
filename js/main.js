@@ -6336,6 +6336,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return true;
   }
 
+  // スマホは操作があるまで音付き再生が許可されず、デモは放置から始まるので
+  // そのままでは曲が鳴らない。デモ中の操作を外枠(デモシェル)へ伝えて音を出す。
+  function notifyDemoUserGesture() {
+    if (!DEMO_SEQUENCE_ACTIVE) return;
+    postDemoShellMessage('vox-demo-user-gesture');
+  }
+  window.addEventListener('pointerdown', notifyDemoUserGesture, { capture: true });
+  window.addEventListener('touchstart', notifyDemoUserGesture, { capture: true, passive: true });
+  window.addEventListener('keydown', notifyDemoUserGesture, { capture: true });
+
   function requestDemoBackgroundMusic() {
     if (postDemoShellMessage('vox-demo-bgm-start')) return;
     // demoShellを経由しないデバッグURLでも、指定曲の再生を試みる。
@@ -6515,9 +6525,29 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     location.replace(`${location.pathname}?${nextQuery}`);
   }
 
+  // BGMがミュートで鳴っている間(スマホの自動再生制限)は、案内文で音の出し方を
+  // 伝える。タップで音が出たら通常の案内へ戻す。
+  let demoBgmMuted = false;
+  function applyDemoHintText() {
+    const hint = document.querySelector('#demo .hint');
+    if (!hint) return;
+    if (!IS_MOBILE) {
+      hint.textContent = '何かボタンでタイトルへ / ドラッグでカメラ';
+    } else if (demoBgmMuted) {
+      hint.textContent = 'タップで音が出ます / スワイプでカメラ';
+    } else {
+      hint.textContent = 'スワイプでカメラ / タップで視点切替';
+    }
+  }
+
   window.addEventListener('message', (event) => {
     if (!DEMO_SEQUENCE_ACTIVE || event.source !== window.parent) return;
     if (event.data?.type === 'vox-demo-track') setDemoTrack(event.data);
+    if (event.data?.type === 'vox-demo-bgm-muted') {
+      demoBgmMuted = !!event.data.muted;
+      document.body.dataset.demoBgmMuted = String(demoBgmMuted);
+      applyDemoHintText();
+    }
   });
 
   function exitDemoSequenceToTitle() {
@@ -6559,12 +6589,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       applyNight();
     }
     if (MAP_CONFIG.autoDriveMode === 'indyBankDrift') snapPlayerToIndyAutoRoute();
-    const hint = document.querySelector('#demo .hint');
-    if (hint) {
-      hint.textContent = IS_MOBILE
-        ? 'スワイプでカメラ / タップで視点切替'
-        : '何かボタンでタイトルへ / ドラッグでカメラ';
-    }
+    applyDemoHintText();
     enterDemo(car2AutoRoute);
     document.body.dataset.demoSequence = 'true';
     document.body.dataset.demoSequenceStage = String(DEMO_SEQUENCE_STAGE);

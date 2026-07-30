@@ -551,7 +551,17 @@
       { id: '4k6YWc59Se4', label: '井上陽水,今夜、私に', mode: 'night' },
     ];
     const DEMO_TRACK_LABEL_DELAY_MS = 3000;
+    // スマホ/タブレットは「操作なしの音付き自動再生」をブラウザが拒否する。
+    // デモはタイトルの放置から始まるので操作がなく、そのままだと曲が鳴らない。
+    // まずミュートで鳴らし始め、最初のタップ等で音を戻す。
+    const DEMO_IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    // 自動再生が拒否されたかの判定。読込が遅いだけの回線を巻き込まないよう、
+    // BUFFERING/PLAYINGのどちらにも入らない状態が続いた時だけミュートへ落とす。
+    const DEMO_BGM_START_CHECK_MS = 5000;
     let demoPlayer = null;
+    let demoBgmMuted = false;       // 自動再生の制限でミュート再生中か
+    let demoUserGestured = false;   // デモ中に操作があったか(音を出してよい合図)
+    let demoBgmStartCheckTimer = 0;
     let demoTrackIndex = 0;
     let demoTrackAnnounced = -1;
     // 曲送りは「次の曲が再生され始めるまで」受け付けない。YouTubeは曲の終わりや
@@ -580,6 +590,36 @@
         labelDelayMs: cold ? 0 : DEMO_TRACK_LABEL_DELAY_MS,
       });
     };
+    // ミュート再生中かどうかをゲーム側へ伝える（デモ画面の案内文に使う）。
+    const announceBgmMuted = () => {
+      document.body.dataset.demoBgmMuted = String(demoBgmMuted);
+      sendToDemoFrame({ type: 'vox-demo-bgm-muted', muted: demoBgmMuted });
+    };
+    const demoPlayerState = () => (
+      typeof demoPlayer?.getPlayerState === 'function' ? demoPlayer.getPlayerState() : -1
+    );
+    // 操作があれば音付き再生が許可される。iframe(同一オリジン)内のタップは
+    // ゲーム側から知らせが届く。
+    const resumeDemoBgmSound = () => {
+      demoUserGestured = true;
+      if (!demoPlayer || demoPlayer === 'loading') return;
+      if (demoBgmMuted) {
+        demoPlayer.unMute?.();
+        demoPlayer.setVolume?.(80);
+        demoBgmMuted = false;
+        announceBgmMuted();
+      }
+      // 止まったままなら鳴らし始める。ENDED(曲送り中)には手を出さない。
+      const ytState = window.YT?.PlayerState;
+      const state = demoPlayerState();
+      if (ytState && (state === ytState.UNSTARTED
+        || state === ytState.PAUSED || state === ytState.CUED)) {
+        demoPlayer.playVideo?.();
+      }
+    };
+    window.addEventListener('pointerdown', resumeDemoBgmSound);
+    window.addEventListener('touchstart', resumeDemoBgmSound, { passive: true });
+    window.addEventListener('keydown', resumeDemoBgmSound);
     const playTrack = (index) => {
       demoTrackIndex = ((index % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
       const track = DEMO_TRACKS[demoTrackIndex];
@@ -620,12 +660,32 @@
           playerVars: {
             autoplay: 1, controls: 0, playsinline: 1,
             origin: location.origin,
+            // 読込直後の自動再生も、操作なしのスマホではミュートでないと拒否される。
+            ...(DEMO_IS_MOBILE && !demoUserGestured ? { mute: 1 } : {}),
           },
           events: {
             onReady: (event) => {
               event.target.setVolume(80);
+              // 操作なしのスマホは音付きだと再生を拒否される。ミュートで始める。
+              if (DEMO_IS_MOBILE && !demoUserGestured) {
+                event.target.mute();
+                demoBgmMuted = true;
+                announceBgmMuted();
+              }
               event.target.playVideo();
               demoTrackAdvancing = false;   // 1曲目は最初からENDEDを受け付ける
+              // それでも鳴り始めなければ(PC側の自動再生制限など)ミュートで鳴らす。
+              clearTimeout(demoBgmStartCheckTimer);
+              demoBgmStartCheckTimer = setTimeout(() => {
+                if (demoBgmMuted) return;
+                const state = demoPlayerState();
+                if (state === window.YT.PlayerState.PLAYING
+                  || state === window.YT.PlayerState.BUFFERING) return;
+                demoPlayer?.mute?.();
+                demoBgmMuted = true;
+                announceBgmMuted();
+                demoPlayer?.playVideo?.();
+              }, DEMO_BGM_START_CHECK_MS);
             },
             onStateChange: (event) => {
               const state = event.data;
@@ -673,9 +733,12 @@
       if (event.source !== demoFrame.contentWindow) return;
       if (event.data?.type === 'vox-demo-bgm-start') startDemoBgm();
       if (event.data?.type === 'vox-demo-exit') location.href = location.pathname;
+      // iframe内(ゲーム画面)のタップ等。ここで音を出せるようになる。
+      if (event.data?.type === 'vox-demo-user-gesture') resumeDemoBgmSound();
       // コース切替でiframeが読み込み直されたら、流れている曲を伝え直す。
-      if (event.data?.type === 'vox-demo-ready' && demoTrackAnnounced >= 0) {
-        announceTrack(true);
+      if (event.data?.type === 'vox-demo-ready') {
+        if (demoTrackAnnounced >= 0) announceTrack(true);
+        announceBgmMuted();
       }
     });
     // iframeにフォーカスが移る前に押されたPCキーも「タイトルへ戻る」に含める。
@@ -685,7 +748,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20260730-demo-track-label-keep-1');
+    import('./js/main.js?v=20260730-demo-mobile-bgm-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
