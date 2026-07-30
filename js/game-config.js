@@ -217,7 +217,7 @@ export const MAP_CONFIGS = {
     // 個別のサイズ補正を一切かけず、同じ縮尺で接続する。
     // 初期森林サイズから、縦・横・高さを一様に75%へ縮小。
     scale: 0.00008503937064,
-    assetRevision: '20260729-forest01-04-2',
+    assetRevision: '20260730-forest01-04-lite',
     // 元マップY最大端→次マップY最小端の順に、縦方向だけへ接続する。
     segmentFiles: [
       'map/forest01.glb',

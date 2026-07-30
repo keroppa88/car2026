@@ -22,7 +22,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   const pageQuery = new URLSearchParams(location.search);
   // 同名のGLBを差し替えた場合も、連結コースの全区間を必ず同じ版で読み直す。
-  const DEFAULT_SEQUENCE_MAP_ASSET_REVISION = '20260728-searoad01-05-2';
+  const DEFAULT_SEQUENCE_MAP_ASSET_REVISION = '20260730-searoad01-05-lite';
   const COURSE_KEY = pageQuery.get('course') || 'tokyo';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
