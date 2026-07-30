@@ -16,6 +16,7 @@
     background: #16202a; color: #cfe6f5; font-size: 18px; letter-spacing: 2px;
   }
   #loading .err { text-align: center; line-height: 2; }
+  #loading .err .paths { display: inline-block; text-align: left; margin: 4px 0; }
   #loading code { color: #ffd479; }
 
   /* タイトル / マップ選択 */
@@ -497,11 +498,91 @@
   <div><b>B</b>音声切替(エンジン/車内/無音)</div>
 </div>
 
+<!-- 起動チェック。モジュールの読み込みに失敗するとタイトルもゲームも組み立てられず、
+     LOADINGのまま黙って止まる。公開先に js/ や lib/ を上げ忘れた場合がこれで、
+     ローカルでは動くのに本番だけ動かない状態になるため、足りないパスを画面に出す。 -->
+<script>
+  (function () {
+    // index.html が読み込む相対パス。増やしたら合わせて足す。
+    const REQUIRED_PATHS = ['js/game-config.js', 'js/main.js', 'lib/three.module.js'];
+    const BOOT_TIMEOUT_MS = 6000;
+
+    let booted = false;
+    let reported = false;
+    // モジュール側の本体が動き出したら呼ばれる。import が404なら本体は動かない。
+    window.__car2026BootOk = () => { booted = true; };
+
+    // `…` で囲んだ部分を <code> にして読みやすくする。
+    const line = (text, className) => {
+      const el = document.createElement('div');
+      if (className) el.className = className;
+      text.split('`').forEach((part, i) => {
+        if (i % 2 === 0) { el.append(part); return; }
+        const code = document.createElement('code');
+        code.textContent = part;
+        el.append(code);
+      });
+      return el;
+    };
+
+    const render = (title, paths, footer) => {
+      const loading = document.getElementById('loading');
+      if (!loading) return;
+      loading.style.display = 'flex';
+      const box = document.createElement('div');
+      box.className = 'err';
+      box.append(line(title));
+      if (paths.length) {
+        const list = document.createElement('div');
+        list.className = 'paths';
+        list.append(...paths.map((path) => line(`・\`${path}\``)));
+        box.append(list);
+      }
+      box.append(line(footer));
+      loading.replaceChildren(box);
+    };
+
+    const report = async (detail) => {
+      if (booted || reported) return;
+      reported = true;
+      const missing = [];
+      for (const path of REQUIRED_PATHS) {
+        try {
+          const res = await fetch(path, { method: 'GET', cache: 'no-store' });
+          if (!res.ok) missing.push(`${path} (${res.status})`);
+        } catch {
+          missing.push(`${path} (取得できません)`);
+        }
+      }
+      if (missing.length) {
+        render(
+          'ゲームの起動ファイルが公開先にありません',
+          missing,
+          'ローカルの `js/` と `lib/` フォルダをアップロードしてください',
+        );
+        return;
+      }
+      render('ゲームの起動に失敗しました', [], String(detail || 'ブラウザのコンソールを確認してください'));
+    };
+
+    // <script type="module"> の取得失敗はここに来る（例外にはならない）。
+    window.addEventListener('error', (event) => {
+      if (event.target instanceof HTMLScriptElement) report(`${event.target.src} を読み込めません`);
+    }, true);
+    // main.js の動的 import 失敗など。
+    window.addEventListener('unhandledrejection', (event) => report(event.reason?.message || event.reason));
+    // 何のイベントも出ないまま止まる場合の保険。
+    setTimeout(() => report('起動処理が始まりませんでした'), BOOT_TIMEOUT_MS);
+  })();
+</script>
+
 <script type="importmap">
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
   import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260729-forest-road-seam-113';
+
+  window.__car2026BootOk?.();
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
