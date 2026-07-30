@@ -211,11 +211,28 @@
     color: #fff; background: #d94312; outline: none;
     box-shadow: inset 0 0 0 2px #ffae58, 0 0 18px rgba(255, 122, 26, 0.45);
   }
+  /* タイトル左下の「デモ画面」ボタン。説明ボタンの反対側で、スマホだけに出す。
+     スマホはプレイできないので、タイトルからの行き先はデモ画面だけになる。 */
+  #title-demo-btn {
+    position: fixed; left: 20px; bottom: 20px; z-index: 32; display: none;
+    min-width: 112px; padding: 12px 18px;
+    border: 2px solid #ff8c1a; border-radius: 5px;
+    color: #ffbd73; background: rgba(12, 10, 9, 0.94);
+    box-shadow: inset 0 0 0 2px #3b210f, 0 5px 18px rgba(0, 0, 0, 0.5);
+    font: 800 17px/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.16em; cursor: pointer;
+  }
+  body.is-mobile #title-demo-btn { display: block; }
+  /* スマホではプレイできないので、車・コース選択は押せないようにする */
+  body.is-mobile .select-card { pointer-events: none; cursor: default; }
   #title-guide-overlay {
     position: fixed; inset: 0; z-index: 60;
     display: flex; align-items: center; justify-content: center;
     padding: 2vh 2vw; box-sizing: border-box; cursor: pointer;
     background: #050505;
+    /* ピンチでの拡大は残し、ダブルタップでの拡大だけ止める。
+       閉じる操作(ダブルタップ)と画面の拡大が競合しないようにするため。 */
+    touch-action: manipulation;
   }
   #title-guide-overlay[hidden] { display: none; }
   #title-guide-overlay img {
@@ -226,6 +243,10 @@
   @media (max-width: 600px) {
     #title-guide-btn {
       right: 10px; bottom: 10px; min-width: 88px;
+      padding: 10px 12px; font-size: 14px;
+    }
+    #title-demo-btn {
+      left: 10px; bottom: 10px; min-width: 88px;
       padding: 10px 12px; font-size: 14px;
     }
     #title-guide-overlay { padding: 0; }
@@ -450,6 +471,7 @@
   <div id="title-bottom-bar" aria-hidden="true"></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
   <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
+  <button id="title-demo-btn" type="button">デモ画面</button>
 </div>
 <div id="title-guide-overlay" role="dialog" aria-label="ゲーム説明" hidden>
   <img src="画像/説明.png" alt="イニシャルT ゲーム説明">
@@ -580,9 +602,12 @@
     // 自動再生が拒否されたかの判定。読込が遅いだけの回線を巻き込まないよう、
     // BUFFERING/PLAYINGのどちらにも入らない状態が続いた時だけミュートへ落とす。
     const DEMO_BGM_START_CHECK_MS = 5000;
+    // スマホの「デモ画面」ボタンから来た場合は操作を伴う遷移なので、
+    // 最初から音付きで鳴らしにいく。拒否されれば下のミュート再生へ落ちる。
+    const DEMO_STARTED_BY_TAP = query.get('demoTap') === '1';
     let demoPlayer = null;
     let demoBgmMuted = false;       // 自動再生の制限でミュート再生中か
-    let demoUserGestured = false;   // デモ中に操作があったか(音を出してよい合図)
+    let demoUserGestured = DEMO_STARTED_BY_TAP;   // 音を出してよい合図
     let demoBgmStartCheckTimer = 0;
     let demoTrackIndex = 0;
     let demoTrackAnnounced = -1;
@@ -797,26 +822,38 @@
     const carScreen = document.getElementById('car-screen');
     const courseScreen = document.getElementById('course-screen');
     const guideButton = document.getElementById('title-guide-btn');
+    const demoButton = document.getElementById('title-demo-btn');
     const guideOverlay = document.getElementById('title-guide-overlay');
+    // スマホはプレイできないので、タイトルでは「説明」と「デモ画面」の
+    // タッチだけを受け付ける。放置での自動デモも、車・コース選択もしない。
+    const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    if (IS_MOBILE) document.body.classList.add('is-mobile');
     let selectionAudioContext = null;
     let selectionClickNoise = null;
     let demoIdleTimer = 0;
     let guideOpen = false;
 
+    // byTap は「デモ画面」ボタンからの遷移。操作を伴うのでBGMを音付きで
+    // 鳴らし始めてよい（放置からの自動デモは操作がないので鳴らせない）。
+    const goToDemoShell = (byTap) => {
+      if (starting) return;
+      starting = true;
+      clearTimeout(demoIdleTimer);
+      const demoQuery = new URLSearchParams();
+      demoQuery.set('car', carKeys[carIndex] || 'toyota86');
+      demoQuery.set('demoShell', '1');
+      if (byTap) demoQuery.set('demoTap', '1');
+      if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
+      location.href = `${location.pathname}?${demoQuery}`;
+    };
+
     // タイトルを6秒操作しないと、4コースを巡るアトラクトデモを開始する。
     // デモからタイトルへ戻った直後も、再び6秒放置すれば同じループへ入る。
+    // スマホは「デモ画面」ボタンのタッチでだけデモへ入る（勝手に遷移しない）。
     const armDemoIdleTimer = () => {
       clearTimeout(demoIdleTimer);
-      if (starting || guideOpen) return;
-      demoIdleTimer = setTimeout(() => {
-        if (starting) return;
-        starting = true;
-        const demoQuery = new URLSearchParams();
-        demoQuery.set('car', carKeys[carIndex] || 'toyota86');
-        demoQuery.set('demoShell', '1');
-        if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
-        location.href = `${location.pathname}?${demoQuery}`;
-      }, 6000);
+      if (IS_MOBILE || starting || guideOpen) return;
+      demoIdleTimer = setTimeout(goToDemoShell, 6000);
     };
 
     const openGuide = () => {
@@ -839,9 +876,39 @@
       event.stopPropagation();
       openGuide();
     });
-    guideOverlay.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      closeGuide();
+    // 説明画像は指で拡大したいので、閉じるのはダブルタップ(ダブルクリック)。
+    // ワンタッチで閉じると、拡大しようとした時点でタイトルへ戻ってしまう。
+    const GUIDE_DOUBLE_TAP_MS = 400;
+    const GUIDE_DOUBLE_TAP_PX = 44;
+    let guidePointersDown = 0;
+    let guideLastTapAt = 0;
+    let guideLastTapX = 0;
+    let guideLastTapY = 0;
+    guideOverlay.addEventListener('pointerdown', () => { guidePointersDown++; });
+    guideOverlay.addEventListener('pointercancel', () => {
+      guidePointersDown = Math.max(0, guidePointersDown - 1);
+      guideLastTapAt = 0;
+    });
+    guideOverlay.addEventListener('pointerup', (event) => {
+      const wasPinch = guidePointersDown > 1;
+      guidePointersDown = Math.max(0, guidePointersDown - 1);
+      // 2本指(ピンチ)は拡大操作なので閉じない。
+      if (wasPinch) { guideLastTapAt = 0; return; }
+      const now = performance.now();
+      const moved = Math.hypot(event.clientX - guideLastTapX, event.clientY - guideLastTapY);
+      if (now - guideLastTapAt <= GUIDE_DOUBLE_TAP_MS && moved <= GUIDE_DOUBLE_TAP_PX) {
+        guideLastTapAt = 0;
+        closeGuide();
+        return;
+      }
+      guideLastTapAt = now;
+      guideLastTapX = event.clientX;
+      guideLastTapY = event.clientY;
+    });
+    demoButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (guideOpen) return;
+      goToDemoShell(true);
     });
 
     const playSelectionClick = () => {
@@ -950,14 +1017,24 @@
       setTimeout(() => { location.href = destination; }, 60);
     };
     carButtons.forEach((button, i) => {
-      button.addEventListener('click', () => { carIndex = i; paint(); });
-      button.addEventListener('dblclick', showCourses);
+      button.addEventListener('click', () => {
+        if (IS_MOBILE) return;
+        carIndex = i;
+        paint();
+      });
+      button.addEventListener('dblclick', () => { if (!IS_MOBILE) showCourses(); });
     });
     courseButtons.forEach((button, i) => {
-      button.addEventListener('click', () => { courseIndex = i; paint(); });
-      button.addEventListener('dblclick', start);
+      button.addEventListener('click', () => {
+        if (IS_MOBILE) return;
+        courseIndex = i;
+        paint();
+      });
+      button.addEventListener('dblclick', () => { if (!IS_MOBILE) start(); });
     });
     window.addEventListener('keydown', (event) => {
+      // スマホは説明・デモ画面のタッチ以外を受け付けない(外付けキーボード含む)。
+      if (IS_MOBILE) return;
       if (guideOpen) {
         event.preventDefault();
         closeGuide();
