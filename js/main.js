@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
-import { AUDIO } from './audio.js?v=20260718-5';
+import { AUDIO } from './audio.js?v=20260730-interior-seamless-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260729-forest-road-seam-113';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
@@ -150,14 +150,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // どのモードでもドリフト音(タイヤスクリーチ)は鳴らし続ける。
   let soundMode = 0;
   let interiorCurrent = 0;           // 再生中の車内音 (0=なし 1=低速 2=高速)
-  const interiorLow = new Audio('sound/' + encodeURIComponent('drive_on_freeway1.mp3'));
-  const interiorHigh = new Audio('sound/' + encodeURIComponent('drive_on_freeway2.mp3'));
+  // ループの継ぎ目を切らないため、車内音は Web Audio 側(AUDIO)で回す。
+  // Audio要素の loop だと MP3 先頭の無音(約23ms)が毎周入って途切れる。
+  const INTERIOR_LOW_URL = 'sound/' + encodeURIComponent('drive_on_freeway1.mp3');
+  const INTERIOR_HIGH_URL = 'sound/' + encodeURIComponent('drive_on_freeway2.mp3');
   const controlPanelOpenSound =
     new Audio('sound/' + encodeURIComponent('決定ボタンを押す33.mp3'));
   const controlPanelTabSound =
     new Audio('sound/' + encodeURIComponent('決定ボタンを押す44.mp3'));
-  interiorLow.loop = interiorHigh.loop = true;
-  interiorLow.volume = interiorHigh.volume = 0.85;
+  AUDIO.setInteriorVolume(0.85);
   controlPanelOpenSound.preload = 'auto';
   controlPanelOpenSound.volume = 0.7;
   controlPanelTabSound.preload = 'auto';
@@ -170,13 +171,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   function stopInterior() {
-    interiorLow.pause();
-    interiorHigh.pause();
+    AUDIO.stopInterior();
     interiorCurrent = 0;
   }
   function applySoundMode() {
     AUDIO.setEngineMuted(soundMode !== 0);   // エンジンのみ消す(ドリフト音は残す)
     if (soundMode !== 1) stopInterior();
+    // 80km/hの乗り換えで待たされないよう、低速・高速の両方を先にデコードしておく。
+    else AUDIO.preloadInterior([INTERIOR_LOW_URL, INTERIOR_HIGH_URL]);
     document.body.dataset.soundMode = String(soundMode);
   }
   // 車内音の低速/高速切替。80km/h 前後でばたつかないよう±2km/hの余裕を持つ。
@@ -188,10 +190,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     else if (interiorCurrent === 0) next = speedKmh >= 80 ? 2 : 1;
     if (next === interiorCurrent) return;
     interiorCurrent = next;
-    const play = next === 2 ? interiorHigh : interiorLow;
-    const stop = next === 2 ? interiorLow : interiorHigh;
-    stop.pause();
-    play.play().catch(() => {});
+    AUDIO.playInterior(next === 2 ? INTERIOR_HIGH_URL : INTERIOR_LOW_URL);
   }
   let topViewFrame = null;           // 現在のマップ外形（遅延計算）
   let crimMarker = null, selfMarker = null;   // 地図表示: 犯人=赤丸 / 自車=シアン丸
@@ -6087,7 +6086,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         player, aiCars, start: () => startGame(), inDemo: () => demoActive,
         soundState: () => ({
           mode: soundMode, interior: interiorCurrent,
-          lowPaused: interiorLow.paused, highPaused: interiorHigh.paused,
+          interiorUrl: AUDIO.interiorPlaying(),
         }),
       };
       window.__mapDebug = {
@@ -7191,7 +7190,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       volPanel.appendChild(makeSlider('環境音量', engineVolume, (v) => {
         engineVolume = v;
         AUDIO.setVolume(v);
-        interiorLow.volume = interiorHigh.volume = 0.85 * v;
+        AUDIO.setInteriorVolume(0.85 * v);
       }));
       volPanel.appendChild(makeSlider('音楽音量', musicVolume, (v) => {
         musicVolume = v;

@@ -154,6 +154,122 @@ function audioModule() {
     if (ctx.state === 'suspended') ctx.resume();
   }
 
+  // ---------------------------------------------------- 車内音(mp3ループ) ----
+  // HTMLAudioElement の loop=true は MP3 先頭のエンコーダ遅延(この素材は約23ms)を
+  // 毎周そのまま鳴らすため、継ぎ目でぶつっと途切れる。ここでは自前でデコードし、
+  // 末尾を先頭へ等パワークロスフェードで畳み込んだ「継ぎ目のないバッファ」を作って
+  // AudioBufferSourceNode.loop で回す。ループ位置はサンプル単位で連続する。
+  // クロスフェード長。0.25秒でも段差は消えるが、0.5秒だと継ぎ目前後の音量差も
+  // ほぼ0dBに収まった(freeway1: +3.13dB → -0.09dB)。長すぎると同じ音の重なりが増える。
+  const INTERIOR_XFADE_S = 0.5;       // ループ継ぎ目のクロスフェード長
+  const INTERIOR_SWITCH_S = 0.3;      // 低速/高速を乗り換える時間
+  const interiorBuffers = new Map();  // url -> 加工済み AudioBuffer
+  const interiorLoading = new Map();  // url -> Promise (二重ロード防止)
+  let interiorVolume = 0.85;
+  let interiorNode = null;            // 再生中の { src, gain, url }
+
+  // 末尾 x サンプルを先頭へ重ねて、末尾→先頭が波形として連続するバッファを作る。
+  // 出力末尾は src[outLen-1]、出力先頭は src[outLen] になるので元の並びが途切れない。
+  function makeSeamlessLoop(buf) {
+    const sr = buf.sampleRate;
+    const x = Math.min(Math.round(INTERIOR_XFADE_S * sr), Math.floor(buf.length / 4));
+    const outLen = buf.length - x;
+    if (outLen <= 0) return buf;
+    const out = ctx.createBuffer(buf.numberOfChannels, outLen, sr);
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const src = buf.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      dst.set(src.subarray(0, outLen));
+      for (let i = 0; i < x; i++) {
+        const t = (i + 0.5) / x;
+        dst[i] = src[i] * Math.sin(t * Math.PI / 2)
+               + src[outLen + i] * Math.cos(t * Math.PI / 2);
+      }
+    }
+    return out;
+  }
+
+  function loadInterior(url) {
+    const done = interiorBuffers.get(url);
+    if (done) return Promise.resolve(done);
+    let p = interiorLoading.get(url);
+    if (p) return p;
+    p = fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status} ${url}`);
+        return r.arrayBuffer();
+      })
+      .then((ab) => ctx.decodeAudioData(ab))
+      .then((buf) => {
+        const looped = makeSeamlessLoop(buf);
+        interiorBuffers.set(url, looped);
+        interiorLoading.delete(url);
+        return looped;
+      })
+      .catch((e) => { interiorLoading.delete(url); throw e; });
+    interiorLoading.set(url, p);
+    return p;
+  }
+
+  // 初回の切替で待たされないよう、あらかじめデコードしておく。
+  function preloadInterior(urls) {
+    unlock();
+    if (!ctx) return;
+    for (const url of urls) loadInterior(url).catch(() => {});
+  }
+
+  function fadeOutInterior(sec) {
+    const node = interiorNode;
+    interiorNode = null;
+    if (!node) return;
+    const t = ctx.currentTime;
+    const g = node.gain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.max(0.0001, g.value), t);
+    g.exponentialRampToValueAtTime(0.0001, t + sec);
+    node.src.stop(t + sec + 0.02);
+  }
+
+  // 車内音を url のループへ切り替える。既に別の音が鳴っていればクロスフェードする。
+  function playInterior(url) {
+    unlock();
+    if (!ctx) return;
+    if (interiorNode && interiorNode.url === url) return;
+    loadInterior(url).then((buf) => {
+      // 読み込み中に別の音へ切り替わった/停止した場合は捨てる。
+      if (!ctx || (interiorNode && interiorNode.url === url)) return;
+      fadeOutInterior(INTERIOR_SWITCH_S);
+      const t = ctx.currentTime;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, interiorVolume),
+                                             t + INTERIOR_SWITCH_S);
+      gain.connect(ctx.destination);   // 効果音のmasterとは独立(従来のAudio要素と同じ扱い)
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(gain);
+      src.start();
+      interiorNode = { src, gain, url };
+    }).catch((e) => console.warn('interior sound failed:', e));
+  }
+
+  function stopInterior() {
+    if (ctx) fadeOutInterior(0.12);
+  }
+
+  function setInteriorVolume(v) {
+    interiorVolume = Math.max(0, Math.min(1, v));
+    if (interiorNode) {
+      interiorNode.gain.gain.setTargetAtTime(
+        Math.max(0.0001, interiorVolume), ctx.currentTime, 0.05);
+    }
+  }
+
+  function interiorPlaying() {
+    return interiorNode ? interiorNode.url : '';
+  }
+
   function toggle() {
     muted = !muted;
     if (ctx) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.03);
@@ -229,6 +345,7 @@ function audioModule() {
 
   return {
     unlock, toggle, setEngineMuted, setVolume, update,
+    playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
     _debug() {
       return ctx ? {
@@ -236,6 +353,7 @@ function audioModule() {
         freq: osc1.frequency.value,
         engVol: engGain.gain.value,
         screech: screechGain.gain.value,
+        interior: interiorPlaying(),
       } : null;
     },
   };
