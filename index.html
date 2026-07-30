@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>CAR initial T</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8ecbef; }
+  canvas { display: block; }
+  #hud, #loading, #map-select { font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif; user-select: none; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    background: #16202a; color: #cfe6f5; font-size: 18px; letter-spacing: 2px;
+  }
+  #loading .err { text-align: center; line-height: 2; }
+  #loading code { color: #ffd479; }
+
+  /* タイトル / マップ選択 */
+  #map-select {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center; color: #20252a; overflow: hidden;
+    background:
+      radial-gradient(circle at 74% 18%, rgba(255,255,255,0.88), transparent 28%),
+      linear-gradient(135deg, #fff9df 0%, #eee2b9 58%, #d8c991 100%);
+  }
+  #map-select::before {
+    content: ""; position: absolute; left: -8%; right: -8%; top: 43%; height: 70px;
+    transform: rotate(-4deg) skewX(-18deg);
+    background: repeating-linear-gradient(
+      to bottom,
+      #d92120 0 7px, transparent 7px 12px,
+      #f14b22 12px 18px, transparent 18px 24px
+    );
+    filter: drop-shadow(0 3px 0 rgba(108,20,15,0.22));
+  }
+  #map-select::after {
+    content: ""; position: absolute; width: 58%; height: 8px; top: 28%; left: -8%;
+    transform: rotate(-5deg); background: #168bb8; box-shadow: 0 12px 0 #65bdd3;
+    opacity: 0.9;
+  }
+  body.title #map-select { display: flex; }
+  body.title #loading, body.title #demo, body.title #help,
+  body.title #meter, body.title #signal { display: none !important; }
+  .title-card { position: relative; z-index: 1; width: min(800px, calc(100vw - 36px)); text-align: center; }
+  .title-logo {
+    position: relative; display: inline-flex; align-items: flex-end;
+    padding: 24px 34px 4px 12px; transform: skewX(-9deg);
+  }
+  .logo-kicker {
+    position: absolute; top: 0; left: 23px; color: #168ab7;
+    font: 900 clamp(12px, 2vw, 18px)/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.18em; text-shadow: 1px 1px 0 #fff;
+  }
+  .logo-name {
+    font: 900 clamp(50px, 10vw, 98px)/0.82 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: -0.08em; font-style: italic;
+    color: #f26719; -webkit-text-stroke: 2px #9d2115;
+    text-shadow: 3px 3px 0 #fff7d7, 6px 6px 0 #b62918, 9px 9px 0 rgba(84,25,14,0.26);
+  }
+  .logo-t {
+    display: inline-block; margin-left: 0.02em; font-size: 1.45em; line-height: 0.7;
+    color: #ef451b; -webkit-text-stroke: 3px #9a1d12;
+  }
+  .title-sub { margin: 14px 0 12px; color: #176f96; letter-spacing: 0.34em; font-size: 13px; font-weight: 800; }
+  .course-label { margin-top: 24px; }
+  .car-choices { display: flex; justify-content: center; gap: 14px; }
+  .car-choice {
+    min-width: 190px; padding: 13px 22px; border: 2px solid rgba(117,77,39,0.32);
+    border-radius: 9px; color: #293139; background: rgba(255,251,230,0.9);
+    font: 800 18px/1.2 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    cursor: pointer; transition: 140ms ease;
+  }
+  .car-choice:hover { transform: translateY(-2px); border-color: #168bb8; }
+  .car-choice.active {
+    color: #fff; border-color: #c6321b; background: linear-gradient(135deg, #ef6b20, #d5351b);
+    box-shadow: 0 8px 18px rgba(123,37,18,0.28), 0 0 0 3px rgba(22,139,184,0.16);
+  }
+  .map-choices { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .map-choice {
+    min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #222a30; text-decoration: none; border: 2px solid rgba(117,77,39,0.28);
+    border-radius: 10px; background: rgba(255,251,230,0.94);
+    box-shadow: 0 12px 25px rgba(91,57,25,0.24); transition: 150ms ease;
+  }
+  .map-choice:first-child { border-top: 7px solid #e9421d; }
+  .map-choice:last-child { border-top: 7px solid #e9421d; }
+  .map-choice:hover, .map-choice:focus-visible {
+    transform: translateY(-4px) skewX(-2deg); border-color: #df3d1e; background: #fffdf0;
+    box-shadow: 0 16px 32px rgba(91,57,25,0.32), 0 0 0 3px rgba(22,139,184,0.18);
+  }
+  .map-choice strong { font-size: 30px; letter-spacing: 0.14em; }
+  .map-choice span { margin-top: 12px; color: #56636b; font-size: 13px; line-height: 1.6; }
+  @media (max-width: 600px) {
+    .title-logo { padding: 22px 12px 3px 4px; }
+    .logo-kicker { left: 10px; }
+    .logo-name { font-size: clamp(40px, 13vw, 58px); -webkit-text-stroke-width: 1.5px; }
+    .logo-t { -webkit-text-stroke-width: 2px; }
+    .car-choices { flex-direction: column; gap: 8px; }
+    .car-choice { width: 100%; min-width: 0; padding: 10px 16px; }
+    .map-choices { grid-template-columns: 1fr; }
+    .map-choice { min-height: 120px; }
+  }
+
+  /* タイトル画面「イニシャルT」(黒バック・オレンジ基調。ロゴは踏襲) */
+  #title-t {
+    position: fixed; inset: 0; z-index: 30; cursor: pointer; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4.2vh;
+    background: radial-gradient(circle at 68% 16%, #26160a 0%, transparent 42%),
+                linear-gradient(180deg, #0d0c0e 0%, #131114 55%, #0a090b 100%);
+    font-family: "Arial Black", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    user-select: none;
+  }
+  /* オレンジのスピードライン(斜めの帯) */
+  #title-t .tt-stripe {
+    position: absolute; left: -10%; right: -10%; height: 64px; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      #ff7a1a 0 7px, transparent 7px 13px,
+      #e8420f 13px 19px, transparent 19px 26px
+    );
+    filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5));
+    opacity: 0.9;
+  }
+  /* 車両選択ボタンに被らないよう、下側の帯は画面最下部寄りに置く */
+  #title-t .tt-stripe1 { top: 26%; transform: rotate(-5deg) skewX(-18deg); }
+  #title-t .tt-stripe2 { bottom: 4%; transform: rotate(4deg) skewX(-18deg); opacity: 0.65; }
+  #title-t .tt-logo { display: inline-block; white-space: nowrap; position: relative; }
+  /* 普通の配置: オレンジ+白縁の文字を水平にそのまま並べる */
+  #title-t .tt-k, #title-t .tt-t {
+    display: inline-block;
+    font-weight: 900;
+    font-size: clamp(46px, 11vw, 120px);
+    color: #ef4a1f;
+    -webkit-text-stroke: 5px #fff;
+    paint-order: stroke fill;
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
+  }
+  #title-t .tt-t {
+    font-size: clamp(78px, 19vw, 210px);
+    margin-left: 0.06em;
+    color: #ee3d17;
+    -webkit-text-stroke: 7px #fff;
+  }
+  #title-t .tt-label {
+    font-weight: 900;
+    font-size: clamp(13px, 1.8vw, 18px); letter-spacing: 0.4em;
+    color: #ff8c1a; margin-top: 1vh;
+  }
+  #title-t .tt-cars { display: flex; gap: 16px; }
+  #title-t .tt-car {
+    min-width: 180px; padding: 12px 26px; text-align: center; text-decoration: none;
+    border: 2px solid rgba(255, 140, 26, 0.55); border-radius: 9px;
+    color: #ffcf99; background: rgba(28, 22, 16, 0.85);
+    font-weight: 800; font-size: 18px; transition: 140ms ease;
+  }
+  #title-t .tt-car:hover { transform: translateY(-2px); border-color: #ff8c1a; }
+  #title-t .tt-car.active {
+    color: #fff; border-color: #ff9d3f;
+    background: linear-gradient(135deg, #ff7a1a, #d5350f);
+    box-shadow: 0 8px 18px rgba(232, 66, 15, 0.35), 0 0 0 3px rgba(255, 140, 26, 0.2);
+  }
+  #title-t .tt-courses { display: flex; gap: 16px; }
+  #title-t .tt-course {
+    min-width: 180px; padding: 12px 26px; text-align: center; text-decoration: none;
+    border: 2px solid rgba(255, 140, 26, 0.55); border-radius: 9px;
+    color: #ffcf99; background: rgba(28, 22, 16, 0.85);
+    font-weight: 800; font-size: 18px; transition: 140ms ease;
+  }
+  #title-t .tt-course:hover { transform: translateY(-2px); border-color: #ff8c1a; }
+  #title-t .tt-course.active {
+    color: #fff; border-color: #ff9d3f;
+    background: linear-gradient(135deg, #ff7a1a, #d5350f);
+    box-shadow: 0 8px 18px rgba(232, 66, 15, 0.35), 0 0 0 3px rgba(255, 140, 26, 0.2);
+  }
+  #title-t .tt-press {
+    font-weight: 800; font-size: clamp(15px, 2.4vw, 22px);
+    letter-spacing: 6px; color: #ff8c1a; margin-top: 1.5vh;
+    text-shadow: 0 0 12px rgba(255, 122, 26, 0.45);
+    animation: ttBlink 1.05s steps(1, end) infinite;
+  }
+  @keyframes ttBlink { 50% { opacity: 0; } }
+  #title-t .tt-copy {
+    position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
+    font-weight: 700; font-size: 13px; letter-spacing: 2px; color: #a06a34;
+  }
+  /* スマホ専用の表示(PC専用ゲームの案内)。PC では隠す */
+  #title-t .tt-pconly {
+    display: none;
+    font-weight: 900; font-size: clamp(14px, 3.6vw, 20px); letter-spacing: 4px;
+    color: #ff3b3b; text-shadow: 0 0 12px rgba(255, 60, 60, 0.5);
+    border: 2px solid rgba(255, 59, 59, 0.6); border-radius: 6px; padding: 6px 18px;
+    margin-top: 0.5vh; background: rgba(40, 10, 10, 0.4);
+  }
+  body.is-mobile #title-t .tt-pconly { display: inline-block; }
+  body.is-mobile #title-t .tt-press { display: none; }
+  /* タイトル右下の説明ボックス。車・コース選択の両画面で共通表示する。 */
+  #title-guide-btn {
+    position: fixed; right: 20px; bottom: 20px; z-index: 32;
+    min-width: 112px; padding: 12px 18px;
+    border: 2px solid #ff8c1a; border-radius: 5px;
+    color: #ffbd73; background: rgba(12, 10, 9, 0.94);
+    box-shadow: inset 0 0 0 2px #3b210f, 0 5px 18px rgba(0, 0, 0, 0.5);
+    font: 800 17px/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.16em; cursor: pointer;
+  }
+  #title-guide-btn:hover, #title-guide-btn:focus-visible {
+    color: #fff; background: #d94312; outline: none;
+    box-shadow: inset 0 0 0 2px #ffae58, 0 0 18px rgba(255, 122, 26, 0.45);
+  }
+  #title-guide-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2vh 2vw; box-sizing: border-box; cursor: pointer;
+    background: #050505;
+  }
+  #title-guide-overlay[hidden] { display: none; }
+  #title-guide-overlay img {
+    display: block; max-width: 96vw; max-height: 96vh;
+    width: auto; height: auto; object-fit: contain;
+    box-shadow: 0 0 0 2px #ff7a1a, 0 12px 48px rgba(0, 0, 0, 0.9);
+  }
+  @media (max-width: 600px) {
+    #title-guide-btn {
+      right: 10px; bottom: 10px; min-width: 88px;
+      padding: 10px 12px; font-size: 14px;
+    }
+    #title-guide-overlay { padding: 0; }
+    #title-guide-overlay img { max-width: 100vw; max-height: 100vh; box-shadow: none; }
+  }
+  /* 狭い画面(スマホ縦持ちなど)ではロゴ・車選択を縦に詰めてコンパクトにする */
+  @media (max-width: 480px) {
+    #title-t { gap: 2.2vh; padding: 0 14px; box-sizing: border-box; }
+    #title-t .tt-cars, #title-t .tt-courses { flex-direction: column; gap: 10px; width: 100%; max-width: 260px; }
+    #title-t .tt-car, #title-t .tt-course { min-width: 0; width: 100%; box-sizing: border-box; }
+    #title-t .tt-stripe { height: 32px; }
+  }
+
+  .panel {
+    position: fixed; z-index: 5; color: #fff;
+    background: rgba(12, 22, 32, 0.55); border-radius: 10px;
+    padding: 10px 14px; backdrop-filter: blur(3px);
+  }
+
+  #meter { right: 16px; bottom: 16px; text-align: right; min-width: 190px; }
+  #speed { font-size: 52px; font-weight: 700; font-family: "Courier New", monospace; line-height: 1; }
+  #speed-unit { font-size: 13px; opacity: 0.75; margin-left: 4px; }
+
+  #rpm-bar { margin-top: 8px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.18); overflow: hidden; }
+  #rpm-fill { height: 100%; width: 0; background: #6fd66f; border-radius: 4px; transition: width 60ms linear; }
+  #rpm-fill.red { background: #ff5a48; }
+
+  #gears { margin-top: 10px; display: flex; gap: 6px; justify-content: flex-end; }
+  #gears span {
+    display: inline-block; width: 24px; padding: 3px 0; text-align: center;
+    border-radius: 5px; font-size: 13px; font-weight: 700;
+    background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.55);
+  }
+  #gears span.on { background: #ffd043; color: #22303c; }
+
+  #drift {
+    margin-top: 8px; text-align: right; font-size: 14px; font-weight: 700;
+    letter-spacing: 3px; color: #ff8a3c; opacity: 0; transition: opacity 120ms;
+  }
+  #drift.on { opacity: 1; text-shadow: 0 0 8px rgba(255,120,40,0.8); }
+
+  /* 接近中の交差点の信号(自分の進行方向) */
+  #signal {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 5; display: none; gap: 12px; align-items: center;
+    background: rgba(16, 22, 28, 0.82); border: 2px solid #3a4046;
+    border-radius: 999px; padding: 9px 16px;
+  }
+  #signal .slamp {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #23282c; transition: background 120ms, box-shadow 120ms;
+  }
+  #sig-g.on { background: #00c878; box-shadow: 0 0 14px #00c878; }
+  #sig-y.on { background: #ffc400; box-shadow: 0 0 14px #ffc400; }
+  #sig-r.on { background: #ff4438; box-shadow: 0 0 14px #ff4438; }
+
+  #help { left: 16px; bottom: 16px; font-size: 12.5px; line-height: 1.9; opacity: 0.92; }
+  #help b {
+    display: inline-block; min-width: 52px; text-align: center;
+    background: rgba(255,255,255,0.15); border-radius: 4px;
+    padding: 1px 6px; margin-right: 8px; font-family: monospace;
+  }
+
+  /* デモ画面 */
+  #demo { position: fixed; inset: 0; z-index: 6; display: none; pointer-events: none; }
+  body.demo #demo { display: block; }
+  #demo .word {
+    position: absolute; top: 50%; transform: translateY(-50%); left: 0; right: 0; text-align: center;
+    font-weight: 800; font-size: 64px; letter-spacing: 10px; color: #fff;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.65);
+    animation: demoBlink 1.05s steps(1, end) infinite;
+  }
+  #demo .hint {
+    position: absolute; top: 48%; left: 0; right: 0; text-align: center;
+    font-size: 15px; letter-spacing: 3px; color: rgba(255,255,255,0.85);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+  }
+  @keyframes demoBlink { 0%,49.9%{opacity:1} 50%,100%{opacity:0} }
+
+  /* デモ中は操作パネル類を隠す */
+  body.demo #help, body.demo #meter, body.demo #signal { display: none !important; }
+
+  /* 緊急指令ポップアップ(黒背景・白文字)と追跡中バナー */
+  #mission-popup {
+    position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%) scale(0.96);
+    z-index: 8; max-width: min(680px, 90vw); padding: 20px 28px; border-radius: 12px;
+    background: rgba(0, 0, 0, 0.9); color: #fff; text-align: center;
+    font-size: 20px; line-height: 1.7; letter-spacing: 1px;
+    border: 2px solid rgba(255, 255, 255, 0.22); box-shadow: 0 12px 44px rgba(0, 0, 0, 0.6);
+    opacity: 0; visibility: hidden; transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  #mission-popup.show { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+  #mission-popup .head {
+    display: block; font-size: 13px; letter-spacing: 5px; font-weight: 700;
+    margin-bottom: 10px; color: #ff5a48;
+  }
+  #mission-popup.caught { background: rgba(9, 34, 15, 0.92); border-color: rgba(120, 230, 140, 0.5); }
+  #mission-popup.caught .head { color: #6fe08c; }
+
+  #mission-obj {
+    position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 5;
+    display: none; padding: 7px 16px; border-radius: 999px;
+    background: rgba(12, 22, 32, 0.72); color: #fff; font-size: 13px; letter-spacing: 1px;
+    border: 1px solid rgba(255, 90, 72, 0.6); backdrop-filter: blur(3px);
+  }
+  #mission-obj.show { display: block; }
+  body.demo #mission-popup, body.demo #mission-obj,
+  body.title #mission-popup, body.title #mission-obj { display: none !important; }
+
+  /* 車両決定後にだけコース選択へ進む、2段階のタイトル UI */
+  #game-select {
+    position: fixed; inset: 0; z-index: 30; overflow: auto;
+    display: none; place-items: center; padding: 32px 18px; box-sizing: border-box;
+    background: radial-gradient(circle at 68% 16%, #26160a 0%, transparent 42%),
+                linear-gradient(180deg, #0d0c0e 0%, #131114 55%, #0a090b 100%);
+    color: #fff; font-family: "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+  }
+  /* 参考画像のような5本のオレンジ色スピードライン。 */
+  #game-select::before, #game-select::after {
+    content: ""; position: absolute; left: -9%; width: 118%; height: 62px;
+    z-index: 0; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      #ff7014 0 5px,
+      transparent 5px 11px
+    );
+    filter: drop-shadow(0 2px 0 rgba(120, 36, 5, 0.55));
+  }
+  #game-select::before {
+    top: 22%; transform: rotate(-5deg) skewX(-10deg);
+    opacity: 0.95;
+  }
+  #game-select::after {
+    bottom: 4%; transform: rotate(4deg) skewX(-10deg);
+    opacity: 0.72;
+  }
+  body.title #game-select { display: grid; }
+  #game-select[hidden] { display: none; }
+  .select-screen {
+    position: relative; z-index: 1;
+    width: min(1040px, 100%); text-align: center;
+  }
+  .select-screen[hidden] { display: none; }
+  .select-logo { margin: 0 0 8px; color: #ef4a1f; font-size: clamp(46px, 9vw, 96px);
+    -webkit-text-stroke: 3px #fff; paint-order: stroke fill; }
+  .select-kicker { margin: 0 0 28px; color: #ff8c1a; letter-spacing: .38em; }
+  .select-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .select-grid.cars { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
+  .select-card {
+    min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
+    gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
+    color: #ffd0a2; background: rgba(28,22,16,.9); cursor: pointer;
+    font: inherit; transition: transform 140ms, border-color 140ms, box-shadow 140ms;
+  }
+  .select-card:hover { transform: translateY(-3px); border-color: #ff8c1a; }
+  .select-card.active { border-color: #fff; box-shadow: 0 0 0 4px #ef4a1f, 0 14px 28px #0008; }
+  .select-preview { width: 100%; height: 142px; object-fit: cover; border-radius: 7px; }
+  .select-fallback { display: grid; place-items: center; width: 100%; height: 142px;
+    border-radius: 7px; background: linear-gradient(135deg, #4a2613, #151112); color: #ff9d3f; }
+  #title-pc-only {
+    position: fixed; left: 50%; bottom: 16px; z-index: 2;
+    transform: translateX(-50%);
+    color: #ff8c1a;
+    font: 900 clamp(15px, 2vw, 21px)/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.32em; white-space: nowrap;
+    text-shadow: 0 0 12px rgba(255, 112, 20, 0.55), 2px 2px 0 #4b1707;
+  }
+  @media (max-width: 760px) {
+    .select-grid, .select-grid.cars { grid-template-columns: 1fr 1fr; }
+    .select-card { min-height: 150px; }
+    .select-preview, .select-fallback { height: 105px; }
+    #game-select::before { top: 18%; }
+    #game-select::after { bottom: 3%; }
+    #title-pc-only { bottom: 12px; font-size: 13px; letter-spacing: 0.22em; }
+  }
+
+  /* 80年代液晶風コントロールパネル */
+  .control-panel-range {
+    width: 100%; height: 30px; margin: 0; cursor: pointer;
+    appearance: none; -webkit-appearance: none; background: transparent;
+  }
+  .control-panel-range::-webkit-slider-runnable-track {
+    height: 15px; border: 2px solid #050505; background: #050505;
+  }
+  .control-panel-range::-webkit-slider-thumb {
+    width: 16px; height: 34px; margin-top: -11px;
+    appearance: none; -webkit-appearance: none; border: 4px solid #050505;
+    border-radius: 0; background: #c7c7c7; box-shadow: none;
+  }
+  .control-panel-range::-moz-range-track {
+    height: 15px; border: 2px solid #050505; background: #050505;
+  }
+  .control-panel-range::-moz-range-thumb {
+    width: 16px; height: 34px; border: 4px solid #050505;
+    border-radius: 0; background: #c7c7c7;
+  }
+  @media (max-width: 620px) {
+    .control-panel-window { width: 94vw !important; padding: 7px !important; }
+    .control-panel-tabs { font-size: 15px !important; }
+    .control-panel-lcd-text { font-size: 14px !important; }
+  }
+</style>
+</head>
+<body>
+<div id="game-select">
+  <section id="car-screen" class="select-screen" aria-label="車両選択">
+    <h1 class="select-logo">イニシャルT</h1>
+    <p class="select-kicker">SELECT CAR</p>
+    <div id="car-grid" class="select-grid cars"></div>
+  </section>
+  <section id="course-screen" class="select-screen" aria-label="コース選択" hidden>
+    <h1 class="select-logo">イニシャルT</h1>
+    <p class="select-kicker">SELECT COURSE</p>
+    <div id="course-grid" class="select-grid"></div>
+  </section>
+  <div id="title-pc-only">PC PLAY ONLY</div>
+  <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
+</div>
+<div id="title-guide-overlay" role="dialog" aria-label="ゲーム説明" hidden>
+  <img src="画像/説明.png" alt="イニシャルT ゲーム説明">
+</div>
+
+<div id="loading">LOADING&hellip;</div>
+
+<div id="demo">
+  <div class="word">Demo</div>
+  <div class="hint">何かキーを押すとスタート</div>
+</div>
+
+<div id="mission-obj"></div>
+<div id="mission-popup"></div>
+
+<div id="signal">
+  <div class="slamp" id="sig-g"></div>
+  <div class="slamp" id="sig-y"></div>
+  <div class="slamp" id="sig-r"></div>
+</div>
+
+<div id="meter" class="panel">
+  <span id="speed">0</span><span id="speed-unit">km/h</span>
+  <div id="rpm-bar"><div id="rpm-fill"></div></div>
+  <div id="gears">
+    <span>R</span><span>N</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+  </div>
+  <div id="drift">DRIFT!</div>
+</div>
+
+<div id="mirror-frame" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 34vw; height: calc(34vw * 0.26 + 4px); border: 2px solid rgba(255,255,255,0.55);
+  border-radius: 6px; display: none; pointer-events: none; z-index: 4;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);"></div>
+<div id="help" class="panel">
+  <div><b>A</b>ブレーキ</div>
+  <div><b>S</b>アクセル</div>
+  <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
+  <div><b>← / →</b>ハンドル</div>
+  <div><b>SPACE</b>サイドブレーキ(ドリフト)</div>
+  <div><b>ドラッグ</b>カメラ視点&nbsp;&nbsp;<b>ホイール</b>ズーム</div>
+  <div><b>M</b>音楽選択</div>
+  <div><b>N</b>夜間 ON/OFF</div>
+  <div><b>P</b>車両・街灯 ON/OFF</div>
+  <div><b>V</b>カメラ切替(後方/ボンネット/視点のみ)</div>
+  <div><b>F</b>バックミラー</div>
+  <div><b>Y</b>自動運転</div>
+  <div><b>G</b>表示の切替</div>
+  <div><b>J/K/L</b>曲を戻す/停止/送る</div>
+  <div><b>I/O</b>前の曲/次の曲</div>
+  <div><b>ESC</b>一時停止</div>
+  <div><b>B</b>音声切替(エンジン/車内/無音)</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js" } }
+</script>
+<script type="module">
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260729-forest-road-seam-113';
+
+  const query = new URLSearchParams(location.search);
+  const requestedCar = query.get('car');
+  const requestedCourse = query.get('course');
+  const isDemoShell = query.get('demoShell') === '1';
+  const hasGameSelection = Object.hasOwn(CAR_CONFIGS, requestedCar)
+    && COURSE_ORDER.includes(requestedCourse);
+
+  if (isDemoShell) {
+    // マップを15秒ごとに読み替えてもBGMを切らさない、デモ専用の外枠。
+    // 実際のゲームは全画面iframe内で動き、操作や描画は通常プレイと同じ。
+    document.body.className = 'demo-shell';
+    document.body.replaceChildren();
+    const demoFrame = document.createElement('iframe');
+    demoFrame.title = 'イニシャルT デモ';
+    demoFrame.allow = 'autoplay; fullscreen';
+    demoFrame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#16202a;';
+    const demoQuery = new URLSearchParams();
+    demoQuery.set('car', Object.hasOwn(CAR_CONFIGS, requestedCar) ? requestedCar : 'toyota86');
+    demoQuery.set('course', 'tokyo');
+    demoQuery.set('demo', '1');
+    demoQuery.set('demoStage', '0');
+    demoQuery.set('demoEmbedded', '1');
+    if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
+    demoFrame.src = `${location.pathname}?${demoQuery}`;
+    document.body.append(demoFrame);
+    demoFrame.addEventListener('load', () => demoFrame.contentWindow?.focus());
+
+    // デモのBGMは4曲を順に流し、曲がデモの見せ方そのものを決める。
+    // 1曲終わるごとに次の曲へ進み、曲ごとの演出指示をゲーム側(iframe)へ送る。
+    //   mode 'normal'     : 4コースを巡る通常デモ
+    //   mode 'sea-sunset' : 海岸線だけを走り、指定の空とカメラ切替にする
+    //   mode 'night'      : コースは通常どおりで、空は常に夜(Nモード)
+    const DEMO_TRACKS = [
+      // AO3uZdHDpNQは所有者が外部埋め込みを禁止しているため、
+      // 同じ曲「Lovers Of The World」の埋め込み可能版を使用する。
+      { id: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World', mode: 'normal' },
+      { id: '5igDtWadYms', label: 'Eagles,Take it Easy', mode: 'normal' },
+      { id: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women', mode: 'sea-sunset' },
+      { id: '4k6YWc59Se4', label: '井上陽水,今夜、私に', mode: 'night' },
+    ];
+    const DEMO_TRACK_LABEL_DELAY_MS = 3000;
+    let demoPlayer = null;
+    let demoTrackIndex = 0;
+    let demoTrackAnnounced = -1;
+    // 曲送りは「次の曲が再生され始めるまで」受け付けない。YouTubeは曲の終わりや
+    // loadVideoById の前後で ENDED を続けて出すことがあり、素直に次へ送ると
+    // 1曲目の直後に3曲先まで飛んでしまう。
+    let demoTrackAdvancing = false;
+    let demoTrackErrorStreak = 0;
+    const demoTrackLog = [];
+
+    const demoFrameTarget = () => (location.origin === 'null' ? '*' : location.origin);
+    const sendToDemoFrame = (message) => {
+      demoFrame.contentWindow?.postMessage(message, demoFrameTarget());
+    };
+    // 現在の曲をゲーム側へ知らせる。coldはページ再読込み直後で、
+    // 既に流れている曲を引き継ぐ場合（曲名は待たずに出す）。
+    const announceTrack = (cold) => {
+      const track = DEMO_TRACKS[demoTrackIndex];
+      document.body.dataset.demoTrackIndex = String(demoTrackIndex);
+      document.body.dataset.demoTrackId = track.id;
+      document.body.dataset.demoTrackMode = track.mode;
+      sendToDemoFrame({
+        type: 'vox-demo-track',
+        index: demoTrackIndex,
+        label: track.label,
+        mode: track.mode,
+        labelDelayMs: cold ? 0 : DEMO_TRACK_LABEL_DELAY_MS,
+      });
+    };
+    const playTrack = (index) => {
+      demoTrackIndex = ((index % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
+      const track = DEMO_TRACKS[demoTrackIndex];
+      demoTrackAnnounced = -1;
+      demoTrackAdvancing = true;   // 次の曲がPLAYINGになるまで曲送りを止める
+      demoTrackLog.push(`load${demoTrackIndex}:${track.id}`);
+      document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
+      if (demoPlayer?.loadVideoById) demoPlayer.loadVideoById(track.id);
+    };
+    const loadYouTubeApi = (onReady) => {
+      if (window.YT?.Player) { onReady(); return; }
+      const previous = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof previous === 'function') previous();
+        onReady();
+      };
+      if (document.getElementById('yt-iframe-api')) return;
+      const script = document.createElement('script');
+      script.id = 'yt-iframe-api';
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.head.append(script);
+    };
+    const startDemoBgm = () => {
+      if (demoPlayer) return;
+      demoPlayer = 'loading';
+      loadYouTubeApi(() => {
+        const holder = document.createElement('div');
+        holder.id = 'demo-bgm-holder';
+        // YouTubeは1px化・opacity:0の埋め込みを再生拒否する場合がある。
+        // 通常のプレイヤー寸法を保ったまま画面外へ置く。
+        holder.style.cssText =
+          'position:fixed;width:400px;height:300px;left:-400px;top:-400px;pointer-events:none;';
+        document.body.append(holder);
+        demoPlayer = new window.YT.Player(holder, {
+          width: 400,
+          height: 300,
+          videoId: DEMO_TRACKS[0].id,
+          playerVars: {
+            autoplay: 1, controls: 0, playsinline: 1,
+            origin: location.origin,
+          },
+          events: {
+            onReady: (event) => {
+              event.target.setVolume(80);
+              event.target.playVideo();
+              demoTrackAdvancing = false;   // 1曲目は最初からENDEDを受け付ける
+            },
+            onStateChange: (event) => {
+              const state = event.data;
+              demoTrackLog.push(`s${state}@${demoTrackIndex}`);
+              document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
+              if (state === window.YT.PlayerState.ENDED) {
+                // 曲の終わりだけを1回拾う。連続するENDEDは無視する。
+                if (demoTrackAdvancing) return;
+                playTrack(demoTrackIndex + 1);
+                return;
+              }
+              if (state !== window.YT.PlayerState.PLAYING) return;
+              demoTrackAdvancing = false;   // ここから次の曲送りを受け付ける
+              demoTrackErrorStreak = 0;     // 鳴った時点で連続エラーは解消
+              if (demoTrackAnnounced === demoTrackIndex) return;
+              demoTrackAnnounced = demoTrackIndex;
+              announceTrack(false);
+            },
+            onError: (event) => {
+              // 101/150は所有者が外部埋め込みを禁止、100は動画なし。
+              // どの曲で何が起きたか残しておく（曲順が飛ぶ原因の切り分け用）。
+              const track = DEMO_TRACKS[demoTrackIndex];
+              demoTrackLog.push(`err${event.data}@${demoTrackIndex}:${track.id}`);
+              document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
+              document.body.dataset.demoTrackError = `${track.id}:${event.data}`;
+              demoTrackErrorStreak++;
+              demoTrackAdvancing = false;
+              // 再生できない曲は飛ばさず、1曲目からやり直す（ユーザー指定）。
+              // ただし1曲目自体が鳴らない時に往復し続けないよう、そこで止める。
+              if (demoTrackIndex === 0 || demoTrackErrorStreak >= DEMO_TRACKS.length) {
+                document.body.dataset.demoTrackStalled = 'true';
+                return;
+              }
+              playTrack(0);
+            },
+          },
+        });
+        document.body.dataset.demoBgmVolume = '80';
+      });
+    };
+    // ゲーム側がデモ走行開始から7秒を数えた後、再生要求を送ってくる。
+    document.body.dataset.demoBgmDelayMs = '7000';
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== demoFrame.contentWindow) return;
+      if (event.data?.type === 'vox-demo-bgm-start') startDemoBgm();
+      if (event.data?.type === 'vox-demo-exit') location.href = location.pathname;
+      // コース切替でiframeが読み込み直されたら、流れている曲を伝え直す。
+      if (event.data?.type === 'vox-demo-ready' && demoTrackAnnounced >= 0) {
+        announceTrack(true);
+      }
+    });
+    // iframeにフォーカスが移る前に押されたPCキーも「タイトルへ戻る」に含める。
+    if (!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+      window.addEventListener('keydown', () => { location.href = location.pathname; });
+    }
+  } else if (hasGameSelection) {
+    document.getElementById('game-select').remove();
+    document.body.classList.add('game-running');
+    import('./js/main.js?v=20260730-demo-tracks-157');
+  } else {
+    document.body.classList.add('title');
+    const carKeys = Object.keys(CAR_CONFIGS);
+    let carIndex = Math.max(0, carKeys.indexOf(requestedCar));
+    let courseIndex = Math.max(0, COURSE_ORDER.indexOf(requestedCourse));
+    let stage = 'car';
+    let starting = false;
+    const carScreen = document.getElementById('car-screen');
+    const courseScreen = document.getElementById('course-screen');
+    const guideButton = document.getElementById('title-guide-btn');
+    const guideOverlay = document.getElementById('title-guide-overlay');
+    let selectionAudioContext = null;
+    let selectionClickNoise = null;
+    let demoIdleTimer = 0;
+    let guideOpen = false;
+
+    // タイトルを6秒操作しないと、4コースを巡るアトラクトデモを開始する。
+    // デモからタイトルへ戻った直後も、再び6秒放置すれば同じループへ入る。
+    const armDemoIdleTimer = () => {
+      clearTimeout(demoIdleTimer);
+      if (starting || guideOpen) return;
+      demoIdleTimer = setTimeout(() => {
+        if (starting) return;
+        starting = true;
+        const demoQuery = new URLSearchParams();
+        demoQuery.set('car', carKeys[carIndex] || 'toyota86');
+        demoQuery.set('demoShell', '1');
+        if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
+        location.href = `${location.pathname}?${demoQuery}`;
+      }, 6000);
+    };
+
+    const openGuide = () => {
+      if (starting || guideOpen) return;
+      guideOpen = true;
+      clearTimeout(demoIdleTimer);
+      guideOverlay.hidden = false;
+      guideOverlay.focus({ preventScroll: true });
+      document.body.dataset.titleGuideOpen = 'true';
+    };
+    const closeGuide = () => {
+      if (!guideOpen) return;
+      guideOpen = false;
+      guideOverlay.hidden = true;
+      document.body.dataset.titleGuideOpen = 'false';
+      armDemoIdleTimer();
+    };
+    guideOverlay.tabIndex = -1;
+    guideButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openGuide();
+    });
+    guideOverlay.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      closeGuide();
+    });
+
+    const playSelectionClick = () => {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      if (!selectionAudioContext) {
+        selectionAudioContext = new AudioContextClass();
+        const sampleCount = Math.ceil(selectionAudioContext.sampleRate * 0.028);
+        selectionClickNoise =
+          selectionAudioContext.createBuffer(1, sampleCount, selectionAudioContext.sampleRate);
+        const samples = selectionClickNoise.getChannelData(0);
+        for (let index = 0; index < samples.length; index++) {
+          samples[index] = Math.random() * 2 - 1;
+        }
+      }
+      selectionAudioContext.resume().catch(() => {});
+      const now = selectionAudioContext.currentTime + 0.001;
+      const noise = selectionAudioContext.createBufferSource();
+      const noiseFilter = selectionAudioContext.createBiquadFilter();
+      const noiseGain = selectionAudioContext.createGain();
+      noise.buffer = selectionClickNoise;
+      noiseFilter.type = 'highpass';
+      noiseFilter.frequency.setValueAtTime(1800, now);
+      noiseGain.gain.setValueAtTime(0.16, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
+      noise.connect(noiseFilter).connect(noiseGain).connect(selectionAudioContext.destination);
+      noise.start(now);
+      noise.stop(now + 0.029);
+
+      const tick = selectionAudioContext.createOscillator();
+      const tickGain = selectionAudioContext.createGain();
+      tick.type = 'square';
+      tick.frequency.setValueAtTime(1150, now);
+      tick.frequency.exponentialRampToValueAtTime(520, now + 0.038);
+      tickGain.gain.setValueAtTime(0.055, now);
+      tickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+      tick.connect(tickGain).connect(selectionAudioContext.destination);
+      tick.start(now);
+      tick.stop(now + 0.041);
+
+      const count = Number(document.body.dataset.selectionClickCount || 0) + 1;
+      document.body.dataset.selectionClickCount = String(count);
+    };
+
+    const makeCard = (key, config, type) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'select-card';
+      button.dataset.key = key;
+      const visual = document.createElement(config.preview ? 'img' : 'div');
+      if (config.preview) {
+        visual.src = config.preview;
+        visual.alt = '';
+        visual.className = 'select-preview';
+        visual.addEventListener('error', () => {
+          console.warn(`[Selection Warning] Image was not found: ${config.preview}`);
+          const fallback = document.createElement('div');
+          fallback.className = 'select-fallback';
+          fallback.textContent = config.label;
+          visual.replaceWith(fallback);
+        }, { once: true });
+      } else {
+        visual.className = 'select-fallback';
+        visual.textContent = type === 'car' ? 'CAR' : config.label;
+      }
+      const label = document.createElement('strong');
+      label.textContent = config.label;
+      button.append(visual, label);
+      return button;
+    };
+
+    const carButtons = carKeys.map((key) => {
+      const button = makeCard(key, CAR_CONFIGS[key], 'car');
+      document.getElementById('car-grid').append(button);
+      return button;
+    });
+    const courseButtons = COURSE_ORDER.map((key) => {
+      const button = makeCard(key, MAP_CONFIGS[key], 'course');
+      document.getElementById('course-grid').append(button);
+      return button;
+    });
+    const paint = () => {
+      carButtons.forEach((button, i) => button.classList.toggle('active', i === carIndex));
+      courseButtons.forEach((button, i) => button.classList.toggle('active', i === courseIndex));
+      guideButton.hidden = stage !== 'car';
+    };
+    const showCourses = () => {
+      if (stage !== 'car') return;
+      playSelectionClick();
+      stage = 'course';
+      carScreen.hidden = true;
+      courseScreen.hidden = false;
+      paint();
+    };
+    const start = () => {
+      if (starting) return;
+      starting = true;
+      clearTimeout(demoIdleTimer);
+      const next = new URLSearchParams();
+      next.set('car', carKeys[carIndex]);
+      next.set('course', COURSE_ORDER[courseIndex]);
+      if (query.get('debugMap') === '1') next.set('debugMap', '1');
+      const destination = `${location.pathname}?${next}`;
+      playSelectionClick();
+      // 生成音は約0.04秒。音を切らず、体感遅延のない60ms後に遷移する。
+      setTimeout(() => { location.href = destination; }, 60);
+    };
+    carButtons.forEach((button, i) => {
+      button.addEventListener('click', () => { carIndex = i; paint(); });
+      button.addEventListener('dblclick', showCourses);
+    });
+    courseButtons.forEach((button, i) => {
+      button.addEventListener('click', () => { courseIndex = i; paint(); });
+      button.addEventListener('dblclick', start);
+    });
+    window.addEventListener('keydown', (event) => {
+      if (guideOpen) {
+        event.preventDefault();
+        closeGuide();
+        return;
+      }
+      armDemoIdleTimer();
+      if (!['ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(event.key)) return;
+      event.preventDefault();
+      if (event.key === 'Escape' && stage === 'course') {
+        stage = 'car';
+        courseScreen.hidden = true;
+        carScreen.hidden = false;
+        paint();
+        return;
+      }
+      if (event.key === 'Enter') { stage === 'car' ? showCourses() : start(); return; }
+      const delta = event.key === 'ArrowLeft' ? -1 : 1;
+      if (stage === 'car') carIndex = (carIndex + delta + carKeys.length) % carKeys.length;
+      else courseIndex = (courseIndex + delta + COURSE_ORDER.length) % COURSE_ORDER.length;
+      paint();
+    });
+    window.addEventListener('pointerdown', armDemoIdleTimer, { passive: true });
+    window.addEventListener('pointermove', armDemoIdleTimer, { passive: true });
+    paint();
+    armDemoIdleTimer();
+  }
+</script>
+</body>
+</html>

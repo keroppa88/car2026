@@ -1,0 +1,15 @@
+nissan3.vox S
+vw04.vox　S
+toyotahigh03.vox C
+nissan180sx0.vox B
+vw02.vox A
+nissan4.vox B
+nissan180sx1.vox S
+keitora01.vox C
+toyotaprobox.vox S
+volvo1.vox A
+volvo_sedan.vox A
+vw01.vox B
+vw03.vox C
+nissan2.vox A
+toyotahigh02.vox C
