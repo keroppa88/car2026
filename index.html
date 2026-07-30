@@ -1058,6 +1058,17 @@
     });
     window.addEventListener('pointerdown', armDemoIdleTimer, { passive: true });
     window.addEventListener('pointermove', armDemoIdleTimer, { passive: true });
+    // 戻るボタンでタイトルへ返ってくると、ページはbfcacheから復元されて
+    // スクリプトが動き直さない。遷移中フラグ(starting)が立ったままになり、
+    // 説明・デモ画面のボタンも車・コース選択も効かなくなる。復元のたびに
+    // 操作できる状態へ戻し、放置デモの待ち時間も数え直す。
+    window.addEventListener('pageshow', () => {
+      starting = false;
+      guideOpen = false;
+      guideOverlay.hidden = true;
+      document.body.dataset.titleGuideOpen = 'false';
+      armDemoIdleTimer();
+    });
     paint();
     armDemoIdleTimer();
   }
