@@ -223,3 +223,69 @@ horizon明暗20%なので薄暗さも連動して dusk=0.75（かなり薄暗い
 - 負荷実測：昼15台 draw62/三角形19万、夜15台 279/20万、インディ10台 draw213/7.6万。10台と15台で描画量がほぼ同じ（フォグと視界で同時描画数が頭打ち）
 - 観測用 dataset：`tokyoCpu*`（Encounters/LaneShifts/MinPairGapMeters/ActiveRanks等）、`indyCpu*`（CurrentSpeedsKmh/MaxDriftSpeedKmh/MaxAccel等）、`cpuMaxJumpMeters`、`weatherDuskLevel`、`demoTrack*`、`demoEngineSoundResets`
 - URLパラメータ：`?cpuCars=N`（首都高の台数）、`?laneSpacing=`（レーン間隔）、`?demoTrack=N`（デモの曲指定）、`?course=`、`?demo=1`、`?demoShell=1`、`?debugMap=1`
+
+---
+
+# 2026-07-30 追記（未整理・情報の置き場）
+
+このセクションが上の記述より新しい。矛盾する箇所はこちらが正。
+
+## 自動運転中はCPU車とすり抜ける（首都高・インディ）
+
+`js/main.js` の `updatePlayer` 内、CPU車との当たり判定の手前：
+
+```js
+const cpuCollisionOff = COURSE_KEY === 'sea' || demoActive || autoDrive;
+```
+
+| 状況                   | 当たり判定                  |
+| -------------------- | ---------------------- |
+| 自動運転（Yキー・デモ）         | **なし＝すり抜ける**           |
+| ユーザーが操作中             | **あり**（ぶつかればユーザー車が避ける） |
+| 海岸線                  | 常になし（従来どおり交通量優先）       |
+| 森林地帯                 | CPU車が出現しないので該当なし       |
+
+- 上の「当たり判定（ユーザー車 ↔ CPU車）」の節は**ユーザー操作中のみ**に適用される
+- **なぜ自動運転では切るのか**：自動運転ではユーザー車はルートへ、CPU車は走行ラインへ、どちらも毎フレーム座標を強制される。当たり判定を効かせると押し合いになり、`collideCarRect` の `player.vel.multiplyScalar(0.5)` が毎フレーム掛かってユーザー車の速度が消え、CPU側も速度を合わせて**両方その場で止まる**
+- 首都高は特に起きやすい。自動運転のルート `car2AutoRoute` が `CAR2_CPU_ROUTE`（CPUの基準中心線）そのもので、しかも**B・Aランクのホームレーンが 0m ＝その中心線**だから
+- 観測用：`document.body.dataset.playerCpuCollisionMode`（自動運転中 `pass` / 操作中 `solid`）
+
+### やってはいけない方向（検討して却下済み）
+
+CPU側に「ユーザー車へ進入禁止」の判定（＝進行方向の後ろへ押し戻す）を足す案は**却下**。首都高のB・Aランクはユーザー車と同じ中心線を走るため、進入を止めると後ろで抜けなくなり数珠つなぎになる。それを避けるには追い越し幅（1.8m→2.1m以上。車体が触れない距離はCPU半幅0.95＋ユーザー車半幅1.05＝2.0m）やレーン間隔まで変更が要る。**追い抜き・追い越しロジックには手を付けない**。
+
+## 車内音の80km/h乗り換えで無音の穴があく（解決済み・実機OK）
+
+`js/audio.js`。乗り換えは元からクロスフェードしていたが、`exponentialRampToValueAtTime` で 0.0001 ↔ 音量 を交差させていたため**中間で両方が落ち込み、0.2秒ほど完全な無音**になっていた。
+
+| 切替開始からの位置 | 旧（指数）合計    | 新（等パワー）合計 |
+| --------- | ---------- | --------- |
+| 0.00s     | 0.0 dB     | 0.0 dB    |
+| 0.15s     | −19.6 dB   | 0.0 dB    |
+| 0.30s     | **−33.3 dB** | 0.0 dB    |
+| 0.45s     | −19.6 dB   | 0.0 dB    |
+| 0.60s     | 0.0 dB     | 0.0 dB    |
+
+- **指数カーブは 0.0001 のような極小値からだと大半の時間をほぼ無音で過ごす。交差フェードに使ってはいけない**
+- 解決策：`equalPowerCurve()` で sin/cos の `setValueCurveAtTime`（等パワークロスフェード）。二乗和が常に1なので、road noise のような無相関の2音を重ねても合計が凹まない
+- 新旧を**同一の `ctx.currentTime`** から重ねる。別々に `ctx.currentTime` を取ると合計音量が波打つ
+- `INTERIOR_SWITCH_S` を 0.3秒 → **0.6秒**（重なる時間）
+- `setInteriorVolume()` は先に `cancelGain()`（`cancelAndHoldAtTime` 優先）で予約を打ち切る。カーブ中に `setTargetAtTime` を重ねるとWeb Audioが例外を投げる
+- ヒステリシスは元から ±2km/h（82で高速へ／78で低速へ、`updateInteriorSound()` in main.js）。**無音の原因ではなかった**
+- ループ継ぎ目の `INTERIOR_XFADE_S = 0.5` とは別物。混同しない
+
+## デモの曲名表示をシェル側へ移設
+
+コース切替のたびに曲名が数秒消える問題の対処。**曲名の表示をゲーム（iframe）から親シェルへ移した**。
+
+- 原因：曲名はiframe内に描画していたが、コース切替は `location.replace()` によるiframeのページ再読込。切替のたびに曲名のDOM要素ごと消え、ゲームが初期化を終えるまで復帰できない
+- 曲は親シェルのYouTubeプレイヤーが途切れず鳴らしているので、**表示も親シェルが持つ**のが正しい構造
+- `index.html` の demoShell 側に、ゲーム内 `setNowPlaying` と同じ見た目の要素を追加（`position:fixed; bottom:10px; #00ffd5; 21px`、`z-index:5`）
+- 表示のスケジュールは `scheduleDemoTrackLabel()`。`PLAYING` を受けてから3秒後に出し、**次の曲を読み込む（＝曲が終わる）まで出し続ける**。`playTrack()` で前の曲名を消す
+- 曲1だけデモ突入から12秒後、という従来仕様は親側に移設（`DEMO_TRACK1_LABEL_AT_MS` / `demoShellStartedAt`）。一巡して曲1へ戻った時は経過が大きいので通常の3秒になる
+- ゲーム側は `DEMO_EMBEDDED`（`?demoEmbedded=1`）の時だけ自前の曲名表示をしない。単独起動（`?demo=1` / `?demoTrack=`）では従来どおりゲーム側が出す
+- 上の「BGM 4曲構成」の曲名表示に関する3つの箇条書きは、この移設で置き換わっている
+
+## `?v=` バンプ
+
+`index.html` の `import('./js/main.js?v=...')` と、`js/main.js` 冒頭の `import { AUDIO } from './audio.js?v=...'` の**両方**にバージョンが付いている。audio.js を触ったら後者も忘れずにバンプする。
