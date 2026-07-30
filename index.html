@@ -537,6 +537,23 @@
     document.body.append(demoFrame);
     demoFrame.addEventListener('load', () => demoFrame.contentWindow?.focus());
 
+    // 曲名はシェル側(iframeの上)に出す。iframeはコース切替のたびに読み込み
+    // 直されるので、ゲーム側に置くと切替のあいだ曲名が数秒消えてしまう。
+    // 曲はシェルのプレイヤーが途切れず鳴らしているので、表示もシェルが持つ。
+    // 見た目はゲーム内の「再生中」表示(setNowPlaying)と同じにする。
+    const demoTrackLabelEl = document.createElement('div');
+    demoTrackLabelEl.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);'
+      + 'z-index:5;color:#00ffd5;font-weight:400;font-size:21px;letter-spacing:1.5px;'
+      + 'text-shadow:0 1px 2px rgba(0,0,0,0.95),0 0 1px rgba(0,0,0,0.9);'
+      + 'pointer-events:none;white-space:nowrap;display:none;'
+      + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
+    document.body.append(demoTrackLabelEl);
+    const setDemoTrackLabel = (text) => {
+      demoTrackLabelEl.textContent = text ? `♪ ${text}` : '';
+      demoTrackLabelEl.style.display = text ? 'block' : 'none';
+      document.body.dataset.demoTrackLabel = text || '';
+    };
+
     // デモのBGMは4曲を順に流し、曲がデモの見せ方そのものを決める。
     // 1曲終わるごとに次の曲へ進み、曲ごとの演出指示をゲーム側(iframe)へ送る。
     //   mode 'normal'     : 4コースを巡る通常デモ
@@ -551,6 +568,11 @@
       { id: '4k6YWc59Se4', label: '井上陽水,今夜、私に', mode: 'night' },
     ];
     const DEMO_TRACK_LABEL_DELAY_MS = 3000;
+    // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
+    // 「再生開始から3秒」だと音の立ち上がりと重なって早すぎる。
+    const DEMO_TRACK1_LABEL_AT_MS = 12000;
+    const demoShellStartedAt = performance.now();
+    let demoTrackLabelTimer = 0;
     let demoPlayer = null;
     let demoTrackIndex = 0;
     let demoTrackAnnounced = -1;
@@ -565,8 +587,9 @@
     const sendToDemoFrame = (message) => {
       demoFrame.contentWindow?.postMessage(message, demoFrameTarget());
     };
-    // 現在の曲をゲーム側へ知らせる。coldはページ再読込み直後で、
-    // 既に流れている曲を引き継ぐ場合（曲名は待たずに出す）。
+    // 現在の曲をゲーム側へ知らせる（曲ごとの見せ方を切り替えてもらう）。
+    // coldはページ再読込み直後で、既に流れている曲を引き継ぐ場合。
+    // 曲名の表示はシェルが持つので、この通知では動かない。
     const announceTrack = (cold) => {
       const track = DEMO_TRACKS[demoTrackIndex];
       document.body.dataset.demoTrackIndex = String(demoTrackIndex);
@@ -580,10 +603,26 @@
         labelDelayMs: cold ? 0 : DEMO_TRACK_LABEL_DELAY_MS,
       });
     };
+    // 曲名は「その曲が鳴り始めてから3秒後」に出し、曲が終わる(次の曲を読み込む)
+    // まで出し続ける。コース切替でiframeが読み込み直されても消えない。
+    const scheduleDemoTrackLabel = () => {
+      const track = DEMO_TRACKS[demoTrackIndex];
+      clearTimeout(demoTrackLabelTimer);
+      let delayMs = DEMO_TRACK_LABEL_DELAY_MS;
+      if (demoTrackIndex === 0) {
+        // 一巡して曲1へ戻った時は経過が大きく、通常の3秒になる。
+        delayMs = Math.max(
+          delayMs, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoShellStartedAt)
+        );
+      }
+      demoTrackLabelTimer = setTimeout(() => setDemoTrackLabel(track.label), delayMs);
+    };
     const playTrack = (index) => {
       demoTrackIndex = ((index % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
       const track = DEMO_TRACKS[demoTrackIndex];
       demoTrackAnnounced = -1;
+      clearTimeout(demoTrackLabelTimer);   // 前の曲の曲名はここで消す
+      setDemoTrackLabel('');
       demoTrackAdvancing = true;   // 次の曲がPLAYINGになるまで曲送りを止める
       demoTrackLog.push(`load${demoTrackIndex}:${track.id}`);
       document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
@@ -643,6 +682,7 @@
               if (demoTrackAnnounced === demoTrackIndex) return;
               demoTrackAnnounced = demoTrackIndex;
               announceTrack(false);
+              scheduleDemoTrackLabel();
             },
             onError: (event) => {
               // 101/150は所有者が外部埋め込みを禁止、100は動画なし。
@@ -685,7 +725,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20260730-demo-track1-label-1');
+    import('./js/main.js?v=20260730-interior-equal-power-xfade-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
