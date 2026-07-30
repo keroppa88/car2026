@@ -385,8 +385,13 @@
   .select-preview { width: 100%; height: 142px; object-fit: cover; border-radius: 7px; }
   .select-fallback { display: grid; place-items: center; width: 100%; height: 142px;
     border-radius: 7px; background: linear-gradient(135deg, #4a2613, #151112); color: #ff9d3f; }
+  /* PC PLAY ONLY の下に敷く黒い帯。下端のスピードラインもここで隠れる。 */
+  #title-bottom-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1;
+    height: 40px; background: #000; pointer-events: none;
+  }
   #title-pc-only {
-    position: fixed; left: 50%; bottom: 16px; z-index: 2;
+    position: fixed; left: 50%; bottom: 50px; z-index: 2;
     transform: translateX(-50%);
     color: #ff8c1a;
     font: 900 clamp(15px, 2vw, 21px)/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
@@ -399,7 +404,8 @@
     .select-preview, .select-fallback { height: 105px; }
     #game-select::before { top: 18%; }
     #game-select::after { bottom: 3%; }
-    #title-pc-only { bottom: 12px; font-size: 13px; letter-spacing: 0.22em; }
+    #title-bottom-bar { height: 26px; }
+    #title-pc-only { bottom: 34px; font-size: 13px; letter-spacing: 0.22em; }
   }
 
   /* 80年代液晶風コントロールパネル */
@@ -441,6 +447,7 @@
     <p class="select-kicker">SELECT COURSE</p>
     <div id="course-grid" class="select-grid"></div>
   </section>
+  <div id="title-bottom-bar" aria-hidden="true"></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
   <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
 </div>
