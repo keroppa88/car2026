@@ -627,10 +627,9 @@
       }
       demoTrackLabelTimer = setTimeout(() => setDemoTrackLabel(track.label), delayMs);
     };
-    // ミュート再生中かどうかをゲーム側へ伝える（デモ画面の案内文に使う）。
-    const announceBgmMuted = () => {
+    // ミュート再生中かどうかを状態として残す（切り分け用）。
+    const markBgmMuted = () => {
       document.body.dataset.demoBgmMuted = String(demoBgmMuted);
-      sendToDemoFrame({ type: 'vox-demo-bgm-muted', muted: demoBgmMuted });
     };
     const demoPlayerState = () => (
       typeof demoPlayer?.getPlayerState === 'function' ? demoPlayer.getPlayerState() : -1
@@ -644,7 +643,7 @@
         demoPlayer.unMute?.();
         demoPlayer.setVolume?.(80);
         demoBgmMuted = false;
-        announceBgmMuted();
+        markBgmMuted();
       }
       // 止まったままなら鳴らし始める。ENDED(曲送り中)には手を出さない。
       const ytState = window.YT?.PlayerState;
@@ -709,7 +708,7 @@
               if (DEMO_IS_MOBILE && !demoUserGestured) {
                 event.target.mute();
                 demoBgmMuted = true;
-                announceBgmMuted();
+                markBgmMuted();
               }
               event.target.playVideo();
               demoTrackAdvancing = false;   // 1曲目は最初からENDEDを受け付ける
@@ -722,7 +721,7 @@
                   || state === window.YT.PlayerState.BUFFERING) return;
                 demoPlayer?.mute?.();
                 demoBgmMuted = true;
-                announceBgmMuted();
+                markBgmMuted();
                 demoPlayer?.playVideo?.();
               }, DEMO_BGM_START_CHECK_MS);
             },
@@ -776,9 +775,8 @@
       // iframe内(ゲーム画面)のタップ等。ここで音を出せるようになる。
       if (event.data?.type === 'vox-demo-user-gesture') resumeDemoBgmSound();
       // コース切替でiframeが読み込み直されたら、流れている曲を伝え直す。
-      if (event.data?.type === 'vox-demo-ready') {
-        if (demoTrackAnnounced >= 0) announceTrack(true);
-        announceBgmMuted();
+      if (event.data?.type === 'vox-demo-ready' && demoTrackAnnounced >= 0) {
+        announceTrack(true);
       }
     });
     // iframeにフォーカスが移る前に押されたPCキーも「タイトルへ戻る」に含める。
