@@ -1,13 +1,13 @@
 export const CAR_CONFIGS = {
   toyota86: {
     label: 'Toyota 86',
-    preview: '画像/toyota86.png',
+    preview: 'picture/toyota86.png',
     model: 'vox/toyota86.vox',
     groundOffset: 0.02,
   },
   volvo240: {
     label: 'Volvo 240',
-    preview: '画像/volvo240.png',
+    preview: 'picture/volvo240.png',
     model: 'vox/volvo240.vox',
     groundOffset: 0.02,
   },
@@ -99,7 +99,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '首都高速',
     file: 'map/map_tokyo.glb',
-    preview: '画像/tokyo.png',
+    preview: 'picture/tokyo.png',
     scale: 0.002952755906,
     assetRevision: '20260728-tokyo-m06-1',
     spawnSearchRadius: 30,
@@ -121,7 +121,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '海岸線',
     file: 'map/searoad01.glb',
-    preview: '画像/sea.png',
+    preview: 'picture/sea.png',
     // 60%版から1.2倍。新海岸線の初期表示に対して72%。
     scale: 0.00011338582752,
     // 1.2倍後のM06路面高+0.01728mを相殺し、ゲーム内道路高を0に揃える。
@@ -212,7 +212,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '森林地帯',
     file: 'map/forest01.glb',
-    preview: '画像/forest.png',
+    preview: 'picture/forest.png',
     // 海岸線と同じSketchUp出力単位。4ファイルは縦横とも同寸なので
     // 個別のサイズ補正を一切かけず、同じ縮尺で接続する。
     // 初期森林サイズから、縦・横・高さを一様に75%へ縮小。
@@ -297,7 +297,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: 'ぐんまー',
     file: 'map/map_gunma.glb',
-    preview: '画像/gunma.png',
+    preview: 'picture/gunma.png',
     scale: 1.381889764,
     assetRevision: '20260728-gunma-m07-f08-4',
     spawnSearchRadius: 50,
@@ -332,7 +332,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: 'モンテカルロ',
     file: 'map/map_monaco.glb',
-    preview: '画像/monaco.png',
+    preview: 'picture/monaco.png',
     // 従来比1.7倍。開始位置の相対関係を保つため距離設定も同率で拡大。
     scale: 4.912598425,
     spawnSearchRadius: 85,
@@ -361,7 +361,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: 'インディアナポリス',
     file: 'map/map_indy.glb',
-    preview: '画像/indy.png',
+    preview: 'picture/indy.png',
     scale: 0.225590551,
     assetRevision: '20260728-indy-materials-3',
     spawnSearchRadius: 100,

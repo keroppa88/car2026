@@ -149,10 +149,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let interiorCurrent = 0;           // 再生中の車内音 (0=なし 1=低速 2=高速)
   const interiorLow = new Audio('sound/' + encodeURIComponent('drive_on_freeway1.mp3'));
   const interiorHigh = new Audio('sound/' + encodeURIComponent('drive_on_freeway2.mp3'));
-  const controlPanelOpenSound =
-    new Audio('sound/' + encodeURIComponent('決定ボタンを押す33.mp3'));
-  const controlPanelTabSound =
-    new Audio('sound/' + encodeURIComponent('決定ボタンを押す44.mp3'));
+  const controlPanelOpenSound = new Audio('sound/decision33.mp3');
+  const controlPanelTabSound = new Audio('sound/decision44.mp3');
   interiorLow.loop = interiorHigh.loop = true;
   interiorLow.volume = interiorHigh.volume = 0.85;
   controlPanelOpenSound.preload = 'auto';
@@ -3179,7 +3177,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const carVehicles = vehicles.filter((vehicle) => !isKabuVoxUrl(vehicle.url));
     const pool = carVehicles.length ? carVehicles : vehicles;
     // コース全体が見渡せるので、最初から一周へ均等に散らして置く。
-    // 車種は 登場cpu車両.txt の上から順に10台。
+    // 車種は cpu_car_list.txt の上から順に10台。
     const count = Math.min(INDY_CPU_COUNT, pool.length);
     const lapDistance = closedRouteLength(route);
     const speeds = [];
@@ -3632,7 +3630,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       const a = wps[start];
       const b = wps[next];
       const vehicle = pool[i % pool.length];
-      // 速度は 登場cpu車両.txt のランク(S/A/B/C)基準。対向車だけそこから50%落とす。
+      // 速度は cpu_car_list.txt のランク(S/A/B/C)基準。対向車だけそこから50%落とす。
       const rankSpeedKmh = cpuTopSpeedKmhFor(vehicle.url);
       const speedKmh = oncoming
         ? Math.round(rankSpeedKmh * SEA_ONCOMING_SPEED_SCALE)
@@ -3724,7 +3722,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       .join('|');
   }
 
-  // 首都高速の交通量。車種は 登場cpu車両.txt から順に巡回して割り当てるので、
+  // 首都高速の交通量。車種は cpu_car_list.txt から順に巡回して割り当てるので、
   // リストの行数とは独立に台数を決められる。
   // 交通量は「時間」で決める。速度差と密度から間接的に作ると頻度が読めず、
   // 同速の車が並んで数珠つなぎにもなるため、出現そのものをタイマーで管理する。
@@ -4026,19 +4024,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     'keitora.vox', 'vw01.vox', 'nissan180sx0.vox', 'toyotahigh00.vox', 'kabu.vox',
   ];
 
-  // 登場cpu車両.txt は「ファイル名 ランク」を1行ずつ並べたもの。
+  // cpu_car_list.txt は「ファイル名 ランク」を1行ずつ並べたもの。
   // ランクはCPU車の最高速度をユーザー車比で決める（S=-10% / A=-30% / B=-35% / C=-45%）。
   // Sはユーザー車を抜いていく強豪。Aは自動運転の巡航130km/hより遅くして
   // 追いつけるようにしつつ、Bよりは速い位置に置く。
   const CPU_RANK_SPEED_RATIO = { S: 0.9, A: 0.7, B: 0.65, C: 0.55 };
   const CPU_RANK_DEFAULT = 'B';
-  // 読み込む車種数の上限。登場cpu車両.txt は随時書き換わるので、行数にそのまま追従する。
+  // 読み込む車種数の上限。cpu_car_list.txt は随時書き換わるので、行数にそのまま追従する。
   const CPU_VOX_LIMIT = 30;
   const cpuRankByFile = new Map();
 
   async function listedCpuVoxFiles() {
-    const response = await fetch('登場cpu車両.txt', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`登場cpu車両.txt returned ${response.status}`);
+    const response = await fetch('cpu_car_list.txt', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`cpu_car_list.txt returned ${response.status}`);
     const names = [];
     for (const rawLine of (await response.text()).split(/\r?\n/)) {
       // 先頭のBOM・行頭行末の空白を落とす。区切りは半角/全角スペースの両方を許す。
@@ -4053,7 +4051,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         CPU_RANK_SPEED_RATIO[upper] ? upper : CPU_RANK_DEFAULT
       );
     }
-    if (!names.length) throw new Error('登場cpu車両.txt had no vehicle lines');
+    if (!names.length) throw new Error('cpu_car_list.txt had no vehicle lines');
     return names;
   }
 
@@ -4070,7 +4068,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const names = [...new Set(fileNames)]
       .map((name) => String(name).split(/[\\/]/).pop())
       .filter((name) => /\.vox$/i.test(name) && !RESERVED_VOX_FILES.has(name.toLowerCase()));
-    // 登場cpu車両.txt に書かれた順がそのまま配置順になるので、その時だけ並べ替えない。
+    // cpu_car_list.txt に書かれた順がそのまま配置順になるので、その時だけ並べ替えない。
     // フォルダ探索など順序が環境依存になるソースは、従来どおり名前順に揃える。
     if (!keepOrder) names.sort((a, b) => a.localeCompare(b, 'en'));
     return names.map((name) => 'vox/' + encodeURIComponent(name));
@@ -4153,7 +4151,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   async function discoverCpuCarVox() {
-    // 登場車種とその速度ランクは 登場cpu車両.txt が正。読めない時だけ従来の探索へ落ちる。
+    // 登場車種とその速度ランクは cpu_car_list.txt が正。読めない時だけ従来の探索へ落ちる。
     const sources = location.hostname.endsWith('.github.io')
       // GitHub Pages ではローカルサーバー用エンドポイントを使わない。
       ? [listedCpuVoxFiles, githubVoxFiles]
@@ -5613,7 +5611,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const discoveredCpuVox = COURSE_KEY === 'forest'
       ? []
       : await discoverCpuCarVox();
-    // 首都高速と海岸線は速度が車種ランク基準なので、登場cpu車両.txt の車種を
+    // 首都高速と海岸線は速度が車種ランク基準なので、cpu_car_list.txt の車種を
     // ひととおり読み込む（4車種だけだとランクが偏る）。
     const cpuVoxLimit = (CAR2_MODE || COURSE_KEY === 'sea' || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT

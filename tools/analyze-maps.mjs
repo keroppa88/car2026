@@ -1,23 +1,23 @@
 import fs from 'node:fs';
 
-const files = ['map_tokyo.gltf', '倉庫/map.gltf', 'map_gunma.gltf', 'map_monaco.gltf', 'map_indy.gltf'];
+const files = ['map_tokyo.gltf', 'warehouse/map.gltf', 'map_gunma.gltf', 'map_monaco.gltf', 'map_indy.gltf'];
 const scales = {
   'map_tokyo.gltf': 0.000075,
-  '倉庫/map.gltf': 0.000075,
+  'warehouse/map.gltf': 0.000075,
   'map_gunma.gltf': 0.15,
   'map_monaco.gltf': 0.01,
   'map_indy.gltf': 0.15,
 };
 const roadNamesByFile = {
   'map_tokyo.gltf': new Set(['M08', 'FF565656']),
-  '倉庫/map.gltf': new Set(['M08', 'FF565656']),
+  'warehouse/map.gltf': new Set(['M08', 'FF565656']),
   'map_gunma.gltf': new Set(['M08', 'FF1E1E1E']),
   'map_monaco.gltf': new Set(['M08', 'FF3A3A3A']),
   'map_indy.gltf': new Set(['M08', 'FF565656', 'FFACACAC', 'FF727272', 'FF1E1E1E', 'CCCCCCCC', 'FFE2E2E2', 'FFCCCC00']),
 };
 const treeNamesByFile = {
   'map_tokyo.gltf': new Set(['F08', 'FF4863A5']),
-  '倉庫/map.gltf': new Set(['F08', 'FF4863A5']),
+  'warehouse/map.gltf': new Set(['F08', 'FF4863A5']),
   'map_gunma.gltf': new Set(['F08', 'FF006633', 'FF437A5A']),
   'map_monaco.gltf': new Set(['F08', 'FF4863A5', 'FF437A5A', 'FF00994C']),
   'map_indy.gltf': new Set(['F08', 'FF4863A5']),
