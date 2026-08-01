@@ -474,7 +474,7 @@
   <button id="title-demo-btn" type="button">デモ画面</button>
 </div>
 <div id="title-guide-overlay" role="dialog" aria-label="ゲーム説明" hidden>
-  <img src="画像/説明.png" alt="イニシャルT ゲーム説明">
+  <img src="picture/introduction.png" alt="イニシャルT ゲーム説明">
 </div>
 
 <div id="loading">LOADING&hellip;</div>
@@ -530,7 +530,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260729-forest-road-seam-113';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260730-ascii-asset-paths-1';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -811,7 +811,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20260730-demo-mobile-bgm-1');
+    import('./js/main.js?v=20260730-ascii-asset-paths-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
