@@ -410,6 +410,13 @@
   #title-bottom-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 1;
     height: 40px; background: #000; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* 最下段の中央に置く著作権表示。 */
+  #title-copyright {
+    color: #ff8c1a;
+    font: 900 15px/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.18em; white-space: nowrap;
   }
   #title-pc-only {
     position: fixed; left: 50%; bottom: 50px; z-index: 2;
@@ -426,6 +433,7 @@
     #game-select::before { top: 18%; }
     #game-select::after { bottom: 3%; }
     #title-bottom-bar { height: 26px; }
+    #title-copyright { font-size: 11px; letter-spacing: 0.12em; }
     #title-pc-only { bottom: 34px; font-size: 13px; letter-spacing: 0.22em; }
   }
 
@@ -468,7 +476,7 @@
     <p class="select-kicker">SELECT COURSE</p>
     <div id="course-grid" class="select-grid"></div>
   </section>
-  <div id="title-bottom-bar" aria-hidden="true"></div>
+  <div id="title-bottom-bar"><span id="title-copyright">&copy;keroppa</span></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
   <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
   <button id="title-demo-btn" type="button">デモ画面</button>
