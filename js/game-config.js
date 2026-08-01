@@ -169,8 +169,8 @@ export const MAP_CONFIGS = {
     // 海側の左車線（同方向）と草地側の右車線（対向）を座標範囲で固定。
     cpuSameDirectionLaneRangeX: [66.6, 69.1],
     cpuOncomingLaneRangeX: [71.1, 73.8],
-    // 01を6回走った後だけ02→03→04→06と順に切り替え、最後は01を7回走る
-    // 35区間をループ。searoad05は現在この順番から外している。
+    // 01を6回走った後だけ02→03→04→06と順に切り替え、06の後は01を7回
+    // 走ってから05で締める36区間をループ。
     segmentFiles: [
       'map/searoad01.glb', 'map/searoad01.glb', 'map/searoad01.glb',
       'map/searoad01.glb', 'map/searoad01.glb', 'map/searoad01.glb',
@@ -187,6 +187,7 @@ export const MAP_CONFIGS = {
       'map/searoad01.glb', 'map/searoad01.glb', 'map/searoad01.glb',
       'map/searoad01.glb', 'map/searoad01.glb', 'map/searoad01.glb',
       'map/searoad01.glb',
+      'map/searoad05.glb',
     ],
     cpuSameDirectionSpeedsKmh: [100, 120, 150],
     // 対向車は従来90/100/120km/hの約2/3。
