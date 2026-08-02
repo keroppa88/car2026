@@ -469,6 +469,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherSkyUniforms.horizonColor.value.copy(horizon);
     weatherSkyUniforms.horizonBandColor.value.copy(horizon);
     weatherSkyUniforms.flatSky.value = weatherFlatSky ? 1 : 0;
+    // 選んでいる側(空/地平線)の色をそのまま16進で見せる。夜の減光は反映しない。
+    const pickedColor = weatherColorTarget === 'horizon'
+      ? weatherHorizonColor
+      : weatherTopColor;
+    const colorCode = `#${pickedColor.getHexString()}`;
+    if (weatherColorCodeEl) weatherColorCodeEl.textContent = colorCode;
+    document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
     if (fog) fog.color.copy(horizon);
@@ -6789,6 +6796,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let controlPanelMusicTab = null;
   let controlPanelWeatherTab = null;
   let weatherColorModeLabel = null;
+  // スライダーで作った色を、そのままmusiclist.txtへ書ける形で見せる。
+  let weatherColorCodeEl = null;
   let weatherHueInput = null;
   let weatherSatInput = null;
   let weatherLightInput = null;
@@ -7613,6 +7622,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       weatherHueInput = hue.meter;
       weatherSatInput = sat.meter;
       weatherLightInput = light.meter;
+      // 3本のスライダーで作った色。musiclist.txtへそのまま書き写せる。
+      const colorCodeRow = document.createElement('div');
+      colorCodeRow.className = 'control-panel-lcd-text';
+      // ラベルが「色調」より長いので、等幅グリッドではなく間隔を空けて並べる。
+      colorCodeRow.style.cssText = 'display:flex;align-items:center;gap:22px;'
+        + 'font-size:19px;line-height:1;';
+      const colorCodeLabel = document.createElement('span');
+      colorCodeLabel.textContent = 'カラーコード';
+      colorCodeLabel.style.whiteSpace = 'nowrap';
+      weatherColorCodeEl = document.createElement('span');
+      weatherColorCodeEl.style.cssText = 'padding:0 8px;color:#302d27;'
+        + 'font:900 23px "MS Gothic","Courier New",monospace;letter-spacing:2px;';
+      colorCodeRow.append(colorCodeLabel, weatherColorCodeEl);
       const weatherSliderFrame = document.createElement('div');
       weatherSliderFrame.style.cssText =
         'display:flex;flex-direction:column;justify-content:center;gap:18px;'
@@ -7640,13 +7662,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       };
       weatherSkyColorButton = makeColorTargetButton('Sky Color', 'sky');
       weatherHorizonColorButton = makeColorTargetButton('Horizon Color', 'horizon');
-      weatherSliderFrame.append(hue.row, sat.row, light.row);
+      weatherSliderFrame.append(hue.row, sat.row, light.row, colorCodeRow);
       weatherLcdPanel.append(colorTargetRow, weatherSliderFrame);
 
       const weatherButtons = document.createElement('div');
       weatherButtons.style.cssText =
         'display:grid;flex:1;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;'
-        + 'min-height:94px;margin:8px 0 0;padding:4px 8px;'
+        + 'min-height:62px;margin:8px 0 0;padding:4px 8px;'
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
         + 'rgba(77,35,0,.035) 1px,transparent 1px,transparent 4px),'
@@ -7655,7 +7677,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       const makeWeatherSwitch = (labelText, handler) => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.style.cssText = 'min-height:82px;padding:2px 8px;border:0;'
+        button.style.cssText = 'min-height:54px;padding:2px 8px;border:0;'
           + 'border-radius:0;background:transparent;color:#302d27;cursor:pointer;'
           + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;'
           + 'font:900 19px "MS Gothic","Courier New",monospace;';
@@ -7689,7 +7711,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       });
       const makeCloudSlider = () => {
         const wrap = document.createElement('div');
-        wrap.style.cssText = 'min-height:82px;padding:2px 8px;border:0;'
+        wrap.style.cssText = 'min-height:54px;padding:2px 8px;border:0;'
           + 'box-sizing:border-box;display:flex;flex-direction:column;align-items:center;'
           + 'justify-content:center;gap:4px;color:#302d27;';
         const title = document.createElement('span');
