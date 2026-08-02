@@ -6390,7 +6390,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // ------------------------------------------- demo track (BGM) driven mode --
   // デモは曲ごとに見せ方が変わる。曲の切替は親シェルが管理し、ここへ通知が来る。
   //   'sea-sunset' : 海岸線だけを走り、指定の空とカメラ切替にする
+  //   'sunset'     : sea-sunsetと同じ空。コース遷移は通常どおり
   //   'night'      : コースは通常どおりで、空は常に夜(Nモード)
+  //   'rain'       : コースは通常どおりで、走行中は雨を降らせる
   // 親シェルから曲情報が届かない場合（?demoTrack= での確認や、親なしの直接起動）
   // に備えて、曲順と見せ方の対応はゲーム側にも持っておく。
   const DEMO_TRACK_LABELS = [
@@ -6398,8 +6400,17 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     'Eagles,Take it Easy',
     'Elton John,Understanding Women',
     '井上陽水,今夜、私に',
+    'Snoop Dogg,Smoke Weed Everyday',
+    '稲垣潤一,ドラマティック・レイン',
+    "Billy Joel,The Stranger",
+    'Jevetta Steele,Calling You',
+    "Bee Gees,Stayin' Alive",
+    '薬師丸ひろ子,ステキな恋の忘れ方',
   ];
-  const DEMO_TRACK_MODES = ['normal', 'normal', 'sea-sunset', 'night'];
+  const DEMO_TRACK_MODES = [
+    'normal', 'normal', 'sea-sunset', 'night',
+    'normal', 'rain', 'normal', 'sunset', 'normal', 'normal',
+  ];
   const requestedDemoTrack = Number.parseInt(pageQuery.get('demoTrack') || '', 10);
   const DEMO_TRACK_INDEX = Number.isInteger(requestedDemoTrack)
     && requestedDemoTrack >= 0
@@ -6418,20 +6429,33 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const DEMO_SUNSET_HORIZON = { h: 0.10, s: 1.00, meter: 0.20 };
   const DEMO_SUNSET_SKY = { h: 0.95, s: 0.95, meter: 0.35 };
 
+  // 曲3と同じ夕景の空にする。明暗メーターの%(0〜1)は
+  // HSLのlの0.10〜0.98へ割り当てられている。
+  function applyDemoSunsetSky() {
+    weatherHorizonHsl.h = DEMO_SUNSET_HORIZON.h;
+    weatherHorizonHsl.s = DEMO_SUNSET_HORIZON.s;
+    weatherHorizonHsl.l = 0.1 + DEMO_SUNSET_HORIZON.meter * 0.88;
+    weatherTopHsl.h = DEMO_SUNSET_SKY.h;
+    weatherTopHsl.s = DEMO_SUNSET_SKY.s;
+    weatherTopHsl.l = 0.1 + DEMO_SUNSET_SKY.meter * 0.88;
+  }
+
   function applyDemoTrackMode() {
     if (!DEMO_SEQUENCE_ACTIVE) return;
     document.body.dataset.demoTrackMode = demoTrackMode;
+    // 雨の曲だけ雨を降らせ、それ以外の曲では必ず止める。
+    weatherRain = demoTrackMode === 'rain';
+    refreshWeatherControls();
     if (demoTrackMode === 'sea-sunset') {
-      // 明暗メーターの%(0〜1)はHSLのlの0.10〜0.98へ割り当てられている。
-      weatherHorizonHsl.h = DEMO_SUNSET_HORIZON.h;
-      weatherHorizonHsl.s = DEMO_SUNSET_HORIZON.s;
-      weatherHorizonHsl.l = 0.1 + DEMO_SUNSET_HORIZON.meter * 0.88;
-      weatherTopHsl.h = DEMO_SUNSET_SKY.h;
-      weatherTopHsl.s = DEMO_SUNSET_SKY.s;
-      weatherTopHsl.l = 0.1 + DEMO_SUNSET_SKY.meter * 0.88;
+      applyDemoSunsetSky();
       if (nightMode) nightMode = false;
       applyNight();
       demoTrackCameraAt = performance.now();
+    } else if (demoTrackMode === 'sunset') {
+      // 曲3と同じ空だけを使い、コース遷移は通常どおり進める。
+      applyDemoSunsetSky();
+      if (nightMode) nightMode = false;
+      applyNight();
     } else if (demoTrackMode === 'night') {
       if (!nightMode) {
         nightMode = true;
@@ -6465,9 +6489,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
         document.body.dataset.demoTrackLabel = label;
       };
-      // 曲1はデモ突入から12秒後(音が鳴ってから)に出す。
+      // このデモの開始曲はデモ突入から12秒後(音が鳴ってから)に出す。
       let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
-      if (index === 0 && delayMs > 0) {
+      if (index === DEMO_TRACK_INDEX && delayMs > 0) {
         delayMs = Math.max(
           0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
         );
@@ -6515,8 +6539,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   function randomizeSeaDemoSky() {
     // 明るさはユーザー設定を維持し、指定どおり上空/地平線それぞれの
-    // 曲3(sea-sunset)は指定の空を見せるので、ランダム変更はしない。
-    if (demoTrackMode === 'sea-sunset') return;
+    // sea-sunset・sunsetは指定の空を見せるので、ランダム変更はしない。
+    if (demoTrackMode === 'sea-sunset' || demoTrackMode === 'sunset') return;
     // 色調と彩度だけを独立してランダム変更する。
     weatherTopHsl.h = Math.random();
     weatherTopHsl.s = 0.38 + Math.random() * 0.57;
