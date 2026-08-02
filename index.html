@@ -213,8 +213,9 @@
   }
   /* タイトル左下の「デモ画面」ボタン。説明ボタンの反対側で、スマホだけに出す。
      スマホはプレイできないので、タイトルからの行き先はデモ画面だけになる。 */
+  /* PC・スマホとも左下に出す。PCの放置による自動デモはそのまま残す。 */
   #title-demo-btn {
-    position: fixed; left: 20px; bottom: 20px; z-index: 32; display: none;
+    position: fixed; left: 20px; bottom: 20px; z-index: 32; display: block;
     min-width: 112px; padding: 12px 18px;
     border: 2px solid #ff8c1a; border-radius: 5px;
     color: #ffbd73; background: rgba(12, 10, 9, 0.94);
@@ -222,7 +223,6 @@
     font: 800 17px/1 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
     letter-spacing: 0.16em; cursor: pointer;
   }
-  body.is-mobile #title-demo-btn { display: block; }
   /* スマホではプレイできないので、車・コース選択は押せないようにする */
   body.is-mobile .select-card { pointer-events: none; cursor: default; }
   #title-guide-overlay {
@@ -584,11 +584,13 @@
       document.body.dataset.demoTrackLabel = text || '';
     };
 
-    // デモのBGMは4曲を順に流し、曲がデモの見せ方そのものを決める。
+    // デモのBGMは曲を順に流し、曲がデモの見せ方そのものを決める。
     // 1曲終わるごとに次の曲へ進み、曲ごとの演出指示をゲーム側(iframe)へ送る。
     //   mode 'normal'     : 4コースを巡る通常デモ
     //   mode 'sea-sunset' : 海岸線だけを走り、指定の空とカメラ切替にする
+    //   mode 'sunset'     : sea-sunsetと同じ空。コース遷移は通常どおり
     //   mode 'night'      : コースは通常どおりで、空は常に夜(Nモード)
+    //   mode 'rain'       : コースは通常どおりで、走行中は雨を降らせる
     const DEMO_TRACKS = [
       // AO3uZdHDpNQは所有者が外部埋め込みを禁止しているため、
       // 同じ曲「Lovers Of The World」の埋め込み可能版を使用する。
@@ -596,6 +598,12 @@
       { id: '5igDtWadYms', label: 'Eagles,Take it Easy', mode: 'normal' },
       { id: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women', mode: 'sea-sunset' },
       { id: '4k6YWc59Se4', label: '井上陽水,今夜、私に', mode: 'night' },
+      { id: 'xnEYzp6IpqQ', label: 'Snoop Dogg,Smoke Weed Everyday', mode: 'normal' },
+      { id: '2ljSD1rZzUE', label: '稲垣潤一,ドラマティック・レイン', mode: 'rain' },
+      { id: 'E5ofVsxTPoc', label: "Billy Joel,The Stranger", mode: 'normal' },
+      { id: 'hPPS0_rqwcw', label: 'Jevetta Steele,Calling You', mode: 'sunset' },
+      { id: 'fNFzfwLM72c', label: "Bee Gees,Stayin' Alive", mode: 'normal' },
+      { id: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方', mode: 'normal' },
     ];
     const DEMO_TRACK_LABEL_DELAY_MS = 3000;
     // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
@@ -617,7 +625,30 @@
     let demoBgmMuted = false;       // 自動再生の制限でミュート再生中か
     let demoUserGestured = DEMO_STARTED_BY_TAP;   // 音を出してよい合図
     let demoBgmStartCheckTimer = 0;
-    let demoTrackIndex = 0;
+    // デモを途中でやめて再びデモへ入ると、前回鳴っていた曲の次から始める。
+    // 1曲目で抜ければ次は2曲目、そこで抜ければ3曲目、という具合に進む。
+    // タイトルへ戻る＝ページ遷移なので、次の開始位置はlocalStorageに残す。
+    const DEMO_NEXT_TRACK_KEY = 'car2026.demoNextTrack';
+    const readDemoStartTrack = () => {
+      try {
+        const stored = Number.parseInt(localStorage.getItem(DEMO_NEXT_TRACK_KEY) || '', 10);
+        if (!Number.isInteger(stored)) return 0;
+        return ((stored % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
+      } catch { return 0; }
+    };
+    // 鳴らし始めた時点で「次にデモへ入った時の開始曲」を更新しておく。
+    // 途中でやめても最後まで聴いても、次は今の曲の次から始まる。
+    const saveDemoNextTrack = (index) => {
+      try {
+        localStorage.setItem(DEMO_NEXT_TRACK_KEY, String((index + 1) % DEMO_TRACKS.length));
+      } catch { /* 保存できない環境では毎回1曲目から始まる */ }
+    };
+    let demoTrackIndex = readDemoStartTrack();
+    // このデモで最初に流す曲。曲名を出すまでの間合いと、
+    // 再生できない曲からのやり直し先に使う。
+    const DEMO_START_TRACK_INDEX = demoTrackIndex;
+    saveDemoNextTrack(demoTrackIndex);
+    document.body.dataset.demoStartTrackIndex = String(DEMO_START_TRACK_INDEX);
     let demoTrackAnnounced = -1;
     // 曲送りは「次の曲が再生され始めるまで」受け付けない。YouTubeは曲の終わりや
     // loadVideoById の前後で ENDED を続けて出すことがあり、素直に次へ送ると
@@ -652,8 +683,8 @@
       const track = DEMO_TRACKS[demoTrackIndex];
       clearTimeout(demoTrackLabelTimer);
       let delayMs = DEMO_TRACK_LABEL_DELAY_MS;
-      if (demoTrackIndex === 0) {
-        // 一巡して曲1へ戻った時は経過が大きく、通常の3秒になる。
+      if (demoTrackIndex === DEMO_START_TRACK_INDEX) {
+        // 一巡して開始曲へ戻った時は経過が大きく、通常の3秒になる。
         delayMs = Math.max(
           delayMs, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoShellStartedAt)
         );
@@ -692,6 +723,7 @@
     const playTrack = (index) => {
       demoTrackIndex = ((index % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
       const track = DEMO_TRACKS[demoTrackIndex];
+      saveDemoNextTrack(demoTrackIndex);
       demoTrackAnnounced = -1;
       clearTimeout(demoTrackLabelTimer);   // 前の曲の曲名はここで消す
       setDemoTrackLabel('');
@@ -727,7 +759,7 @@
         demoPlayer = new window.YT.Player(holder, {
           width: 400,
           height: 300,
-          videoId: DEMO_TRACKS[0].id,
+          videoId: DEMO_TRACKS[demoTrackIndex].id,
           playerVars: {
             autoplay: 1, controls: 0, playsinline: 1,
             origin: location.origin,
@@ -785,13 +817,14 @@
               document.body.dataset.demoTrackError = `${track.id}:${event.data}`;
               demoTrackErrorStreak++;
               demoTrackAdvancing = false;
-              // 再生できない曲は飛ばさず、1曲目からやり直す（ユーザー指定）。
-              // ただし1曲目自体が鳴らない時に往復し続けないよう、そこで止める。
-              if (demoTrackIndex === 0 || demoTrackErrorStreak >= DEMO_TRACKS.length) {
+              // 再生できない曲は飛ばさず、このデモの開始曲からやり直す。
+              // 開始曲自体が鳴らない時に往復し続けないよう、そこで止める。
+              if (demoTrackIndex === DEMO_START_TRACK_INDEX
+                || demoTrackErrorStreak >= DEMO_TRACKS.length) {
                 document.body.dataset.demoTrackStalled = 'true';
                 return;
               }
-              playTrack(0);
+              playTrack(DEMO_START_TRACK_INDEX);
             },
           },
         });
