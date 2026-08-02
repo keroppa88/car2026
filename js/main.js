@@ -389,6 +389,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
   weatherHorizonColor.getHSL(weatherHorizonHsl);
+  // 既定の明るさ。デモで曲ごとに暗くした後、通常の曲へ戻す時に使う。
+  const WEATHER_DEFAULT_TOP_L = weatherTopHsl.l;
+  const WEATHER_DEFAULT_HORIZON_L = weatherHorizonHsl.l;
   let weatherColorTarget = 'sky';       // sky / horizon
   let weatherRain = false;
   let weatherStars = false;
@@ -6478,6 +6481,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲3の空。パネルの各メーター%をそのままHSLへ直した値。
   const DEMO_SUNSET_HORIZON = { h: 0.10, s: 1.00, meter: 0.20 };
   const DEMO_SUNSET_SKY = { h: 0.95, s: 0.95, meter: 0.35 };
+  // 雨の曲の明るさ。上空・地平線ともパネルの明暗メーター25%相当。
+  const DEMO_RAIN_BRIGHTNESS = 0.25;
 
   // 曲3と同じ夕景の空にする。明暗メーターの%(0〜1)は
   // HSLのlの0.10〜0.98へ割り当てられている。
@@ -6493,28 +6498,28 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   function applyDemoTrackMode() {
     if (!DEMO_SEQUENCE_ACTIVE) return;
     document.body.dataset.demoTrackMode = demoTrackMode;
-    // 雨の曲だけ雨を降らせ、それ以外の曲では必ず止める。
-    weatherRain = demoTrackMode === 'rain';
-    refreshWeatherControls();
-    if (demoTrackMode === 'sea-sunset') {
+    const raining = demoTrackMode === 'rain';
+    // 雨の曲だけ雨雲と雨を出し、それ以外の曲では必ず晴れへ戻す。
+    weatherRain = raining;
+    weatherCloudMode = raining ? 1 : 0;
+    if (demoTrackMode === 'sea-sunset' || demoTrackMode === 'sunset') {
       applyDemoSunsetSky();
-      if (nightMode) nightMode = false;
-      applyNight();
-      demoTrackCameraAt = performance.now();
-    } else if (demoTrackMode === 'sunset') {
-      // 曲3と同じ空だけを使い、コース遷移は通常どおり進める。
-      applyDemoSunsetSky();
-      if (nightMode) nightMode = false;
-      applyNight();
-    } else if (demoTrackMode === 'night') {
-      if (!nightMode) {
-        nightMode = true;
-        applyNight();
-      }
-    } else if (nightMode) {
-      nightMode = false;
-      applyNight();
+    } else if (raining) {
+      // 上空・地平線とも明暗メーター25%まで落とし、雨雲の下の暗さにする。
+      // 色相と彩度は触らないので、デモ中のランダムな色変えはそのまま効く。
+      weatherTopHsl.l = 0.1 + DEMO_RAIN_BRIGHTNESS * 0.88;
+      weatherHorizonHsl.l = 0.1 + DEMO_RAIN_BRIGHTNESS * 0.88;
+    } else {
+      // 夕景や雨で落とした明るさを既定へ戻す。
+      weatherTopHsl.l = WEATHER_DEFAULT_TOP_L;
+      weatherHorizonHsl.l = WEATHER_DEFAULT_HORIZON_L;
     }
+    if (demoTrackMode === 'night') nightMode = true;
+    else if (nightMode) nightMode = false;
+    // 空の反映と、それに合わせた地表の明るさをまとめてやり直す。
+    applyNight();
+    refreshWeatherControls();
+    if (demoTrackMode === 'sea-sunset') demoTrackCameraAt = performance.now();
   }
 
   function setDemoTrack(data) {
