@@ -23,8 +23,6 @@ https://radio.avazfarsi.com:8000/radio.mp3「Radio,Iran(USA)/Radio AvazFarsi」
 https://classic-radio.stream.laut.fm/classic-radio 「Radio,Deutsch/Classic Radio」
 https://media-ssl.musicradio.com/ClassicFM 「Radio,UK/Classic FM」
 ------邦楽------
-https://www.youtube.com/watch?v=purfXvu24Ps   「Chet Baker,You Don't Know What Love Is (1953)」#a1d1b6　雨
-https://www.youtube.com/watch?v=k7fihig4u0Y   「Paul Anka,You Are My Destiny (1958)」
 https://www.youtube.com/watch?v=B1NhGDoZs8k   「藤木孝,24000のキッス(1961)」#26f8ff	音量-18%
 https://www.youtube.com/watch?v=IA2eK1pcvM8   「THE MAMAS & THE PAPAS,California Dreamin (1965)」	#0099ff　地平線#66ffcc
 https://www.youtube.com/watch?v=4zbAHjZtJMU   「加山雄三,夜空の星 (1966)」	夜　星
