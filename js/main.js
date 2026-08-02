@@ -6930,7 +6930,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲ごとの演出は、当てる前の状態を控えておき、曲が終わったらそこへ戻す。
   // 曲をまたぐ時も一度戻してから次の曲の指示を当てるので、効果は積み重ならない。
   let musicEffectSaved = null;
-  // 今かかっている曲の指示。Music Skyの入切で当て直すために覚えておく。
+  // 今かかっている曲の指示。Music⇒Skyの入切で当て直すために覚えておく。
   let musicCurrentEffects = null;
   // 切ると、曲の空色指定で空が変わらなくなる(自分の調整だけが効く)。
   let musicSkyEnabled = true;
@@ -6980,7 +6980,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       hsl.h = tone.h;
       hsl.s = tone.s;
     };
-    // Music Skyを切っている間は、見え方に関わる指示を一切当てない。
+    // Music⇒Skyを切っている間は、見え方に関わる指示を一切当てない。
     // 音量だけは切っていても常に効かせる。
     if (musicSkyEnabled) {
       if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
@@ -7738,7 +7738,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           + 'border:2px solid #050505;background:transparent;'
           + 'font:900 24px "MS Gothic","Courier New",monospace;line-height:1;';
         const title = document.createElement('span');
-        title.textContent = 'Music Sky';
+        title.textContent = 'Music⇒Sky';
         title.style.cssText = 'font:900 18px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
           + 'white-space:nowrap;';
         button.append(box, title);
