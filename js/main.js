@@ -6815,6 +6815,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let weatherHorizonColorButton = null;
   let weatherRainButton = null;
   let weatherStarButton = null;
+  let weatherMusicSkyButton = null;
   let weatherCloudButton = null;
   let musicAudio = null;
   let musicHls = null;
@@ -6929,6 +6930,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲ごとの演出は、当てる前の状態を控えておき、曲が終わったらそこへ戻す。
   // 曲をまたぐ時も一度戻してから次の曲の指示を当てるので、効果は積み重ならない。
   let musicEffectSaved = null;
+  // 今かかっている曲の指示。Music Skyの入切で当て直すために覚えておく。
+  let musicCurrentEffects = null;
+  // 切ると、曲の空色指定で空が変わらなくなる(自分の調整だけが効く)。
+  let musicSkyEnabled = true;
 
   function restoreMusicEffects() {
     if (!musicEffectSaved) return;
@@ -6959,6 +6964,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   function applyMusicEffects(effects) {
     restoreMusicEffects();
+    musicCurrentEffects = effects || null;
     if (!effects) return;
     musicEffectSaved = {
       topH: weatherTopHsl.h, topS: weatherTopHsl.s, topL: weatherTopHsl.l,
@@ -6974,19 +6980,23 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       hsl.h = tone.h;
       hsl.s = tone.s;
     };
-    if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
-    if (effects.horizonHex) applyTone(effects.horizonHex, weatherHorizonHsl);
-    // 単色は色をいじらず、空の描き方をベタ塗り2色へ切り替える。
-    if (effects.monotone) weatherFlatSky = true;
-    if (effects.rain) weatherRain = true;
-    if (effects.stars) weatherStars = true;
-    if (effects.cloudMode) weatherCloudMode = effects.cloudMode;
+    // Music Skyを切っている間は、見え方に関わる指示を一切当てない。
+    // 音量だけは切っていても常に効かせる。
+    if (musicSkyEnabled) {
+      if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
+      if (effects.horizonHex) applyTone(effects.horizonHex, weatherHorizonHsl);
+      // 単色は色をいじらず、空の描き方をベタ塗り2色へ切り替える。
+      if (effects.monotone) weatherFlatSky = true;
+      if (effects.rain) weatherRain = true;
+      if (effects.stars) weatherStars = true;
+      if (effects.cloudMode) weatherCloudMode = effects.cloudMode;
+    }
     if (effects.volumePercent) {
       musicTrackVolumeScale = clamp(1 + effects.volumePercent / 100, 0, 2);
     }
     applyMusicVolume();
     // 夜指定の曲は夜間モードへ。地表の明るさまで変わるのでapplyNightを通す。
-    if (effects.night && !nightMode) {
+    if (musicSkyEnabled && effects.night && !nightMode) {
       nightMode = true;
       applyNight();
     } else {
@@ -7341,6 +7351,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherLightInput?.renderMeter(brightnessPercentage / 100);
     weatherRainButton?.renderToggle(weatherRain);
     weatherStarButton?.renderToggle(weatherStars);
+    weatherMusicSkyButton?.renderToggle(musicSkyEnabled);
+    document.body.dataset.weatherMusicSky = String(musicSkyEnabled);
     weatherCloudButton?.renderCloud(weatherCloudMode);
     document.body.dataset.weatherRain = String(weatherRain);
     document.body.dataset.weatherStars = String(weatherStars);
@@ -7677,7 +7689,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
       const weatherButtons = document.createElement('div');
       weatherButtons.style.cssText =
-        'display:grid;flex:1;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;'
+        'display:grid;flex:1;grid-template-columns:1.25fr 1fr 1fr 1.25fr;gap:10px;'
         + 'min-height:62px;margin:8px 0 0;padding:4px 8px;'
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
@@ -7711,6 +7723,39 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         weatherButtons.appendChild(button);
         return button;
       };
+      // 曲の空色指定を効かせるかどうか。切ると自分の調整だけが空へ反映される。
+      const makeMusicSkyCheckbox = () => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.id = 'weather-music-sky';
+        button.setAttribute('role', 'checkbox');
+        button.style.cssText = 'min-height:54px;padding:2px 8px;border:0;'
+          + 'border-radius:0;background:rgba(255,255,255,.16);color:#302d27;cursor:pointer;'
+          + 'display:flex;align-items:center;justify-content:center;gap:10px;';
+        const box = document.createElement('span');
+        box.style.cssText = 'display:flex;align-items:center;justify-content:center;'
+          + 'width:30px;height:30px;flex:none;box-sizing:border-box;'
+          + 'border:2px solid #050505;background:#ff9c46;'
+          + 'font:900 24px "MS Gothic","Courier New",monospace;line-height:1;';
+        const title = document.createElement('span');
+        title.textContent = 'Music Sky';
+        title.style.cssText = 'font:900 18px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
+          + 'white-space:nowrap;';
+        button.append(box, title);
+        button.renderToggle = (active) => {
+          button.setAttribute('aria-checked', String(active));
+          box.textContent = active ? '✓' : '';
+        };
+        button.addEventListener('click', () => {
+          musicSkyEnabled = !musicSkyEnabled;
+          // 入切した時点で、今の曲の指示を当て直す(切れば自分の色へ戻る)。
+          applyMusicEffects(musicCurrentEffects);
+          refreshWeatherControls();
+        });
+        weatherButtons.appendChild(button);
+        return button;
+      };
+      weatherMusicSkyButton = makeMusicSkyCheckbox();
       weatherRainButton = makeWeatherSwitch('☂ Rain', () => {
         weatherRain = !weatherRain;
         refreshWeatherControls();
