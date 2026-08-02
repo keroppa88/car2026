@@ -7730,12 +7730,12 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         button.id = 'weather-music-sky';
         button.setAttribute('role', 'checkbox');
         button.style.cssText = 'min-height:54px;padding:2px 8px;border:0;'
-          + 'border-radius:0;background:rgba(255,255,255,.16);color:#302d27;cursor:pointer;'
+          + 'border-radius:0;background:transparent;color:#302d27;cursor:pointer;'
           + 'display:flex;align-items:center;justify-content:center;gap:10px;';
         const box = document.createElement('span');
         box.style.cssText = 'display:flex;align-items:center;justify-content:center;'
           + 'width:30px;height:30px;flex:none;box-sizing:border-box;'
-          + 'border:2px solid #050505;background:#ff9c46;'
+          + 'border:2px solid #050505;background:transparent;'
           + 'font:900 24px "MS Gothic","Courier New",monospace;line-height:1;';
         const title = document.createElement('span');
         title.textContent = 'Music Sky';
