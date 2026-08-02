@@ -1908,7 +1908,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     AUDIO.unlock();
     if (demoActive) {
       if (DEMO_SEQUENCE_ACTIVE || CAR2_MODE) {
-        // 4コースデモ/首都高デモ: ドラッグ=カメラ移動、タップ=タイトルへ。
+        // 4コースデモ/首都高デモ: ドラッグ=カメラ移動、タップ=視点切替。
         demoTapMove = 0;
       } else {
         startGame();
@@ -1918,22 +1918,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     cam.dragging = true;
     renderer.domElement.setPointerCapture(e.pointerId);
   });
-  window.addEventListener('pointerdown', (e) => {
-    // デモの3秒間のMusic画面など、canvas以外をクリックした場合もタイトルへ。
-    if (demoActive && DEMO_SEQUENCE_ACTIVE && !IS_MOBILE
-        && e.target !== renderer.domElement) {
-      exitDemoSequenceToTitle();
-    }
-  }, { capture: true });
   window.addEventListener('pointerup', () => {
     cam.dragging = false;
     cam.lastDrag = performance.now();
-    // デモ中、ほぼ動かさずに離した(クリック/タップ)ならタイトルへ戻る。
+    // デモ中、ほぼ動かさずに離した(クリック/タップ)なら視点を切り替える。
     // ドラッグした場合はデモを継続し、カメラだけ動かす。
+    // 4コースデモを終わるのは左上の「戻る」ボタンだけ(PC・スマホ共通)。
     if (demoActive && (DEMO_SEQUENCE_ACTIVE || CAR2_MODE) && demoTapMove < 12) {
-      if (DEMO_SEQUENCE_ACTIVE && IS_MOBILE) bonnetView = (bonnetView + 1) % 3;
-      else if (DEMO_SEQUENCE_ACTIVE) exitDemoSequenceToTitle();
-      else if (IS_MOBILE) bonnetView = (bonnetView + 1) % 3;
+      if (DEMO_SEQUENCE_ACTIVE || IS_MOBILE) bonnetView = (bonnetView + 1) % 3;
       else exitCar2Demo();
     }
     demoTapMove = 1e9;
@@ -1946,7 +1938,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     cam.lastDrag = performance.now();
   });
 
-  // スマホのデモは画面に触れるとカメラを振れるが、それだけでは終われない。
+  // デモは画面に触れるとカメラを振れるが、それだけでは終われない。
   // 触れている間と離してから3.5秒だけ、左上に「戻る」を出して逃げ道にする。
   // ボタンはcanvasの外なのでdemoTapMoveが0にならず、押しても視点は切り替わらない。
   const DEMO_BACK_BUTTON_LINGER_MS = 3500;
@@ -1975,7 +1967,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return button;
   }
   function showDemoBackButton() {
-    if (!IS_MOBILE || !DEMO_SEQUENCE_ACTIVE || !demoActive) return;
+    if (!DEMO_SEQUENCE_ACTIVE || !demoActive) return;
     const button = ensureDemoBackButton();
     clearTimeout(demoBackButtonHideTimer);
     demoBackButtonHideTimer = 0;
