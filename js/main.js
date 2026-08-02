@@ -1942,6 +1942,56 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     cam.pitch = clamp(cam.pitch + e.movementY * 0.004, 0.08, 1.25);
     cam.lastDrag = performance.now();
   });
+
+  // スマホのデモは画面に触れるとカメラを振れるが、それだけでは終われない。
+  // 触れている間と離してから3.5秒だけ、左上に「戻る」を出して逃げ道にする。
+  // ボタンはcanvasの外なのでdemoTapMoveが0にならず、押しても視点は切り替わらない。
+  const DEMO_BACK_BUTTON_LINGER_MS = 3500;
+  let demoBackButton = null;
+  let demoBackButtonHideTimer = 0;
+  function ensureDemoBackButton() {
+    if (demoBackButton) return demoBackButton;
+    const button = document.createElement('button');
+    button.id = 'demo-back-btn';
+    button.type = 'button';
+    button.textContent = '戻る';
+    button.style.cssText =
+      'position:fixed;left:14px;top:14px;z-index:80;'
+      + 'padding:10px 22px;border:2px solid #fff;border-radius:6px;'
+      + 'background:transparent;color:#fff;'
+      + 'font:800 16px/1 "Arial Black","Yu Gothic",Meiryo,sans-serif;'
+      + 'letter-spacing:0.18em;cursor:pointer;'
+      + 'opacity:0;pointer-events:none;transition:opacity 160ms ease;'
+      + 'touch-action:manipulation;-webkit-tap-highlight-color:transparent;';
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      exitDemoSequenceToTitle();
+    });
+    document.body.append(button);
+    demoBackButton = button;
+    return button;
+  }
+  function showDemoBackButton() {
+    if (!IS_MOBILE || !DEMO_SEQUENCE_ACTIVE || !demoActive) return;
+    const button = ensureDemoBackButton();
+    clearTimeout(demoBackButtonHideTimer);
+    demoBackButtonHideTimer = 0;
+    button.style.opacity = '1';
+    button.style.pointerEvents = 'auto';
+    document.body.dataset.demoBackButtonVisible = 'true';
+  }
+  function scheduleHideDemoBackButton() {
+    if (!demoBackButton) return;
+    clearTimeout(demoBackButtonHideTimer);
+    demoBackButtonHideTimer = setTimeout(() => {
+      demoBackButton.style.opacity = '0';
+      demoBackButton.style.pointerEvents = 'none';
+      document.body.dataset.demoBackButtonVisible = 'false';
+    }, DEMO_BACK_BUTTON_LINGER_MS);
+  }
+  window.addEventListener('pointerdown', showDemoBackButton, { capture: true });
+  window.addEventListener('pointerup', scheduleHideDemoBackButton);
+  window.addEventListener('pointercancel', scheduleHideDemoBackButton);
   window.addEventListener('wheel', (e) => {
     if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
     cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, 28);
