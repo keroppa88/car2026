@@ -6802,7 +6802,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲名「」のあとに書かれた演出指示を読む。書式は musiclist.txt を参照。
   //   #rrggbb / 空#rrggbb : 空色    地平線#rrggbb : 地平線色
   //     どちらも色調(色相・彩度)だけを当て、明るさはユーザー設定のまま残す。
+  //   単色      : 地平線を空と同じ色にして、空のグラデーションを消す
   //   音量±N%  : その曲の間だけ音量を上げ下げする
+  //   開始N秒   : 頭からではなくN秒目から流す
   //   星 / 雨   : 星・雨を出す
   //   雲1 / 雲2 : 2種類ある雲のどちらかを出す
   function parseMusicEffects(tail) {
@@ -6815,6 +6817,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         effects.skyHex = matched[1];
       } else if ((matched = token.match(/^音量([+\-]?\d+)[%％]$/))) {
         effects.volumePercent = Number(matched[1]);
+      } else if ((matched = token.match(/^開始(\d+)秒$/))) {
+        effects.startSeconds = Number(matched[1]);
+      } else if (token === '単色') {
+        effects.monotone = true;
       } else if (token === '星') {
         effects.stars = true;
       } else if (token === '雨') {
@@ -6899,8 +6905,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     musicEffectSaved = null;
     weatherTopHsl.h = saved.topH;
     weatherTopHsl.s = saved.topS;
+    weatherTopHsl.l = saved.topL;
     weatherHorizonHsl.h = saved.horizonH;
     weatherHorizonHsl.s = saved.horizonS;
+    weatherHorizonHsl.l = saved.horizonL;
     weatherRain = saved.rain;
     weatherStars = saved.stars;
     weatherCloudMode = saved.cloudMode;
@@ -6915,8 +6923,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     restoreMusicEffects();
     if (!effects) return;
     musicEffectSaved = {
-      topH: weatherTopHsl.h, topS: weatherTopHsl.s,
+      topH: weatherTopHsl.h, topS: weatherTopHsl.s, topL: weatherTopHsl.l,
       horizonH: weatherHorizonHsl.h, horizonS: weatherHorizonHsl.s,
+      horizonL: weatherHorizonHsl.l,
       rain: weatherRain, stars: weatherStars, cloudMode: weatherCloudMode,
     };
     // 色調(色相・彩度)だけを当てる。明るさはユーザーが決めた値のまま残す。
@@ -6928,6 +6937,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     };
     if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
     if (effects.horizonHex) applyTone(effects.horizonHex, weatherHorizonHsl);
+    // 単色は地平線を空へ完全に合わせる。明るさも揃えないと帯が残る。
+    // ただし地平線色が別に書いてある行はそちらを優先し、指定を殺さない。
+    if (effects.monotone && !effects.horizonHex) {
+      weatherHorizonHsl.h = weatherTopHsl.h;
+      weatherHorizonHsl.s = weatherTopHsl.s;
+      weatherHorizonHsl.l = weatherTopHsl.l;
+    }
     if (effects.rain) weatherRain = true;
     if (effects.stars) weatherStars = true;
     if (effects.cloudMode) weatherCloudMode = effects.cloudMode;
@@ -6960,13 +6976,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     if (it.type === 'yt') {
       // YouTube API の初回読込みがまだ終わっていない場合はメニューを閉じない。
       // 準備完了後の次の決定操作を、音付き再生のユーザー操作として使う。
-      if (!playYouTube(it.url)) {
+      if (!playYouTube(it.url, it.effects?.startSeconds)) {
         setNowPlaying(it.label + '（準備中）');
         musicMenuRefresh();
         return false;
       }
     } else {
-      playRadio(it.url);
+      playRadio(it.url, it.effects?.startSeconds);
     }
     // 鳴らし始められた時だけ演出を当てる。準備中で抜けた場合は当てない。
     applyMusicEffects(it.effects);
@@ -7038,11 +7054,24 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     }
   }
 
-  function playRadio(url) {
+  function playRadio(url, startSeconds) {
     musicAudio = new Audio();
     musicAudio.volume = musicOutputVolume();
     musicAudio.addEventListener('ended', playNext);   // 終了で次の曲へ
     musicAudio.addEventListener('error', handlePlaybackError);
+    // 「開始N秒」の曲は頭出しをしてから鳴らす。URLの #t=N は読み込み前から効く。
+    // 生放送のように飛べない音源では単に無視される。
+    const seekable = startSeconds > 0 && !/#/.test(url);
+    const srcUrl = seekable ? `${url}#t=${startSeconds}` : url;
+    // #t= を解釈しないブラウザ向けの保険。飛べる状態になった時に一度だけ送る。
+    if (startSeconds > 0) {
+      const seekOnce = () => {
+        if (musicAudio.currentTime >= startSeconds || !musicAudio.seekable?.length) return;
+        try { musicAudio.currentTime = startSeconds; } catch (_) { /* 飛べない音源 */ }
+      };
+      musicAudio.addEventListener('loadedmetadata', seekOnce);
+      musicAudio.addEventListener('canplay', seekOnce, { once: true });
+    }
     const start = () => musicAudio && musicAudio.play().catch((e) => console.warn('ラジオを再生できませんでした:', url, e));
     if (/\.m3u8/.test(url)) {
       // HLS ストリームはブラウザ単体で鳴らないため hls.js を遅延読み込み
@@ -7052,18 +7081,18 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           musicHls.loadSource(url);
           musicHls.attachMedia(musicAudio);
           start();
-        } else { musicAudio.src = url; start(); }
+        } else { musicAudio.src = srcUrl; start(); }
       };
       if (window.Hls) ready();
       else {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1';
         script.onload = ready;
-        script.onerror = () => { musicAudio.src = url; start(); };
+        script.onerror = () => { musicAudio.src = srcUrl; start(); };
         document.head.appendChild(script);
       }
     } else {
-      musicAudio.src = url;
+      musicAudio.src = srcUrl;
       start();
     }
   }
@@ -7175,7 +7204,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     }
   }
 
-  function playYouTube(url) {
+  function playYouTube(url, startSeconds) {
     const id = youtubeId(url);
     if (!id) return false;
     ytCurrentId = id;
@@ -7194,8 +7223,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         ? ytPlayer.getVideoData().video_id
         : null;
     } catch (_) { /* 未読込みなら loadVideoById へ進む */ }
-    if (loadedId === id && ytPlayer.playVideo) ytPlayer.playVideo();
-    else ytPlayer.loadVideoById(id);
+    const start = startSeconds > 0 ? startSeconds : 0;
+    if (loadedId === id && ytPlayer.playVideo) {
+      if (start) ytPlayer.seekTo(start, true);
+      ytPlayer.playVideo();
+    } else if (start) {
+      ytPlayer.loadVideoById({ videoId: id, startSeconds: start });
+    } else {
+      ytPlayer.loadVideoById(id);
+    }
     ytPendingId = null;
     document.body.dataset.youtubePlayer = 'play-requested';
     return true;
