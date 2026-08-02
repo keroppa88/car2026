@@ -7544,8 +7544,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         + 'padding:10px 20px 8px;box-sizing:border-box;border:1px solid #666;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
         + 'rgba(77,35,0,.035) 1px,transparent 1px,transparent 4px),'
-        + 'linear-gradient(180deg,#ff9432 0%,#ff7f24 55%,#f8771f 100%);'
-        + 'box-shadow:inset 0 0 16px rgba(88,36,0,.12);color:#302d27;'
+        + 'linear-gradient(180deg,#ff8a2a 0%,#ff8527 55%,#fe8324 100%);'
+        + 'box-shadow:inset 0 0 48px rgba(88,36,0,.04);color:#302d27;'
         + 'font:900 19px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;';
 
       const makeWeatherMeter = (labelText, key) => {
@@ -7659,10 +7659,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       colorCodeRow.append(colorCodeLabel, weatherColorCodeEl);
       const weatherSliderFrame = document.createElement('div');
       weatherSliderFrame.style.cssText =
+        // 背景も影も置かず、外枠の面をそのまま見せる。ここに色を敷くと
+        // 上と左右にだけ外枠の色が残り、境目の線に見えてしまう。
         'display:flex;flex-direction:column;justify-content:center;gap:18px;'
         + 'min-height:160px;padding:14px 28px;border:0;box-sizing:border-box;'
-        + 'background:rgba(255,127,36,.56);'
-        + 'box-shadow:inset 0 0 16px rgba(92,39,0,.16),inset 0 1px rgba(255,191,106,.5);';
+        + 'background:transparent;';
       const colorTargetRow = document.createElement('div');
       colorTargetRow.style.cssText =
         'display:grid;grid-template-columns:1fr 1fr;gap:0;margin:0;'
@@ -7694,7 +7695,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
         + 'rgba(77,35,0,.035) 1px,transparent 1px,transparent 4px),'
-        + 'linear-gradient(180deg,#ff9432 0%,#ff7f24 55%,#f8771f 100%);'
+        + 'linear-gradient(180deg,#ff8a2a 0%,#ff8527 55%,#fe8324 100%);'
         + 'color:#302d27;font:900 19px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;';
       const makeWeatherSwitch = (labelText, handler) => {
         const button = document.createElement('button');
