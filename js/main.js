@@ -393,6 +393,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const WEATHER_DEFAULT_TOP_L = weatherTopHsl.l;
   const WEATHER_DEFAULT_HORIZON_L = weatherHorizonHsl.l;
   let weatherColorTarget = 'sky';       // sky / horizon
+  // 単色指定の曲だけtrue。空をグラデーションではなくベタ塗り2色にする。
+  let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
   let weatherCloudMode = 0;             // 0=なし、1=雲1、2=雲2
@@ -413,6 +415,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     topColor: { value: weatherTopColor.clone() },
     horizonColor: { value: weatherHorizonColor.clone() },
     horizonBandColor: { value: weatherHorizonColor.clone() },
+    // 1で空のグラデーションをやめ、地平線色と上空色のベタ塗り2色に分ける。
+    flatSky: { value: 0 },
   };
   const weatherSkyDome = new THREE.Mesh(
     new THREE.SphereGeometry(900, 40, 20),
@@ -421,14 +425,18 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       vertexShader: 'varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
       fragmentShader: `
         uniform vec3 topColor,horizonColor,horizonBandColor;
+        uniform float flatSky;
         varying vec3 vDir;
         void main(){
           float h=clamp(normalize(vDir).y,0.0,1.0);
           // 地平線色だけの帯を従来の半分へ縮小する。
           // 上空色へ到達するh=0.22は維持し、空いた分をグラデーションへ回す。
           float bandBlend=smoothstep(0.0,0.08,h);
-          vec3 lowColor=mix(horizonBandColor,horizonColor,bandBlend);
           float topBlend=smoothstep(0.0125,0.22,h);
+          // 単色はグラデーションをやめ、地平線色と上空色をベタ塗りで分離する。
+          bandBlend=mix(bandBlend,1.0,flatSky);
+          topBlend=mix(topBlend,step(0.11,h),flatSky);
+          vec3 lowColor=mix(horizonBandColor,horizonColor,bandBlend);
           gl_FragColor=vec4(mix(lowColor,topColor,topBlend),1.0);
         }`,
       side: THREE.BackSide,
@@ -460,6 +468,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherSkyUniforms.topColor.value.copy(top);
     weatherSkyUniforms.horizonColor.value.copy(horizon);
     weatherSkyUniforms.horizonBandColor.value.copy(horizon);
+    weatherSkyUniforms.flatSky.value = weatherFlatSky ? 1 : 0;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
     if (fog) fog.color.copy(horizon);
@@ -6802,9 +6811,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲名「」のあとに書かれた演出指示を読む。書式は musiclist.txt を参照。
   //   #rrggbb / 空#rrggbb : 空色    地平線#rrggbb : 地平線色
   //     どちらも色調(色相・彩度)だけを当て、明るさはユーザー設定のまま残す。
-  //   単色      : 地平線を空と同じ色にして、空のグラデーションを消す
+  //   単色      : 空のグラデーションをやめ、地平線色と上空色をベタ塗りで分ける
   //   音量±N%  : その曲の間だけ音量を上げ下げする
   //   開始N秒   : 頭からではなくN秒目から流す
+  //   夜        : 夜間モード(Nキー)にする
   //   星 / 雨   : 星・雨を出す
   //   雲1 / 雲2 : 2種類ある雲のどちらかを出す
   function parseMusicEffects(tail) {
@@ -6821,6 +6831,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         effects.startSeconds = Number(matched[1]);
       } else if (token === '単色') {
         effects.monotone = true;
+      } else if (token === '夜') {
+        effects.night = true;
       } else if (token === '星') {
         effects.stars = true;
       } else if (token === '雨') {
@@ -6912,11 +6924,18 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherRain = saved.rain;
     weatherStars = saved.stars;
     weatherCloudMode = saved.cloudMode;
+    weatherFlatSky = saved.flatSky;
     musicTrackVolumeScale = 1;
     applyMusicVolume();
-    applyWeatherSky();
+    if (nightMode !== saved.night) {
+      nightMode = saved.night;
+      applyNight();
+    } else {
+      applyWeatherSky();
+    }
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = '';
+    document.body.dataset.weatherFlatSky = String(weatherFlatSky);
   }
 
   function applyMusicEffects(effects) {
@@ -6927,6 +6946,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       horizonH: weatherHorizonHsl.h, horizonS: weatherHorizonHsl.s,
       horizonL: weatherHorizonHsl.l,
       rain: weatherRain, stars: weatherStars, cloudMode: weatherCloudMode,
+      flatSky: weatherFlatSky, night: nightMode,
     };
     // 色調(色相・彩度)だけを当てる。明るさはユーザーが決めた値のまま残す。
     const applyTone = (hex, hsl) => {
@@ -6937,13 +6957,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     };
     if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
     if (effects.horizonHex) applyTone(effects.horizonHex, weatherHorizonHsl);
-    // 単色は地平線を空へ完全に合わせる。明るさも揃えないと帯が残る。
-    // ただし地平線色が別に書いてある行はそちらを優先し、指定を殺さない。
-    if (effects.monotone && !effects.horizonHex) {
-      weatherHorizonHsl.h = weatherTopHsl.h;
-      weatherHorizonHsl.s = weatherTopHsl.s;
-      weatherHorizonHsl.l = weatherTopHsl.l;
-    }
+    // 単色は色をいじらず、空の描き方をベタ塗り2色へ切り替える。
+    if (effects.monotone) weatherFlatSky = true;
     if (effects.rain) weatherRain = true;
     if (effects.stars) weatherStars = true;
     if (effects.cloudMode) weatherCloudMode = effects.cloudMode;
@@ -6951,9 +6966,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       musicTrackVolumeScale = clamp(1 + effects.volumePercent / 100, 0, 2);
     }
     applyMusicVolume();
-    applyWeatherSky();
+    // 夜指定の曲は夜間モードへ。地表の明るさまで変わるのでapplyNightを通す。
+    if (effects.night && !nightMode) {
+      nightMode = true;
+      applyNight();
+    } else {
+      applyWeatherSky();
+    }
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = JSON.stringify(effects);
+    document.body.dataset.weatherFlatSky = String(weatherFlatSky);
   }
 
   function stopMusic() {
