@@ -429,13 +429,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         varying vec3 vDir;
         void main(){
           float h=clamp(normalize(vDir).y,0.0,1.0);
-          // 地平線色だけの帯を従来の半分へ縮小する。
-          // 上空色へ到達するh=0.22は維持し、空いた分をグラデーションへ回す。
-          float bandBlend=smoothstep(0.0,0.08,h);
-          float topBlend=smoothstep(0.0125,0.22,h);
+          // 地平線が占める範囲も、上空色へ混ざる範囲も、それぞれ半分にする。
+          // 上空色へ到達するのはh=0.11。境目の高さは従来の半分。
+          float bandBlend=smoothstep(0.0,0.04,h);
+          float topBlend=smoothstep(0.00625,0.11,h);
           // 単色はグラデーションをやめ、地平線色と上空色をベタ塗りで分離する。
           bandBlend=mix(bandBlend,1.0,flatSky);
-          topBlend=mix(topBlend,step(0.11,h),flatSky);
+          topBlend=mix(topBlend,step(0.055,h),flatSky);
           vec3 lowColor=mix(horizonBandColor,horizonColor,bandBlend);
           gl_FragColor=vec4(mix(lowColor,topColor,topBlend),1.0);
         }`,
