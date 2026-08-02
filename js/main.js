@@ -6930,7 +6930,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 曲ごとの演出は、当てる前の状態を控えておき、曲が終わったらそこへ戻す。
   // 曲をまたぐ時も一度戻してから次の曲の指示を当てるので、効果は積み重ならない。
   let musicEffectSaved = null;
-  // 今かかっている曲の指示。Music Skyの入切で当て直すために覚えておく。
+  // 今かかっている曲の指示。Music⇒Skyの入切で当て直すために覚えておく。
   let musicCurrentEffects = null;
   // 切ると、曲の空色指定で空が変わらなくなる(自分の調整だけが効く)。
   let musicSkyEnabled = true;
@@ -6980,7 +6980,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       hsl.h = tone.h;
       hsl.s = tone.s;
     };
-    // Music Skyを切っている間は、見え方に関わる指示を一切当てない。
+    // Music⇒Skyを切っている間は、見え方に関わる指示を一切当てない。
     // 音量だけは切っていても常に効かせる。
     if (musicSkyEnabled) {
       if (effects.skyHex) applyTone(effects.skyHex, weatherTopHsl);
@@ -7544,8 +7544,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         + 'padding:10px 20px 8px;box-sizing:border-box;border:1px solid #666;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
         + 'rgba(77,35,0,.035) 1px,transparent 1px,transparent 4px),'
-        + 'linear-gradient(180deg,#ff9432 0%,#ff7f24 55%,#f8771f 100%);'
-        + 'box-shadow:inset 0 0 16px rgba(88,36,0,.12);color:#302d27;'
+        + 'linear-gradient(180deg,#ff8a2a 0%,#ff8527 55%,#fe8324 100%);'
+        + 'box-shadow:inset 0 0 48px rgba(88,36,0,.04);color:#302d27;'
         + 'font:900 19px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;';
 
       const makeWeatherMeter = (labelText, key) => {
@@ -7659,10 +7659,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       colorCodeRow.append(colorCodeLabel, weatherColorCodeEl);
       const weatherSliderFrame = document.createElement('div');
       weatherSliderFrame.style.cssText =
+        // 背景も影も置かず、外枠の面をそのまま見せる。ここに色を敷くと
+        // 上と左右にだけ外枠の色が残り、境目の線に見えてしまう。
         'display:flex;flex-direction:column;justify-content:center;gap:18px;'
         + 'min-height:160px;padding:14px 28px;border:0;box-sizing:border-box;'
-        + 'background:rgba(255,127,36,.56);'
-        + 'box-shadow:inset 0 0 16px rgba(92,39,0,.16),inset 0 1px rgba(255,191,106,.5);';
+        + 'background:transparent;';
       const colorTargetRow = document.createElement('div');
       colorTargetRow.style.cssText =
         'display:grid;grid-template-columns:1fr 1fr;gap:0;margin:0;'
@@ -7694,7 +7695,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
         + 'rgba(77,35,0,.035) 1px,transparent 1px,transparent 4px),'
-        + 'linear-gradient(180deg,#ff9432 0%,#ff7f24 55%,#f8771f 100%);'
+        + 'linear-gradient(180deg,#ff8a2a 0%,#ff8527 55%,#fe8324 100%);'
         + 'color:#302d27;font:900 19px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;';
       const makeWeatherSwitch = (labelText, handler) => {
         const button = document.createElement('button');
@@ -7738,7 +7739,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           + 'border:2px solid #050505;background:transparent;'
           + 'font:900 24px "MS Gothic","Courier New",monospace;line-height:1;';
         const title = document.createElement('span');
-        title.textContent = 'Music Sky';
+        title.textContent = 'Music⇒Sky';
         title.style.cssText = 'font:900 18px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
           + 'white-space:nowrap;';
         button.append(box, title);
