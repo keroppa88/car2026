@@ -261,7 +261,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
       // V: 通常 → ボンネットカメラ → 視点のみ(車体非表示・マウスで視点操作) → 通常
-      if (k.toLowerCase() === 'v') bonnetView = (bonnetView + 1) % 3;
+      if (k.toLowerCase() === 'v') switchBonnetView();
       // 曲操作は運転中も有効。I/O で前の曲/次の曲。
       if (k.toLowerCase() === 'j') musicSeek(-10);
       if (k.toLowerCase() === 'k') musicTogglePlay();
@@ -1920,6 +1920,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   // ------------------------------------------------------------- camera ---
   const cam = { yaw: 0, pitch: 0.34, dist: 10, dragging: false, lastDrag: 0 };
+  // V相当の視点切替。ドラッグで振った向きはそのまま残し、
+  // 一周して通常カメラへ戻った時だけ既定の位置へ戻す。
+  function switchBonnetView() {
+    bonnetView = (bonnetView + 1) % 3;
+    if (bonnetView !== 0) return;
+    cam.yaw = 0;
+    cam.pitch = 0.34;
+    cam.dist = 10;
+    cam.lastDrag = 0;
+  }
   renderer.domElement.addEventListener('pointerdown', (e) => {
     AUDIO.unlock();
     if (demoActive) {
@@ -1941,7 +1951,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // ドラッグした場合はデモを継続し、カメラだけ動かす。
     // 4コースデモを終わるのは左上の「戻る」ボタンだけ(PC・スマホ共通)。
     if (demoActive && (DEMO_SEQUENCE_ACTIVE || CAR2_MODE) && demoTapMove < 12) {
-      if (DEMO_SEQUENCE_ACTIVE || IS_MOBILE) bonnetView = (bonnetView + 1) % 3;
+      if (DEMO_SEQUENCE_ACTIVE || IS_MOBILE) switchBonnetView();
       else exitCar2Demo();
     }
     demoTapMove = 1e9;
@@ -6676,7 +6686,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   // デモの演出によるカメラ視点(V相当)の強制切り替え。
   function switchDemoCameraView() {
-    bonnetView = (bonnetView + 1) % 3;
+    switchBonnetView();
     resetDemoEngineSound();
   }
 
@@ -9455,6 +9465,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     }
     bonnetBarsEl.style.display = bonnetView === 1 ? 'block' : 'none';
     document.body.dataset.bonnetView = String(bonnetView);
+    document.body.dataset.camYaw = cam.yaw.toFixed(3);
   }
 
   let __debugFreezeCam = false;   // 一時デバッグ: trueの間はupdateCameraが視点を上書きしない
@@ -9598,10 +9609,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
       sun.target.position.copy(player.pos);
       return;
-    } else if (!cam.dragging && performance.now() - cam.lastDrag > 1800) {
-      // ease back behind the car when the mouse is idle
-      cam.yaw += (0 - cam.yaw) * Math.min(1, dt * 1.2);
     }
+    // ドラッグで振ったカメラは、そのままの向きで置いておく。
+    // 車の背後へ戻すのは視点切替(V)のときだけ。
     const target = new THREE.Vector3(player.pos.x, player.pos.y + 1.4, player.pos.z);
     const a = player.heading + Math.PI + cam.yaw;
     const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
@@ -9681,7 +9691,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     if (!musicMode && !pauseMode && !(demoActive && CAR2_MODE)) {
       if (yBtn && !gpPrev.y) shiftDown = true;
       if (bBtn && !gpPrev.b) shiftUp = true;
-      if (xBtn && !gpPrev.x) bonnetView = (bonnetView + 1) % 3;
+      if (xBtn && !gpPrev.x) switchBonnetView();
       if (lbBtn && !gpPrev.lb && CAR2_MODE) {
         autoDrive = !autoDrive;
         autoIdx = -1;
