@@ -309,6 +309,11 @@
     background: rgba(255,255,255,0.15); border-radius: 4px;
     padding: 1px 6px; margin-right: 8px; font-family: monospace;
   }
+  /* 走行操作 / 画面・視点 / 音楽 / 一時停止 の区切り線 */
+  #help hr {
+    height: 0; margin: 6px 0; border: 0;
+    border-top: 1px solid rgba(255,255,255,0.28);
+  }
 
   /* デモ画面 */
   #demo { position: fixed; inset: 0; z-index: 6; display: none; pointer-events: none; }
@@ -515,23 +520,26 @@
   border-radius: 6px; display: none; pointer-events: none; z-index: 4;
   box-shadow: 0 2px 10px rgba(0,0,0,0.4);"></div>
 <div id="help" class="panel">
-  <div><b>A</b>ブレーキ</div>
   <div><b>S</b>アクセル</div>
-  <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
+  <div><b>A</b>ブレーキ</div>
   <div><b>← / →</b>ハンドル</div>
-  <div><b>SPACE</b>サイドブレーキ(ドリフト)</div>
-  <div><b>ドラッグ</b>カメラ視点&nbsp;&nbsp;<b>ホイール</b>ズーム</div>
-  <div><b>M</b>音楽選択</div>
-  <div><b>N</b>夜間 ON/OFF</div>
-  <div><b>P</b>車両・街灯 ON/OFF</div>
-  <div><b>V</b>カメラ切替(後方/ボンネット/視点のみ)</div>
+  <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
+  <div><b>SPACE</b>ドリフト(サイドブレーキ)</div>
   <div><b>F</b>バックミラー</div>
+  <hr>
   <div><b>Y</b>自動運転</div>
-  <div><b>G</b>表示の切替</div>
-  <div><b>J/K/L</b>曲を戻す/停止/送る</div>
-  <div><b>I/O</b>前の曲/次の曲</div>
+  <div><b>B</b>エンジン音切替</div>
+  <div><b>G</b>情報表示切替</div>
+  <div><b>V</b>カメラ切替</div>
+  <div><b>マウス</b>カメラ視点操作</div>
+  <div><b>N</b>夜間モード ON/OFF</div>
+  <div><b>P</b>ライト ON/OFF</div>
+  <hr>
+  <div><b>M</b>音楽・気象コントロール</div>
+  <div><b>J/K/L</b>◀◀ / ■▶ / ▶▶</div>
+  <div><b>I/O</b>前の曲 / 次の曲</div>
+  <hr>
   <div><b>ESC</b>一時停止</div>
-  <div><b>B</b>音声切替(エンジン/車内/無音)</div>
 </div>
 
 <script type="importmap">
