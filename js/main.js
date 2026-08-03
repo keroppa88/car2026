@@ -637,8 +637,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       scene.add(system);
       return system;
     };
+    // 粒は同数の2系統。半分を小さくして、大小の混在で奥行きを出す。
     weatherStarSystem = makeStarSystem(1.65);
-    weatherSmallStarSystem = makeStarSystem(1.65);
+    weatherSmallStarSystem = makeStarSystem(1.0);
   }
 
   function updateWeatherEffects(dt) {
