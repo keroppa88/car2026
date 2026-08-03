@@ -288,13 +288,6 @@
   }
   #drift.on { opacity: 1; text-shadow: 0 0 8px rgba(255,120,40,0.8); }
 
-  /* アクセルの素早い2度押しで入る速度維持 */
-  #cruise {
-    margin-top: 2px; text-align: right; font-size: 14px; font-weight: 700;
-    letter-spacing: 3px; color: #4fd8a6; opacity: 0; transition: opacity 120ms;
-  }
-  #cruise.on { opacity: 1; text-shadow: 0 0 8px rgba(60,220,160,0.75); }
-
   /* 接近中の交差点の信号(自分の進行方向) */
   #signal {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
@@ -526,7 +519,6 @@
     <span>R</span><span>N</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
   </div>
   <div id="drift">DRIFT!</div>
-  <div id="cruise">CRUISE</div>
 </div>
 
 <div id="mirror-frame" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
@@ -541,7 +533,6 @@
   <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
   <div><b>SPACE</b>ドリフト(サイドブレーキ)</div>
   <div><b>Y</b>自動運転</div>
-  <div><b>D</b>クルージング機能(速度維持)</div>
   <div class="help-head">画面・視点</div>
   <div><b>B</b>エンジン音切替</div>
   <div><b>G</b>情報表示切替</div>
