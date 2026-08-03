@@ -288,6 +288,13 @@
   }
   #drift.on { opacity: 1; text-shadow: 0 0 8px rgba(255,120,40,0.8); }
 
+  /* アクセルの素早い2度押しで入る速度維持 */
+  #cruise {
+    margin-top: 2px; text-align: right; font-size: 14px; font-weight: 700;
+    letter-spacing: 3px; color: #4fd8a6; opacity: 0; transition: opacity 120ms;
+  }
+  #cruise.on { opacity: 1; text-shadow: 0 0 8px rgba(60,220,160,0.75); }
+
   /* 接近中の交差点の信号(自分の進行方向) */
   #signal {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
@@ -309,9 +316,15 @@
     background: rgba(255,255,255,0.15); border-radius: 4px;
     padding: 1px 6px; margin-right: 8px; font-family: monospace;
   }
-  /* 走行操作 / 画面・視点 / 音楽 / 一時停止 の区切り線 */
+  /* 走行操作 / 画面・視点 / 音楽 の見出しと、一時停止の前の区切り線 */
+  #help .help-head {
+    margin: 9px 0 3px; padding-bottom: 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.28);
+    color: #9fd8f2; font-size: 11.5px; font-weight: 700; letter-spacing: 2px;
+  }
+  #help .help-head:first-child { margin-top: 0; }
   #help hr {
-    height: 0; margin: 6px 0; border: 0;
+    height: 0; margin: 8px 0 6px; border: 0;
     border-top: 1px solid rgba(255,255,255,0.28);
   }
 
@@ -513,6 +526,7 @@
     <span>R</span><span>N</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
   </div>
   <div id="drift">DRIFT!</div>
+  <div id="cruise">CRUISE</div>
 </div>
 
 <div id="mirror-frame" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
@@ -520,21 +534,23 @@
   border-radius: 6px; display: none; pointer-events: none; z-index: 4;
   box-shadow: 0 2px 10px rgba(0,0,0,0.4);"></div>
 <div id="help" class="panel">
+  <div class="help-head">走行操作</div>
   <div><b>S</b>アクセル</div>
   <div><b>A</b>ブレーキ</div>
   <div><b>← / →</b>ハンドル</div>
   <div><b>↑ / ↓</b>シフトアップ / ダウン</div>
   <div><b>SPACE</b>ドリフト(サイドブレーキ)</div>
-  <div><b>F</b>バックミラー</div>
-  <hr>
   <div><b>Y</b>自動運転</div>
+  <div><b>D</b>クルージング機能(速度維持)</div>
+  <div class="help-head">画面・視点</div>
   <div><b>B</b>エンジン音切替</div>
   <div><b>G</b>情報表示切替</div>
   <div><b>V</b>カメラ切替</div>
   <div><b>マウス</b>カメラ視点操作</div>
+  <div><b>F</b>バックミラー</div>
   <div><b>N</b>夜間モード ON/OFF</div>
   <div><b>P</b>ライト ON/OFF</div>
-  <hr>
+  <div class="help-head">音楽</div>
   <div><b>M</b>音楽・気象コントロール</div>
   <div><b>J/K/L</b>◀◀ / ■▶ / ▶▶</div>
   <div><b>I/O</b>前の曲 / 次の曲</div>

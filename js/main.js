@@ -209,6 +209,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // ------------------------------------------------------------- input ----
   const keys = {};
   let shiftUp = false, shiftDown = false;
+  // D で入る速度維持(クルージング)。nullなら解除中。
+  const CRUISE_MIN_SPEED = 2;         // これ以下では入らない(m/s)
+  // 目標speedちょうどを追わず、約3km/h下がるまで待ってから踏み直す。
+  // 毎フレームのアクセル入切をやめ、速度計と排気音を落ち着かせるため。
+  const CRUISE_BAND = 3 / 3.6;
+  let cruiseSpeed = null;
+  let cruiseThrottling = false;
   window.addEventListener('keydown', (e) => {
     AUDIO.unlock();
     const k = e.key;
@@ -260,6 +267,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         refreshLampVisibility();
       }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
+      // D: その時の速度を保つ。もう一度押すと解除。
+      if (k.toLowerCase() === 'd') toggleCruise();
       // V: 通常 → ボンネットカメラ → 視点のみ(車体非表示・マウスで視点操作) → 通常
       if (k.toLowerCase() === 'v') switchBonnetView();
       // 曲操作は運転中も有効。I/O で前の曲/次の曲。
@@ -298,6 +307,24 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     keys[k.toLowerCase()] = true;
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+  // 車の進行方向の速度(m/s)。速度維持の目標と判定に使う。
+  function playerForwardSpeed() {
+    return player.vel.x * Math.sin(player.heading) + player.vel.z * Math.cos(player.heading);
+  }
+  function setCruise(speed) {
+    cruiseSpeed = speed;
+    cruiseThrottling = false;
+    document.body.dataset.cruiseSpeed = speed === null ? '' : speed.toFixed(2);
+    if (cruiseEl) cruiseEl.classList.toggle('on', speed !== null);
+  }
+  function toggleCruise() {
+    if (cruiseSpeed !== null) { setCruise(null); return; }
+    const forward = playerForwardSpeed();
+    // 止まっている時や後退中には入らない。
+    if (forward < CRUISE_MIN_SPEED) return;
+    setCruise(forward);
+  }
 
   // ------------------------------------------------------------ helpers ---
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -1648,6 +1675,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const rpmEl = document.getElementById('rpm-fill');
   const gearEls = Array.from(document.querySelectorAll('#gears span'));
   const driftEl = document.getElementById('drift');
+  const cruiseEl = document.getElementById('cruise');
 
   // ------------------------------------------------------- tyre effects ---
   const SKID_MAX = 460;
@@ -8219,7 +8247,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       brake = !!keys['a'] || gamepadState.brake;         // A / LT = ブレーキ
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
+      if (cruiseSpeed !== null) {
+        // 自分でアクセルかブレーキを踏んだら、運転者の意思を優先して解除する。
+        if (throttle || brake) setCruise(null);
+        // ドリフト中は速度が落ちるに任せ、離したらDを押した時の速度まで戻す。
+        else if (!handbrake) {
+          const forward = playerForwardSpeed();
+          if (forward < cruiseSpeed - CRUISE_BAND) cruiseThrottling = true;
+          else if (forward >= cruiseSpeed) cruiseThrottling = false;
+          throttle = cruiseThrottling;
+        }
+      }
     }
+    // 自動運転やデモへ移る時は速度維持を持ち越さない。
+    if (cruiseSpeed !== null && (demoActive || autoDrive)) setCruise(null);
 
     // steering (less lock at speed, extra lock while sliding for counter-steer)
     const speedAlong = player.vel.x * Math.sin(player.heading) + player.vel.z * Math.cos(player.heading);
