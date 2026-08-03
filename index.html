@@ -903,13 +903,14 @@
       location.href = `${location.pathname}?${demoQuery}`;
     };
 
-    // タイトルを6秒操作しないと、4コースを巡るアトラクトデモを開始する。
-    // デモからタイトルへ戻った直後も、再び6秒放置すれば同じループへ入る。
+    // タイトルを60秒操作しないと、4コースを巡るアトラクトデモを開始する。
+    // デモからタイトルへ戻った直後も、再び60秒放置すれば同じループへ入る。
     // スマホは「デモ画面」ボタンのタッチでだけデモへ入る（勝手に遷移しない）。
+    const DEMO_IDLE_MS = 60000;
     const armDemoIdleTimer = () => {
       clearTimeout(demoIdleTimer);
       if (IS_MOBILE || starting || guideOpen) return;
-      demoIdleTimer = setTimeout(goToDemoShell, 6000);
+      demoIdleTimer = setTimeout(goToDemoShell, DEMO_IDLE_MS);
     };
 
     const openGuide = () => {
