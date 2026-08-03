@@ -3866,6 +3866,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const CAR2_CPU_RETIRE_BEHIND_M = 700;
   // スタート時に置いておく3台の位置。1台目にすぐ追いつける距離から並べる。
   const CAR2_CPU_HEAD_START_M = [90, 220, 380];
+  // デモの首都高だけは「CPU車がいる」と見て分かる並びにする。
+  // 遅い2台を手前へ置いて追い抜くところを見せ、速い1台に後ろから抜かせる。
+  // デモ車はコーナーでドリフトする分だけ道なりの進みが遅く、ランクどおりの
+  // 速度では前の2台に追いつけないので、この2台だけ速度を落として置く。
+  const CAR2_CPU_DEMO_START = [
+    { rank: 'C', along: 15, kmh: 60 },    // 前方・近め: すぐ追いついて抜く
+    { rank: 'B', along: 30, kmh: 62 },    // 前方・遠め: 続けてもう1台抜く
+    { rank: 'S', along: -120 },           // 後方: 速い車が追い抜いていく
+  ];
   // 同ランクでもリストの上の行ほど速くする量（1行あたり）。
   const CAR2_CPU_LIST_SPEED_STEP = 0.005;
   const CAR2_CPU_TRAFFIC_MAX = CAR2_CPU_POOL_MAX;
@@ -3971,16 +3980,43 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const bCars = shuffleArray(car2CpuPool.filter((ai) => ai.rank === 'B'));
     const cCars = shuffleArray(car2CpuPool.filter((ai) => ai.rank === 'C'));
     const fallback = [...car2CpuPool].sort((left, right) => left.base - right.base);
-    const headStartPool = [];
-    while (headStartPool.length < CAR2_CPU_HEAD_START_M.length) {
-      const next = (headStartPool.length % 2 === 0 ? bCars : cCars).shift()
-        ?? bCars.shift() ?? cCars.shift() ?? fallback.shift();
-      if (!next) break;
-      if (!headStartPool.includes(next)) headStartPool.push(next);
+    if (DEMO_SEQUENCE_ACTIVE) {
+      // デモは見せるための並び。指定のランクを前後の決まった位置へ置く。
+      const byRank = {
+        B: bCars,
+        C: cCars,
+        S: shuffleArray(car2CpuPool.filter((ai) => ai.rank === 'S')),
+      };
+      const used = new Set();
+      const takeUnused = (list) => {
+        while (list.length) {
+          const next = list.shift();
+          if (!used.has(next)) return next;
+        }
+        return null;
+      };
+      for (const { rank, along, kmh } of CAR2_CPU_DEMO_START) {
+        const ai = takeUnused(byRank[rank] ?? []) ?? takeUnused(fallback);
+        if (!ai) continue;
+        used.add(ai);
+        if (kmh) {
+          ai.speedKmh = kmh;
+          ai.base = kmh / 3.6;
+        }
+        activateCar2Cpu(ai, along);   // v は base から入るので速度指定はこの前に
+      }
+    } else {
+      const headStartPool = [];
+      while (headStartPool.length < CAR2_CPU_HEAD_START_M.length) {
+        const next = (headStartPool.length % 2 === 0 ? bCars : cCars).shift()
+          ?? bCars.shift() ?? cCars.shift() ?? fallback.shift();
+        if (!next) break;
+        if (!headStartPool.includes(next)) headStartPool.push(next);
+      }
+      CAR2_CPU_HEAD_START_M.forEach((distance, i) => {
+        if (headStartPool[i]) activateCar2Cpu(headStartPool[i], distance + Math.random() * 40);
+      });
     }
-    CAR2_CPU_HEAD_START_M.forEach((distance, i) => {
-      if (headStartPool[i]) activateCar2Cpu(headStartPool[i], distance + Math.random() * 40);
-    });
     car2CpuAppearIn = nextCar2CpuAppearInterval();
     document.body.dataset.tokyoCpuPoolSize = String(car2CpuPool.length);
     document.body.dataset.tokyoCpuSpeedsKmh =
@@ -9369,6 +9405,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // 各車が今どのレーンにいるか（中心線からの横位置）。
       document.body.dataset.tokyoCpuLaneShifts =
         tokyoCpus.map((ai) => (ai.laneShift ?? 0).toFixed(1)).join(',');
+      document.body.dataset.tokyoCpuActiveKmh =
+        tokyoCpus.map((ai) => (ai.v * 3.6).toFixed(0)).join(',');
+      // ユーザー車から見た前後距離（＋が前方）。
+      if (car2CpuRoute) {
+        const anchor = nearestRouteIndexTo(car2CpuRoute, player.pos.x, player.pos.z);
+        document.body.dataset.tokyoCpuAlongM =
+          tokyoCpus.map((ai) => car2AlongFromPlayer(ai.idx, anchor).toFixed(0)).join(',');
+      }
       document.body.dataset.tokyoCpuNextAppearIn = car2CpuAppearIn.toFixed(1);
       document.body.dataset.tokyoPlayerAvgSpeedKmh = car2PlayerAvgSpeedKmh.toFixed(0);
       document.body.dataset.tokyoCpuAppearScale = car2AppearSpeedScale().toFixed(2);
