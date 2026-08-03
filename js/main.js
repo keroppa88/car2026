@@ -211,7 +211,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let shiftUp = false, shiftDown = false;
   // D で入る速度維持(クルージング)。nullなら解除中。
   const CRUISE_MIN_SPEED = 2;         // これ以下では入らない(m/s)
+  // 目標speedちょうどを追わず、約3km/h下がるまで待ってから踏み直す。
+  // 毎フレームのアクセル入切をやめ、速度計と排気音を落ち着かせるため。
+  const CRUISE_BAND = 3 / 3.6;
   let cruiseSpeed = null;
+  let cruiseThrottling = false;
   window.addEventListener('keydown', (e) => {
     AUDIO.unlock();
     const k = e.key;
@@ -310,6 +314,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
   function setCruise(speed) {
     cruiseSpeed = speed;
+    cruiseThrottling = false;
     document.body.dataset.cruiseSpeed = speed === null ? '' : speed.toFixed(2);
     if (cruiseEl) cruiseEl.classList.toggle('on', speed !== null);
   }
@@ -8246,7 +8251,12 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         // 自分でアクセルかブレーキを踏んだら、運転者の意思を優先して解除する。
         if (throttle || brake) setCruise(null);
         // ドリフト中は速度が落ちるに任せ、離したらDを押した時の速度まで戻す。
-        else if (!handbrake) throttle = playerForwardSpeed() < cruiseSpeed;
+        else if (!handbrake) {
+          const forward = playerForwardSpeed();
+          if (forward < cruiseSpeed - CRUISE_BAND) cruiseThrottling = true;
+          else if (forward >= cruiseSpeed) cruiseThrottling = false;
+          throttle = cruiseThrottling;
+        }
       }
     }
     // 自動運転やデモへ移る時は速度維持を持ち越さない。
