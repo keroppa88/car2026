@@ -4150,17 +4150,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     activateCar2Cpu(waiting[Math.floor(Math.random() * waiting.length)]);
   }
 
-  // すれ違い・追い抜かれの音。相手との距離が縮まってから広がりに転じた瞬間、
-  // つまり最接近を過ぎたところで鳴らす。
-  // 前後どちらへ抜けたかは位置ではなく相対速度で決める。ドリフト中や
+  // すれ違い・追い抜かれの音。海岸線だけで鳴らす（ユーザー指定）。
+  // 相手との距離が縮まってから広がりに転じた瞬間＝最接近を過ぎたところで鳴らす。
+  // こちらが抜いたのか抜かれたのかは位置ではなく相対速度で見る。ドリフト中や
   // フレームレートが落ちた時はヘディングが1フレームで大きく振れるので、
   // 進行方向へ投影した前後関係は当てにならない（後方の車で誤って鳴った）。
   const CPU_PASS_NEAR_M = 12;         // 最接近がこれより遠ければ鳴らさない
   const CPU_PASS_MIN_REL_MS = 2.5;    // 相対速度がこれ未満なら並走とみなす
   const CPU_PASS_COOLDOWN_S = 2;      // 同じ車で鳴らし直すまでの間隔
+  const CPU_PASS_SOUND_COURSE = COURSE_KEY === 'sea';
   let cpuPassSoundTotal = 0;
   let cpuOvertakenSoundTotal = 0;
   function updateCpuPassSounds() {
+    if (!CPU_PASS_SOUND_COURSE) return;
     // 進行方向は速度から取る。止まりかけの時だけヘディングへ落とす。
     const speed = Math.hypot(player.vel.x, player.vel.z);
     const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
@@ -9522,7 +9524,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         }
       }
     }
-    // すれ違い音・抜かれた音は全コース共通。
+    // すれ違い音・抜かれた音を鳴らした回数（海岸線のみ）。
     document.body.dataset.cpuPassSounds = String(cpuPassSoundTotal);
     document.body.dataset.cpuOvertakenSounds = String(cpuOvertakenSoundTotal);
     if (CAR2_MODE) {
