@@ -4120,6 +4120,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const CAR_SHADOW = { w: 2.1, h: 4.6 };
   // kabu(スーパーカブ)はバイク。影はタイヤ一個分くらいの小さく細いものに。
   const BIKE_SHADOW = { w: 0.75, h: 2.0 };
+  // 普通車の vox は縦80ボクセル。track.vox のように縦100の車もあるので、
+  // 影と当たり判定の長さは決め打ちにせず、この80との比で伸ばす。
+  // 比べるのは編集グリッドの大きさ。車体は枠いっぱいには詰まっていないため、
+  // 実際に置かれたボクセルで測ると車種ごとに数十cmずれてしまう。
+  const CAR_VOX_LENGTH = 80;
+  // 当たり判定の長方形の半分の長さ（普通車2.1 = 実車4.8mよりやや小さい4.2m）。
+  const CAR_COLLIDE_HALF_LENGTH = 2.1;
+  const BIKE_COLLIDE_HALF_LENGTH = 0.9;
+  // vox の縦(=前後)ボクセル数を普通車と比べた倍率。分からない車は1倍。
+  const bodyLengthRatio = (mesh) => {
+    const voxLength = mesh?.userData?.voxSize?.y;
+    return voxLength > 0 ? voxLength / CAR_VOX_LENGTH : 1;
+  };
   let blobTex = null;
   function makeBlobShadow(size) {
     if (!blobTex) {
@@ -4153,7 +4166,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     tilt.add(mesh);
     const group = new THREE.Group();
     group.add(tilt);
-    group.add(makeBlobShadow(bike ? BIKE_SHADOW : CAR_SHADOW));
+    // 影と当たり判定は車体の実寸に合わせる。長い車で影や判定が足りなくならない。
+    // バイクは車と形が違うので、専用の値をそのまま使う。
+    const lengthRatio = bike ? 1 : bodyLengthRatio(mesh);
+    group.userData.collideHalfLength =
+      (bike ? BIKE_COLLIDE_HALF_LENGTH : CAR_COLLIDE_HALF_LENGTH) * lengthRatio;
+    const shadow = bike ? BIKE_SHADOW : CAR_SHADOW;
+    group.add(makeBlobShadow(
+      lengthRatio === 1 ? shadow : { w: shadow.w, h: shadow.h * lengthRatio }
+    ));
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
     addCarLights(tilt, bike, lightProfile);
     group.userData.nightLights = tilt.userData.nightLights;
@@ -8387,7 +8408,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         // 判定すると見えない車に衝突する。
         if (ai.appearManaged && !ai.active) continue;
         // 普通車2.1×4.6mに対し1.9×4.2mの長方形（やや小さめ＝ユーザー指定）。
-        const halfL = ai.kabu ? 0.9 : 2.1;
+        // 長さは車体の実寸に合わせてあるので、track.vox など長い車では長くなる。
+        const halfL = ai.group.userData.collideHalfLength
+          ?? (ai.kabu ? BIKE_COLLIDE_HALF_LENGTH : CAR_COLLIDE_HALF_LENGTH);
         const halfW = ai.kabu ? 0.32 : 0.95;
         if (collideCarRect(
           ai.group.position.x, ai.group.position.z, ai.heading, halfL, halfW
