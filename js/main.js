@@ -4358,16 +4358,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return cpuVoxUrls(FALLBACK_CPU_VOX_FILES);
   }
 
-  // 車種ごとの見た目の調整。track.vox は車体が細いので横だけ広げる（ユーザー指定）。
-  // 幅を広げた分は voxSize にも反映するので、接地影も当たり判定も一緒に追随する。
-  const VOX_WIDTH_SCALE = new Map([['track.vox', 1.4]]);
-  function applyVoxWidthScale(url, mesh) {
+  // 車種ごとの見た目の調整。track.vox は車体が小さいので丸ごと拡大する（ユーザー指定）。
+  // 縦・横・高さを同じ倍率で広げる。広げた分は voxSize にも反映するので、
+  // 接地影も当たり判定も一緒に追随する。
+  const VOX_MODEL_SCALE = new Map([['track.vox', 1.4]]);
+  function applyVoxModelScale(url, mesh) {
     const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
-    const scale = VOX_WIDTH_SCALE.get(file);
+    const scale = VOX_MODEL_SCALE.get(file);
     // clone される前の1体だけを広げる。以降の clone はこの形を受け継ぐ。
     if (!scale || !mesh?.geometry) return mesh;
-    mesh.geometry.scale(scale, 1, 1);
-    if (mesh.userData.voxSize) mesh.userData.voxSize.x *= scale;
+    // 原点(車体の底面・中心)を基準に拡大するので、接地したまま大きくなる。
+    mesh.geometry.scale(scale, scale, scale);
+    const vox = mesh.userData.voxSize;
+    if (vox) { vox.x *= scale; vox.y *= scale; vox.z *= scale; }
     return mesh;
   }
 
@@ -4378,7 +4381,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     });
     return (await Promise.all(nonPlayerUrls.map(async (url) => {
       try {
-        return { url, mesh: applyVoxWidthScale(url, await VOX.load(url, { scale: VOXEL_SCALE })) };
+        return { url, mesh: applyVoxModelScale(url, await VOX.load(url, { scale: VOXEL_SCALE })) };
       } catch (error) {
         console.warn(`CPU car skipped because it could not be loaded: ${url}`, error);
         return null;
