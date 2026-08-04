@@ -4150,6 +4150,53 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     activateCar2Cpu(waiting[Math.floor(Math.random() * waiting.length)]);
   }
 
+  // すれ違い・追い抜かれの音。相手との距離が縮まってから広がりに転じた瞬間、
+  // つまり最接近を過ぎたところで鳴らす。
+  // 前後どちらへ抜けたかは位置ではなく相対速度で決める。ドリフト中や
+  // フレームレートが落ちた時はヘディングが1フレームで大きく振れるので、
+  // 進行方向へ投影した前後関係は当てにならない（後方の車で誤って鳴った）。
+  const CPU_PASS_NEAR_M = 12;         // 最接近がこれより遠ければ鳴らさない
+  const CPU_PASS_MIN_REL_MS = 2.5;    // 相対速度がこれ未満なら並走とみなす
+  const CPU_PASS_COOLDOWN_S = 2;      // 同じ車で鳴らし直すまでの間隔
+  let cpuPassSoundTotal = 0;
+  let cpuOvertakenSoundTotal = 0;
+  function updateCpuPassSounds() {
+    // 進行方向は速度から取る。止まりかけの時だけヘディングへ落とす。
+    const speed = Math.hypot(player.vel.x, player.vel.z);
+    const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
+    const fz = speed > 1 ? player.vel.z / speed : Math.cos(player.heading);
+    const now = performance.now() / 1000;
+    for (const ai of aiCars) {
+      const visible = ai.group.visible && (!ai.appearManaged || ai.active);
+      if (!visible) { ai.passDist = undefined; ai.passClosing = false; continue; }
+      const dx = ai.pos.x - player.pos.x, dz = ai.pos.z - player.pos.z;
+      const distance = Math.hypot(dx, dz);
+      const previous = ai.passDist;
+      ai.passDist = distance;
+      if (previous === undefined) continue;
+      if (distance < previous) { ai.passClosing = true; continue; }   // まだ近づいている
+      if (!ai.passClosing) continue;                                  // 離れ続けているだけ
+      ai.passClosing = false;                                         // 最接近を過ぎた
+      if (previous > CPU_PASS_NEAR_M) continue;                       // 遠くを通っただけ
+      if (now - (ai.passSoundAt || -Infinity) < CPU_PASS_COOLDOWN_S) continue;
+      // 相手の速度は相手の向きへ向いているものとして、進行方向の相対速度を出す。
+      const aiSpeed = ai.v ?? 0;
+      const relative = (player.vel.x - Math.sin(ai.heading) * aiSpeed) * fx
+        + (player.vel.z - Math.cos(ai.heading) * aiSpeed) * fz;
+      if (Math.abs(relative) < CPU_PASS_MIN_REL_MS) continue;
+      ai.passSoundAt = now;
+      const overtaken = relative < 0;             // 相手のほうが速い＝抜かれた
+      AUDIO.passBy({
+        overtaken,
+        relSpeed: Math.abs(relative),
+        side: Math.sign(dx * fz - dz * fx) || 1,
+        nearness: 1 - Math.min(1, previous / CPU_PASS_NEAR_M),
+      });
+      if (overtaken) cpuOvertakenSoundTotal++;
+      else cpuPassSoundTotal++;
+    }
+  }
+
   // --------------------------------------------------------------- init ---
   // Soft contact shadow that sits directly under a car at all times —
   // the directional shadow alone lands beside the body when the sun is low.
@@ -8793,6 +8840,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     });
 
     updateInteriorSound(player.vel.length() * 3.6);
+    updateCpuPassSounds();
 
     // HUD
     speedEl.textContent = Math.round(player.vel.length() * 3.6);
@@ -9474,6 +9522,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         }
       }
     }
+    // すれ違い音・抜かれた音は全コース共通。
+    document.body.dataset.cpuPassSounds = String(cpuPassSoundTotal);
+    document.body.dataset.cpuOvertakenSounds = String(cpuOvertakenSoundTotal);
     if (CAR2_MODE) {
       // 首都高速CPUの走行状態。震え・固まりは最小移動距離が伸びないことで分かる。
       const tokyoCpus = aiCars.filter((ai) => ai.driftOnSharpCurve && ai.active);
