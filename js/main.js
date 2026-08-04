@@ -3338,7 +3338,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         base,
         wps: route,
         idx: next,
-        radius: carRadiusFor(false),
+        radius: carRadiusFor(false, group.group),
         kabu: false,
         cornerSlowdown: 0.25,
         turnRate: 3.2,
@@ -3774,7 +3774,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         base,
         wps,
         idx: next,
-        radius: carRadiusFor(bike),
+        radius: carRadiusFor(bike, group.group),
         kabu: bike,
         cornerSlowdown: 0.45,
         turnRate: 2.8,
@@ -3942,7 +3942,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         pos: new THREE.Vector3(wps[0].x, wps[0].y ?? 0, wps[0].z),
         heading: 0,
         v: base, base,
-        wps, idx: 1, radius: carRadiusFor(bike), kabu: bike,
+        wps, idx: 1, radius: carRadiusFor(bike, g.group), kabu: bike,
         cornerSlowdown: 0.55,
         turnRate: 3.4,
         car2Loop: true,
@@ -4125,14 +4125,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 比べるのは編集グリッドの大きさ。車体は枠いっぱいには詰まっていないため、
   // 実際に置かれたボクセルで測ると車種ごとに数十cmずれてしまう。
   const CAR_VOX_LENGTH = 80;
-  // 当たり判定の長方形の半分の長さ（普通車2.1 = 実車4.8mよりやや小さい4.2m）。
+  const CAR_VOX_WIDTH = 36;
+  // 当たり判定の長方形の半分の長さ・幅
+  //（普通車2.1×0.95 = 実車4.8×2.16mよりやや小さい4.2×1.9m）。
   const CAR_COLLIDE_HALF_LENGTH = 2.1;
+  const CAR_COLLIDE_HALF_WIDTH = 0.95;
   const BIKE_COLLIDE_HALF_LENGTH = 0.9;
-  // vox の縦(=前後)ボクセル数を普通車と比べた倍率。分からない車は1倍。
-  const bodyLengthRatio = (mesh) => {
-    const voxLength = mesh?.userData?.voxSize?.y;
-    return voxLength > 0 ? voxLength / CAR_VOX_LENGTH : 1;
+  const BIKE_COLLIDE_HALF_WIDTH = 0.32;
+  // vox の縦(=前後)・横のボクセル数を普通車と比べた倍率。分からない車は1倍。
+  const voxRatio = (mesh, axis, standard) => {
+    const size = mesh?.userData?.voxSize?.[axis];
+    return size > 0 ? size / standard : 1;
   };
+  const bodyLengthRatio = (mesh) => voxRatio(mesh, 'y', CAR_VOX_LENGTH);
+  const bodyWidthRatio = (mesh) => voxRatio(mesh, 'x', CAR_VOX_WIDTH);
   let blobTex = null;
   function makeBlobShadow(size) {
     if (!blobTex) {
@@ -4166,15 +4172,18 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     tilt.add(mesh);
     const group = new THREE.Group();
     group.add(tilt);
-    // 影と当たり判定は車体の実寸に合わせる。長い車で影や判定が足りなくならない。
+    // 影と当たり判定は車体の実寸に合わせる。長い車・広い車で足りなくならない。
     // バイクは車と形が違うので、専用の値をそのまま使う。
     const lengthRatio = bike ? 1 : bodyLengthRatio(mesh);
+    const widthRatio = bike ? 1 : bodyWidthRatio(mesh);
     group.userData.collideHalfLength =
       (bike ? BIKE_COLLIDE_HALF_LENGTH : CAR_COLLIDE_HALF_LENGTH) * lengthRatio;
+    group.userData.collideHalfWidth =
+      (bike ? BIKE_COLLIDE_HALF_WIDTH : CAR_COLLIDE_HALF_WIDTH) * widthRatio;
     const shadow = bike ? BIKE_SHADOW : CAR_SHADOW;
-    group.add(makeBlobShadow(
-      lengthRatio === 1 ? shadow : { w: shadow.w, h: shadow.h * lengthRatio }
-    ));
+    const shadowSize = { w: shadow.w * widthRatio, h: shadow.h * lengthRatio };
+    group.userData.bodyRadius = shadowSize.w / 2;
+    group.add(makeBlobShadow(shadowSize));
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
     addCarLights(tilt, bike, lightProfile);
     group.userData.nightLights = tilt.userData.nightLights;
@@ -4183,7 +4192,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   // 当たり判定の半径は接地影の横幅の半分に合わせる(実車幅とほぼ一致)。
-  const carRadiusFor = (bike) => (bike ? BIKE_SHADOW.w : CAR_SHADOW.w) / 2;
+  // makeCarGroup が車体の幅から出した値を使い、無い時だけ普通車の値へ落とす。
+  const carRadiusFor = (bike, group) =>
+    group?.userData.bodyRadius ?? (bike ? BIKE_SHADOW.w : CAR_SHADOW.w) / 2;
 
   // タイトル画面の選択に応じてユーザー車を切り替える。
   // Volvo 240 は追加済みの vox/volvo240.vox を使用する。
@@ -4347,6 +4358,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return cpuVoxUrls(FALLBACK_CPU_VOX_FILES);
   }
 
+  // 車種ごとの見た目の調整。track.vox は車体が細いので横だけ広げる（ユーザー指定）。
+  // 幅を広げた分は voxSize にも反映するので、接地影も当たり判定も一緒に追随する。
+  const VOX_WIDTH_SCALE = new Map([['track.vox', 1.4]]);
+  function applyVoxWidthScale(url, mesh) {
+    const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
+    const scale = VOX_WIDTH_SCALE.get(file);
+    // clone される前の1体だけを広げる。以降の clone はこの形を受け継ぐ。
+    if (!scale || !mesh?.geometry) return mesh;
+    mesh.geometry.scale(scale, 1, 1);
+    if (mesh.userData.voxSize) mesh.userData.voxSize.x *= scale;
+    return mesh;
+  }
+
   async function loadCpuCars(urls) {
     const nonPlayerUrls = urls.filter((url) => {
       const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
@@ -4354,7 +4378,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     });
     return (await Promise.all(nonPlayerUrls.map(async (url) => {
       try {
-        return { url, mesh: await VOX.load(url, { scale: VOXEL_SCALE }) };
+        return { url, mesh: applyVoxWidthScale(url, await VOX.load(url, { scale: VOXEL_SCALE })) };
       } catch (error) {
         console.warn(`CPU car skipped because it could not be loaded: ${url}`, error);
         return null;
@@ -6114,7 +6138,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           base: 9 + i * 1.5,
           wps,
           idx: 1,
-          radius: carRadiusFor(false),
+          radius: carRadiusFor(false, group.group),
         });
       });
       if (CAR2_MODE) {
@@ -6290,7 +6314,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         group: g.group, tilt: g.tilt,
         pos: new THREE.Vector3(px, 0, pz),
         heading: Math.atan2(b.x - a.x, b.z - a.z), v: 0, base,
-        wps, idx: (s + 1) % wps.length, radius: carRadiusFor(bike),
+        wps, idx: (s + 1) % wps.length, radius: carRadiusFor(bike, g.group),
       });
     }
 
@@ -8214,7 +8238,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       group: g.group, tilt: g.tilt,
       pos: new THREE.Vector3(a.x, 0, a.z),
       heading: Math.atan2(b.x - a.x, b.z - a.z), v: 0, base: 30,   // 30 m/s = 108 km/h
-      wps, idx: (s + 1) % wps.length, radius: carRadiusFor(bike), criminal: true,
+      wps, idx: (s + 1) % wps.length, radius: carRadiusFor(bike, g.group), criminal: true,
     };
     aiCars.push(crim);
     mission.active = crim;
@@ -8411,7 +8435,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         // 長さは車体の実寸に合わせてあるので、track.vox など長い車では長くなる。
         const halfL = ai.group.userData.collideHalfLength
           ?? (ai.kabu ? BIKE_COLLIDE_HALF_LENGTH : CAR_COLLIDE_HALF_LENGTH);
-        const halfW = ai.kabu ? 0.32 : 0.95;
+        const halfW = ai.group.userData.collideHalfWidth
+          ?? (ai.kabu ? BIKE_COLLIDE_HALF_WIDTH : CAR_COLLIDE_HALF_WIDTH);
         if (collideCarRect(
           ai.group.position.x, ai.group.position.z, ai.heading, halfL, halfW
         )) {
