@@ -245,6 +245,10 @@ function voxModule() {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    // 元の編集グリッドの大きさ(voxel数)。車体は枠いっぱいには詰まっていないので、
+    // 車の大きさは実際に置かれたボクセルではなくこの枠で比べる。
+    const first = data.models[data.instances[0]?.model ?? 0];
+    if (first) mesh.userData.voxSize = { ...first.size };
     return mesh;
   }
 
