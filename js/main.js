@@ -914,7 +914,28 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   // 車の前後にランプの光球を付ける(夜だけ表示)。
   // 海岸線CPUは対向車を早く認識できるよう、前照灯だけ二層の遠距離仕様にする。
-  function addCarLights(group, bike, lightProfile = 'default') {
+  // トラック(track.vox)の灯火位置。モデルの黄色・赤のランプに合わせた座標で、
+  // 拡大後のメートル。VOX_MODEL_TWEAKS の scale とセットで実測している。
+  // z は他のCPU車と同じく車体の面より外側へ出す。面と同じ位置に置くと
+  // 光球の手前半分が車体に隠れ、ランプではなく背後がにじんで見えるため。
+  // 低いランプの高さでは車体前端が3.99、高いランプの高さでは3.07、
+  // テールの高さでは後端が-4.07（実測）。そこから0.2m外へ出す。
+  const TRUCK_LAMPS = {
+    // 前面の黄色。低い位置に2つ、高い位置に3つ。
+    low: { y: 0.84, z: 4.19, xs: [-1.18, 1.18], size: 0.42, opacity: 0.9 },
+    high: { y: 2.44, z: 3.27, xs: [-0.59, 0, 0.59], size: 0.3, opacity: 0.85 },
+    // 背面の赤テールランプ2つ。
+    tail: { y: 0.76, z: -4.27, xs: [-0.71, 0.71], size: 0.6, opacity: 0.95 },
+  };
+  // 黄色は光っていると分かるよう、彩度を落として明るめの黄にする。
+  // 光球テクスチャ(255,244,200)に乗算されるので、指定色より暖色寄りに出る。
+  const TRUCK_LAMP_COLOR = 0xffe86a;
+  // 灯火の発光量。淡い外光を広げ、明るい芯を重ねて3倍ほどの光量にする。
+  const TRUCK_LAMP_HALO_SIZE = 3.2;
+  const TRUCK_LAMP_HALO_OPACITY = 0.5;
+  const TRUCK_LAMP_CORE_SIZE = 1.45;
+
+  function addCarLights(group, bike, lightProfile = 'default', lampLayout = 'car') {
     const lights = new THREE.Group();
     lights.visible = vehicleLightsShouldBeVisible();
     const seaCpuBoost = lightProfile === 'seaCpuBoost';
@@ -949,6 +970,22 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // ボンネット側へ光がかからないようにする)
       headLamp(0, 0.72, 1.05, 0.3, 0.85);
       lamp(tailGlowTex, 0xff2018, 0, 0.6, -0.95, 0.48, 0.95);
+    } else if (lampLayout === 'truck') {
+      // トラックの灯火。淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
+      const truckLamp = (tex, color, x, y, z, s, opacity) => {
+        lamp(tex, color, x, y, z, s * TRUCK_LAMP_HALO_SIZE, opacity * TRUCK_LAMP_HALO_OPACITY);
+        lamp(tex, color, x, y, z, s * TRUCK_LAMP_CORE_SIZE, 1);
+      };
+      // 前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
+      for (const row of [TRUCK_LAMPS.low, TRUCK_LAMPS.high]) {
+        for (const x of row.xs) {
+          truckLamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z, row.size, row.opacity);
+        }
+      }
+      const tail = TRUCK_LAMPS.tail;
+      for (const x of tail.xs) {
+        truckLamp(tailGlowTex, 0xff2018, x, tail.y, tail.z, tail.size, tail.opacity);
+      }
     } else {
       for (const side of [-0.72, 0.72]) {
         headLamp(side, 0.6, 2.45, 0.32, 0.85);
@@ -4185,7 +4222,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     group.userData.bodyRadius = shadowSize.w / 2;
     group.add(makeBlobShadow(shadowSize));
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
-    addCarLights(tilt, bike, lightProfile);
+    addCarLights(tilt, bike, lightProfile, mesh.userData.lampLayout);
     group.userData.nightLights = tilt.userData.nightLights;
     scene.add(group);
     return { group, tilt };
@@ -4359,18 +4396,24 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   // 車種ごとの見た目の調整。track.vox は車体が小さいので丸ごと拡大する（ユーザー指定）。
-  // 縦・横・高さを同じ倍率で広げる。広げた分は voxSize にも反映するので、
+  // scale は縦・横・高さを同じ倍率で広げる。広げた分は voxSize にも反映するので、
   // 接地影も当たり判定も一緒に追随する。
-  const VOX_MODEL_SCALE = new Map([['track.vox', 1.4]]);
-  function applyVoxModelScale(url, mesh) {
+  // lamps は灯火の並び。TRUCK_LAMPS の座標は scale 適用後のモデルで実測している。
+  const VOX_MODEL_TWEAKS = new Map([
+    ['track.vox', { scale: 1.4, lamps: 'truck' }],
+  ]);
+  function applyVoxModelTweaks(url, mesh) {
     const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
-    const scale = VOX_MODEL_SCALE.get(file);
-    // clone される前の1体だけを広げる。以降の clone はこの形を受け継ぐ。
-    if (!scale || !mesh?.geometry) return mesh;
-    // 原点(車体の底面・中心)を基準に拡大するので、接地したまま大きくなる。
-    mesh.geometry.scale(scale, scale, scale);
-    const vox = mesh.userData.voxSize;
-    if (vox) { vox.x *= scale; vox.y *= scale; vox.z *= scale; }
+    const tweak = VOX_MODEL_TWEAKS.get(file);
+    // clone される前の1体だけを直す。以降の clone はこの形を受け継ぐ。
+    if (!tweak || !mesh?.geometry) return mesh;
+    if (tweak.lamps) mesh.userData.lampLayout = tweak.lamps;
+    if (tweak.scale) {
+      // 原点(車体の底面・中心)を基準に拡大するので、接地したまま大きくなる。
+      mesh.geometry.scale(tweak.scale, tweak.scale, tweak.scale);
+      const vox = mesh.userData.voxSize;
+      if (vox) { vox.x *= tweak.scale; vox.y *= tweak.scale; vox.z *= tweak.scale; }
+    }
     return mesh;
   }
 
@@ -4381,7 +4424,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     });
     return (await Promise.all(nonPlayerUrls.map(async (url) => {
       try {
-        return { url, mesh: applyVoxModelScale(url, await VOX.load(url, { scale: VOXEL_SCALE })) };
+        return { url, mesh: applyVoxModelTweaks(url, await VOX.load(url, { scale: VOXEL_SCALE })) };
       } catch (error) {
         console.warn(`CPU car skipped because it could not be loaded: ${url}`, error);
         return null;
