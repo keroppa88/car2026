@@ -971,20 +971,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       headLamp(0, 0.72, 1.05, 0.3, 0.85);
       lamp(tailGlowTex, 0xff2018, 0, 0.6, -0.95, 0.48, 0.95);
     } else if (lampLayout === 'truck') {
-      // トラックの灯火。淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
-      const truckLamp = (tex, color, x, y, z, s, opacity) => {
-        lamp(tex, color, x, y, z, s * TRUCK_LAMP_HALO_SIZE, opacity * TRUCK_LAMP_HALO_OPACITY);
-        lamp(tex, color, x, y, z, s * TRUCK_LAMP_CORE_SIZE, 1);
-      };
       // 前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
+      // 淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
       for (const row of [TRUCK_LAMPS.low, TRUCK_LAMPS.high]) {
         for (const x of row.xs) {
-          truckLamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z, row.size, row.opacity);
+          lamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z,
+            row.size * TRUCK_LAMP_HALO_SIZE, row.opacity * TRUCK_LAMP_HALO_OPACITY);
+          lamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z,
+            row.size * TRUCK_LAMP_CORE_SIZE, 1);
         }
       }
+      // テールランプは他のCPU車と同じ光量(一層・0.6/0.95)にする。
       const tail = TRUCK_LAMPS.tail;
       for (const x of tail.xs) {
-        truckLamp(tailGlowTex, 0xff2018, x, tail.y, tail.z, tail.size, tail.opacity);
+        lamp(tailGlowTex, 0xff2018, x, tail.y, tail.z, tail.size, tail.opacity);
       }
     } else {
       for (const side of [-0.72, 0.72]) {
