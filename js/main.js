@@ -923,7 +923,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 背面の赤テールランプ2つ。
     tail: { y: 0.76, z: -4.07, xs: [-0.71, 0.71], size: 0.6, opacity: 0.95 },
   };
-  const TRUCK_LAMP_COLOR = 0xffcf3a;
+  // 黄色は光っていると分かるよう、彩度を落として明るめの黄にする。
+  // 光球テクスチャ(255,244,200)に乗算されるので、指定色より暖色寄りに出る。
+  const TRUCK_LAMP_COLOR = 0xffe86a;
+  // 灯火の発光量。淡い外光を広げ、明るい芯を重ねて3倍ほどの光量にする。
+  const TRUCK_LAMP_HALO_SIZE = 3.2;
+  const TRUCK_LAMP_HALO_OPACITY = 0.5;
+  const TRUCK_LAMP_CORE_SIZE = 1.45;
 
   function addCarLights(group, bike, lightProfile = 'default', lampLayout = 'car') {
     const lights = new THREE.Group();
@@ -961,15 +967,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       headLamp(0, 0.72, 1.05, 0.3, 0.85);
       lamp(tailGlowTex, 0xff2018, 0, 0.6, -0.95, 0.48, 0.95);
     } else if (lampLayout === 'truck') {
-      // トラックは前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
+      // トラックの灯火。淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
+      const truckLamp = (tex, color, x, y, z, s, opacity) => {
+        lamp(tex, color, x, y, z, s * TRUCK_LAMP_HALO_SIZE, opacity * TRUCK_LAMP_HALO_OPACITY);
+        lamp(tex, color, x, y, z, s * TRUCK_LAMP_CORE_SIZE, 1);
+      };
+      // 前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
       for (const row of [TRUCK_LAMPS.low, TRUCK_LAMPS.high]) {
         for (const x of row.xs) {
-          lamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z, row.size, row.opacity);
+          truckLamp(headGlowTex, TRUCK_LAMP_COLOR, x, row.y, row.z, row.size, row.opacity);
         }
       }
       const tail = TRUCK_LAMPS.tail;
       for (const x of tail.xs) {
-        lamp(tailGlowTex, 0xff2018, x, tail.y, tail.z, tail.size, tail.opacity);
+        truckLamp(tailGlowTex, 0xff2018, x, tail.y, tail.z, tail.size, tail.opacity);
       }
     } else {
       for (const side of [-0.72, 0.72]) {
