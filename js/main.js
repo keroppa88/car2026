@@ -450,11 +450,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   weatherSkyDome.frustumCulled = false;
   scene.add(weatherSkyDome);
 
-  // 霧。車2台分(9.6m)から先を濃くしていき、45mで完全に白飛びさせる。
+  // 霧。指数フォグにして、ユーザー車のすぐ手前から奥へ切れ目なく濃くする。
+  // 「ここから霧」という線形フォグの境目が出ないので、薄い霧が手前にも漂う。
+  // 濃さの目安: 10m=1.7% / 20m=6.6% / 45m=29% / 80m=65% / 150m=95%
+  // 直前の線形フォグ(9.6mから45mで100%)に比べ、手前は極めて薄く、
+  // 45m地点はおよそ3割＝ピークは半分以下、遠方も薄くなる。
   // 色は applyWeatherSky で空の色から作る（空の光が霧に乱反射している想定）。
-  const WEATHER_FOG_NEAR = 4.8 * 2;
-  const WEATHER_FOG_FAR = 45;
-  const weatherFogInstance = new THREE.Fog(SKY, WEATHER_FOG_NEAR, WEATHER_FOG_FAR);
+  const WEATHER_FOG_DENSITY = 0.013;
+  const weatherFogInstance = new THREE.FogExp2(SKY, WEATHER_FOG_DENSITY);
   // 霧を切った時に戻す、コース本来のフォグ。読み込み式の4マップでは null。
   let courseBaseFog = null;
   function applyWeatherFog() {
@@ -4169,19 +4172,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     activateCar2Cpu(waiting[Math.floor(Math.random() * waiting.length)]);
   }
 
-  // すれ違い・追い抜かれの音。海岸線だけで鳴らす（ユーザー指定）。
-  // 相手との距離が縮まってから広がりに転じた瞬間＝最接近を過ぎたところで鳴らす。
-  // こちらが抜いたのか抜かれたのかは位置ではなく相対速度で見る。ドリフト中や
-  // フレームレートが落ちた時はヘディングが1フレームで大きく振れるので、
-  // 進行方向へ投影した前後関係は当てにならない（後方の車で誤って鳴った）。
-  const CPU_PASS_NEAR_M = 12;         // 最接近がこれより遠ければ鳴らさない
-  const CPU_PASS_MIN_REL_MS = 2.5;    // 相対速度がこれ未満なら並走とみなす
-  const CPU_PASS_COOLDOWN_S = 2;      // 同じ車で鳴らし直すまでの間隔
-  const CPU_PASS_SOUND_COURSE = COURSE_KEY === 'sea';
+  // 追い抜き・追い越された時の音。速度差10km/h以上で、真横に並ぶくらい
+  // 近くを通った時だけ鳴らす。常時鳴る走行音は持たない（ユーザー指定）。
+  // 最接近は前フレームとの線分から解析的に出す。毎フレームの距離だけを見ると、
+  // 速い相手はフレーム間で通り過ぎてしまい、最接近を大きく取り逃がす。
+  const CPU_PASS_MISS_M = 9;              // 最接近がこれより離れていたら鳴らさない
+  const CPU_PASS_MIN_REL_MS = 10 / 3.6;   // 速度差10km/h未満は鳴らさない
+  const CPU_PASS_COOLDOWN_S = 2;          // 同じ車で鳴らし直すまでの間隔
   let cpuPassSoundTotal = 0;
   let cpuOvertakenSoundTotal = 0;
   function updateCpuPassSounds() {
-    if (!CPU_PASS_SOUND_COURSE) return;
     // 進行方向は速度から取る。止まりかけの時だけヘディングへ落とす。
     const speed = Math.hypot(player.vel.x, player.vel.z);
     const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
@@ -4189,75 +4189,38 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const now = performance.now() / 1000;
     for (const ai of aiCars) {
       const visible = ai.group.visible && (!ai.appearManaged || ai.active);
-      if (!visible) { ai.passDist = undefined; ai.passClosing = false; continue; }
+      if (!visible) { ai.passRelX = undefined; continue; }
       const dx = ai.pos.x - player.pos.x, dz = ai.pos.z - player.pos.z;
-      const distance = Math.hypot(dx, dz);
-      const previous = ai.passDist;
-      ai.passDist = distance;
-      if (previous === undefined) continue;
-      if (distance < previous) { ai.passClosing = true; continue; }   // まだ近づいている
-      if (!ai.passClosing) continue;                                  // 離れ続けているだけ
-      ai.passClosing = false;                                         // 最接近を過ぎた
-      if (previous > CPU_PASS_NEAR_M) continue;                       // 遠くを通っただけ
+      const previousX = ai.passRelX, previousZ = ai.passRelZ;
+      ai.passRelX = dx; ai.passRelZ = dz;
+      if (previousX === undefined) continue;
+      // このフレームで相対位置が動いた向き。
+      const moveX = dx - previousX, moveZ = dz - previousZ;
+      const moved = Math.hypot(moveX, moveZ);
+      if (moved < 1e-4) continue;
+      // 前フレームで近づいていて、今フレームで離れ始めた区間だけが最接近を跨ぐ。
+      if (previousX * moveX + previousZ * moveZ > 0) continue;
+      if (dx * moveX + dz * moveZ < 0) continue;
+      // 線分とユーザー車の距離＝実際にどれだけ近くを通ったか。
+      const miss = Math.abs(previousX * moveZ - previousZ * moveX) / moved;
+      if (miss > CPU_PASS_MISS_M) continue;
       if (now - (ai.passSoundAt || -Infinity) < CPU_PASS_COOLDOWN_S) continue;
-      // 相手の速度は相手の向きへ向いているものとして、進行方向の相対速度を出す。
+      // 相手の速度は相手の向きへ向いているものとして、進行方向の速度差を出す。
       const aiSpeed = ai.v ?? 0;
       const relative = (player.vel.x - Math.sin(ai.heading) * aiSpeed) * fx
         + (player.vel.z - Math.cos(ai.heading) * aiSpeed) * fz;
       if (Math.abs(relative) < CPU_PASS_MIN_REL_MS) continue;
       ai.passSoundAt = now;
-      const overtaken = relative < 0;             // 相手のほうが速い＝抜かれた
       AUDIO.passBy({
-        overtaken,
         relSpeed: Math.abs(relative),
-        side: Math.sign(dx * fz - dz * fx) || 1,
-        nearness: 1 - Math.min(1, previous / CPU_PASS_NEAR_M),
+        side: Math.sign(previousX * fz - previousZ * fx) || 1,
+        nearness: 1 - Math.min(1, miss / CPU_PASS_MISS_M),
       });
-      if (overtaken) cpuOvertakenSoundTotal++;
+      if (relative < 0) cpuOvertakenSoundTotal++;   // 相手のほうが速い＝抜かれた
       else cpuPassSoundTotal++;
+      document.body.dataset.cpuPassMissM = miss.toFixed(1);
+      document.body.dataset.cpuPassRelKmh = (Math.abs(relative) * 3.6).toFixed(0);
     }
-  }
-
-  // 近くを走るCPU車の走行音。首都高とインディで、距離に応じて鳴らす。
-  // 真横に並んだ時がいちばん大きく、前後それぞれ車3台ぶん(合わせて6台ぶん)
-  // 離れると聞こえなくなる。
-  const CPU_TRAFFIC_RANGE_M = 4.8 * 3;
-  const CPU_TRAFFIC_SOUND_COURSE = CAR2_MODE || COURSE_KEY === 'indy';
-  function updateCpuTrafficSound() {
-    if (!CPU_TRAFFIC_SOUND_COURSE) return;
-    let level = 0;
-    let nearest = null;
-    let nearestDistance = Infinity;
-    for (const ai of aiCars) {
-      const visible = ai.group.visible && (!ai.appearManaged || ai.active);
-      if (!visible) continue;
-      const distance = Math.hypot(ai.pos.x - player.pos.x, ai.pos.z - player.pos.z);
-      if (distance >= CPU_TRAFFIC_RANGE_M) continue;
-      // 近いほど急に大きくなるよう、距離に対して曲げる。
-      level += (1 - distance / CPU_TRAFFIC_RANGE_M) ** 1.5;
-      if (distance < nearestDistance) { nearestDistance = distance; nearest = ai; }
-    }
-    level = Math.min(1, level);
-    if (!nearest) {
-      AUDIO.setCpuTraffic({ level: 0 });
-      document.body.dataset.cpuTrafficLevel = '0.00';
-      return;
-    }
-    // 左右は速度の向きを基準にする。ヘディングはドリフト中に大きく振れる。
-    const speed = Math.hypot(player.vel.x, player.vel.z);
-    const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
-    const fz = speed > 1 ? player.vel.z / speed : Math.cos(player.heading);
-    const dx = nearest.pos.x - player.pos.x, dz = nearest.pos.z - player.pos.z;
-    AUDIO.setCpuTraffic({
-      level,
-      speedKmh: (nearest.v ?? 0) * 3.6,
-      side: clamp((dx * fz - dz * fx) / 4, -1, 1),
-      truck: nearest.group.userData.bodyKind === 'truck',
-    });
-    document.body.dataset.cpuTrafficLevel = level.toFixed(2);
-    document.body.dataset.cpuTrafficNearestM = nearestDistance.toFixed(1);
-    document.body.dataset.cpuTrafficTruck =
-      String(nearest.group.userData.bodyKind === 'truck');
   }
 
   // --------------------------------------------------------------- init ---
@@ -8914,7 +8877,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
     updateInteriorSound(player.vel.length() * 3.6);
     updateCpuPassSounds();
-    updateCpuTrafficSound();
 
     // HUD
     speedEl.textContent = Math.round(player.vel.length() * 3.6);
@@ -10023,7 +9985,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       if (musicMode || pauseMode) {
         // 音楽選択・一時停止中は運転(シミュレーション)を停止。音はアイドルへ。
         AUDIO.update(dt, { gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false, speed: 0 });
-        AUDIO.setCpuTraffic({ level: 0 });   // 止めている間は周りの車の音も消す
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);
