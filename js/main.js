@@ -7860,9 +7860,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           + 'border:2px solid #050505;background:transparent;'
           + 'font:900 24px "MS Gothic","Courier New",monospace;line-height:1;';
         const title = document.createElement('span');
-        title.textContent = 'Music⇒Sky';
+        // 2行表示。改行と行頭の全角空白をそのまま出すため white-space:pre。
+        title.textContent = 'Music\n　→Sky Color';
         title.style.cssText = 'font:900 18px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
-          + 'white-space:nowrap;';
+          + 'white-space:pre;line-height:1.15;';
         button.append(box, title);
         button.renderToggle = (active) => {
           button.setAttribute('aria-checked', String(active));
