@@ -396,6 +396,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 単色指定の曲だけtrue。空をグラデーションではなくベタ塗り2色にする。
   let weatherFlatSky = false;
   let weatherRain = false;
+  let weatherFog = false;
   let weatherStars = false;
   let weatherCloudMode = 0;             // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
@@ -449,10 +450,25 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   weatherSkyDome.frustumCulled = false;
   scene.add(weatherSkyDome);
 
+  // 霧。車2台分(9.6m)から先を濃くしていき、45mで完全に白飛びさせる。
+  // 色は applyWeatherSky で空の色から作る（空の光が霧に乱反射している想定）。
+  const WEATHER_FOG_NEAR = 4.8 * 2;
+  const WEATHER_FOG_FAR = 45;
+  const weatherFogInstance = new THREE.Fog(SKY, WEATHER_FOG_NEAR, WEATHER_FOG_FAR);
+  // 霧を切った時に戻す、コース本来のフォグ。読み込み式の4マップでは null。
+  let courseBaseFog = null;
+  function applyWeatherFog() {
+    // 霧が入っていない間は、その時のフォグを「本来の状態」として覚えておく。
+    if (scene.fog !== weatherFogInstance) courseBaseFog = scene.fog;
+    scene.fog = weatherFog ? weatherFogInstance : courseBaseFog;
+    document.body.dataset.weatherFog = String(weatherFog);
+  }
+
   function currentWeatherHsl() {
     return weatherColorTarget === 'horizon' ? weatherHorizonHsl : weatherTopHsl;
   }
   function applyWeatherSky() {
+    applyWeatherFog();          // 色を決める前に、今どのフォグを使うかを確定させる
     weatherTopColor.setHSL(weatherTopHsl.h, weatherTopHsl.s, weatherTopHsl.l);
     weatherHorizonColor.setHSL(
       weatherHorizonHsl.h,
@@ -478,7 +494,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    if (fog) fog.color.copy(horizon);
+    // 霧の色は空の光が乱反射したものとして、上空と地平線を混ぜた色にする。
+    // コース本来の遠景フォグは従来どおり地平線の色のまま。
+    if (fog === weatherFogInstance) fog.color.copy(horizon).lerp(top, 0.5);
+    else if (fog) fog.color.copy(horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
@@ -7028,6 +7047,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let weatherSkyColorButton = null;
   let weatherHorizonColorButton = null;
   let weatherRainButton = null;
+  let weatherFogButton = null;
   let weatherStarButton = null;
   let weatherMusicSkyButton = null;
   let weatherCloudButton = null;
@@ -7564,11 +7584,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherSatInput?.renderMeter(hsl.s);
     weatherLightInput?.renderMeter(brightnessPercentage / 100);
     weatherRainButton?.renderToggle(weatherRain);
+    weatherFogButton?.renderToggle(weatherFog);
     weatherStarButton?.renderToggle(weatherStars);
     weatherMusicSkyButton?.renderToggle(musicSkyEnabled);
     document.body.dataset.weatherMusicSky = String(musicSkyEnabled);
     weatherCloudButton?.renderCloud(weatherCloudMode);
     document.body.dataset.weatherRain = String(weatherRain);
+    document.body.dataset.weatherFog = String(weatherFog);
     document.body.dataset.weatherStars = String(weatherStars);
     document.body.dataset.weatherCloudMode = String(weatherCloudMode);
     document.body.dataset.weatherPeriod = nightMode ? 'night' : 'day';
@@ -7904,7 +7926,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
       const weatherButtons = document.createElement('div');
       weatherButtons.style.cssText =
-        'display:grid;flex:1;grid-template-columns:1.25fr 1fr 1fr 1.25fr;gap:10px;'
+        'display:grid;flex:1;grid-template-columns:1.15fr 1fr 1fr 1fr 1.15fr;gap:8px;'
         + 'min-height:62px;margin:8px 0 0;padding:4px 8px;'
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
@@ -7973,6 +7995,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       weatherMusicSkyButton = makeMusicSkyCheckbox();
       weatherRainButton = makeWeatherSwitch('☂ Rain', () => {
         weatherRain = !weatherRain;
+        refreshWeatherControls();
+      });
+      weatherFogButton = makeWeatherSwitch('░ Fog', () => {
+        weatherFog = !weatherFog;
+        applyWeatherSky();      // フォグの入替えと、霧の色の作り直し
         refreshWeatherControls();
       });
       weatherStarButton = makeWeatherSwitch('★ Star', () => {
