@@ -44,6 +44,14 @@ function audioModule() {
   let rpmSmooth = 0;
   let roughPhase = 0;
   let revN = 0;              // free-rev state for neutral
+  let cpuOsc, cpuOsc2, cpuSub, cpuSubGain, cpuFilt, cpuGain, cpuPan, cpuNoiseFilter;
+  // 近くのCPU車の走行音。真横に並んだ時でこの音量。
+  // 環境音なので本来はもっと控えめでよい。まず聞こえることを確かめるための
+  // 暫定値で、実際に走って聴いてから下げる想定（ここだけ直せば全体が変わる）。
+  const CPU_TRAFFIC_PEAK = 0.12;
+  let noiseBuf = null;       // すれ違い音で使い回すノイズ
+  let passSounds = 0;        // 鳴らした回数(デバッグ表示用)
+  let lastPassAt = 0;        // 直前に鳴らした時刻。連発を抑える
 
   function init() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -103,6 +111,7 @@ function audioModule() {
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    noiseBuf = buf;                 // すれ違い音でも同じノイズを使い回す
     const noise = ctx.createBufferSource();
     noise.buffer = buf;
     noise.loop = true;
@@ -135,6 +144,49 @@ function audioModule() {
     bp2.connect(screechGain);
     screechGain.connect(master);
     noise.start();
+
+    // ----- 近くのCPU車の走行音 -----
+    // 唸りが出るよう、わずかにずらした2音を重ねる。距離に応じて音量を上げ下げする。
+    cpuOsc = ctx.createOscillator();
+    cpuOsc.type = 'sawtooth';
+    cpuOsc.frequency.value = 90;
+    cpuOsc2 = ctx.createOscillator();
+    cpuOsc2.type = 'sawtooth';
+    cpuOsc2.frequency.value = 91.3;
+    cpuFilt = ctx.createBiquadFilter();
+    cpuFilt.type = 'lowpass';
+    cpuFilt.frequency.value = 600;
+    // ロードノイズぶんの帯域ノイズ。ノイズ源はタイヤ音と共用する。
+    cpuNoiseFilter = ctx.createBiquadFilter();
+    cpuNoiseFilter.type = 'bandpass';
+    cpuNoiseFilter.frequency.value = 900;
+    cpuNoiseFilter.Q.value = 1.2;
+    const cpuNoiseGain = ctx.createGain();
+    cpuNoiseGain.gain.value = 0.5;
+    // トラック用の低音。乗用車ではほとんど鳴らさず、トラックで大きく出す。
+    cpuSub = ctx.createOscillator();
+    cpuSub.type = 'sine';
+    cpuSub.frequency.value = 45;
+    cpuSubGain = ctx.createGain();
+    cpuSubGain.gain.value = 0;
+    cpuGain = ctx.createGain();
+    cpuGain.gain.value = 0;
+    cpuOsc.connect(cpuFilt);
+    cpuOsc2.connect(cpuFilt);
+    cpuSub.connect(cpuSubGain);
+    cpuSubGain.connect(cpuFilt);
+    noise.connect(cpuNoiseFilter);
+    cpuNoiseFilter.connect(cpuNoiseGain);
+    cpuNoiseGain.connect(cpuFilt);
+    cpuFilt.connect(cpuGain);
+    if (ctx.createStereoPanner) {
+      cpuPan = ctx.createStereoPanner();
+      cpuGain.connect(cpuPan);
+      cpuPan.connect(master);
+    } else {
+      cpuGain.connect(master);
+    }
+    cpuOsc.start(); cpuOsc2.start(); cpuSub.start();
 
     // wobble so the screech "sings" instead of hissing statically
     const lfo = ctx.createOscillator();
@@ -326,11 +378,111 @@ function audioModule() {
   // 鳴っている音を全て止め、次のユーザー操作(unlock)まで無音へ戻す。
   // ページ再読込で音が消えるのと同じ状態を、再読込せずに作る。
   // デモ画面が「ドラッグで鳴り始めたエンジン音」を消すために使う。
+  // すれ違い・追い抜かれの風切り音。1回ごとに使い捨てのノイズ源をつくる。
+  //   overtaken: false = こちらが抜く/対向とすれ違う, true = 後ろから抜かれる
+  //   relSpeed : 相対速度(m/s)。大きいほど短く鋭く、音量も上がる
+  //   side     : 相手が通る側 -1=左 / +1=右。音が左右へ流れる
+  //   nearness : 1=すぐ横 0=判定の端。距離による減衰
+  // 近づく間は高く、通り過ぎると低くなる(ドップラー)。
+  function passBy(opts = {}) {
+    if (!ctx || ctx.state !== 'running' || muted || !noiseBuf) return false;
+    const t = ctx.currentTime;
+    // 何台もまとめて入れ替わった時に音が重なって潰れないよう間隔を空ける。
+    if (t - lastPassAt < 0.16) return false;
+    lastPassAt = t;
+
+    const overtaken = !!opts.overtaken;
+    const relSpeed = Math.min(60, Math.max(3, opts.relSpeed || 12));
+    const side = Math.max(-1, Math.min(1, opts.side ?? 0));
+    const near = Math.max(0, Math.min(1, opts.nearness ?? 1));
+    // 速いほど一瞬で通り過ぎる。抜かれる側は近づく時間が長いので少し伸ばす。
+    const dur = (overtaken ? 1.15 : 0.7) * (1 - Math.min(0.45, relSpeed / 140));
+    const peakAt = t + dur * (overtaken ? 0.62 : 0.45);
+
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    // 再生位置をずらして、毎回同じ音にならないようにする。
+    const offset = Math.random() * (noiseBuf.duration - dur - 0.05);
+
+    // 通過前は高く、通過後は低い。相対速度が大きいほど落差も大きい。
+    const base = 240 + relSpeed * 16;
+    const shift = 1 + Math.min(0.5, relSpeed / 70);
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 0.9;
+    band.frequency.setValueAtTime(base * shift, t);
+    band.frequency.exponentialRampToValueAtTime(base / shift, t + dur);
+
+    // 耳につくシャーッとした高域を落として、風切りらしくする。
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(base * shift * 3.2, t);
+    lp.frequency.exponentialRampToValueAtTime(base * 1.6, t + dur);
+
+    const gain = ctx.createGain();
+    const peak = (0.05 + Math.min(1, relSpeed / 26) * 0.2) * near;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), peakAt);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    let tail = gain;
+    if (ctx.createStereoPanner) {
+      const pan = ctx.createStereoPanner();
+      // 相手のいる側から入ってきて、反対側へ抜けていく。
+      pan.pan.setValueAtTime(side * 0.85, t);
+      pan.pan.linearRampToValueAtTime(-side * 0.85, t + dur);
+      gain.connect(pan);
+      tail = pan;
+    }
+    src.connect(band);
+    band.connect(lp);
+    lp.connect(gain);
+    tail.connect(master);
+    src.start(t, Math.max(0, offset));
+    src.stop(t + dur + 0.05);
+    src.onended = () => { try { src.disconnect(); tail.disconnect(); } catch (_) { /* 済 */ } };
+    passSounds++;
+    return true;
+  }
+
+  // 近くを走るCPU車の音。毎フレーム呼んで、距離から出した level で上げ下げする。
+  //   level    : 0=聞こえない 1=真横に並んだ状態
+  //   speedKmh : 相手の速度。音の高さに使う
+  //   side     : -1=左 0=正面 +1=右
+  //   truck    : true でトラックの音。低く重いディーゼル寄りにする
+  function setCpuTraffic(state) {
+    if (!ctx || ctx.state !== 'running' || !cpuGain) return;
+    const t = ctx.currentTime;
+    const level = Math.max(0, Math.min(1, state?.level ?? 0));
+    cpuGain.gain.setTargetAtTime(muted ? 0 : level * CPU_TRAFFIC_PEAK, t, 0.1);
+    if (level <= 0) return;
+    const truck = !!state.truck;
+    const speedKmh = Math.max(0, state.speedKmh ?? 60);
+    // トラックは同じ速度でも音程を低くとり、唸りも粗くする。
+    const freq = truck ? 26 + speedKmh * 0.5 : 42 + speedKmh * 0.85;
+    cpuOsc.frequency.setTargetAtTime(freq, t, 0.12);
+    cpuOsc2.frequency.setTargetAtTime(freq * (truck ? 1.022 : 1.014), t, 0.12);
+    cpuSub.frequency.setTargetAtTime(freq / 2, t, 0.12);
+    cpuSubGain.gain.setTargetAtTime(truck ? 0.9 : 0.12, t, 0.15);
+    // 近いほど高域まで開いて、すぐ隣にいる感じを出す。トラックは開かず低いまま。
+    cpuFilt.frequency.setTargetAtTime(
+      truck ? 150 + freq * 3 + level * 400 : 260 + freq * 4 + level * 900, t, 0.12
+    );
+    cpuNoiseFilter.frequency.setTargetAtTime(
+      truck ? 260 + freq * 3 : 480 + freq * 5, t, 0.18
+    );
+    if (cpuPan) {
+      cpuPan.pan.setTargetAtTime(Math.max(-1, Math.min(1, state.side ?? 0)) * 0.7, t, 0.12);
+    }
+  }
+
   function silence() {
     if (!ctx) return;
     stopInteriorNow();
     const t = ctx.currentTime;
-    for (const g of [engGain, engNoiseGain, screechGain]) {
+    for (const g of [engGain, engNoiseGain, screechGain, cpuGain]) {
+      if (!g) continue;
       g.gain.cancelScheduledValues(t);
       g.gain.setValueAtTime(0, t);
     }
@@ -395,9 +547,10 @@ function audioModule() {
   }
 
   return {
-    unlock, toggle, setEngineMuted, setVolume, update, silence,
+    unlock, toggle, setEngineMuted, setVolume, update, silence, passBy, setCpuTraffic,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
+    passSoundCount: () => passSounds,
     _debug() {
       return ctx ? {
         state: ctx.state,
@@ -405,6 +558,8 @@ function audioModule() {
         engVol: engGain.gain.value,
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
+        passSounds,
+        cpuTraffic: cpuGain ? cpuGain.gain.value : null,
       } : null;
     },
   };
