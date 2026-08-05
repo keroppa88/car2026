@@ -396,7 +396,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 単色指定の曲だけtrue。空をグラデーションではなくベタ塗り2色にする。
   let weatherFlatSky = false;
   let weatherRain = false;
-  let weatherFog = false;
   let weatherStars = false;
   let weatherCloudMode = 0;             // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
@@ -450,28 +449,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   weatherSkyDome.frustumCulled = false;
   scene.add(weatherSkyDome);
 
-  // 霧。指数フォグにして、ユーザー車のすぐ手前から奥へ切れ目なく濃くする。
-  // 「ここから霧」という線形フォグの境目が出ないので、薄い霧が手前にも漂う。
-  // 濃さの目安: 10m=1.7% / 20m=6.6% / 45m=29% / 80m=65% / 150m=95%
-  // 直前の線形フォグ(9.6mから45mで100%)に比べ、手前は極めて薄く、
-  // 45m地点はおよそ3割＝ピークは半分以下、遠方も薄くなる。
-  // 色は applyWeatherSky で空の色から作る（空の光が霧に乱反射している想定）。
-  const WEATHER_FOG_DENSITY = 0.013;
-  const weatherFogInstance = new THREE.FogExp2(SKY, WEATHER_FOG_DENSITY);
-  // 霧を切った時に戻す、コース本来のフォグ。読み込み式の4マップでは null。
-  let courseBaseFog = null;
-  function applyWeatherFog() {
-    // 霧が入っていない間は、その時のフォグを「本来の状態」として覚えておく。
-    if (scene.fog !== weatherFogInstance) courseBaseFog = scene.fog;
-    scene.fog = weatherFog ? weatherFogInstance : courseBaseFog;
-    document.body.dataset.weatherFog = String(weatherFog);
-  }
-
   function currentWeatherHsl() {
     return weatherColorTarget === 'horizon' ? weatherHorizonHsl : weatherTopHsl;
   }
   function applyWeatherSky() {
-    applyWeatherFog();          // 色を決める前に、今どのフォグを使うかを確定させる
     weatherTopColor.setHSL(weatherTopHsl.h, weatherTopHsl.s, weatherTopHsl.l);
     weatherHorizonColor.setHSL(
       weatherHorizonHsl.h,
@@ -497,10 +478,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    // 霧の色は空の光が乱反射したものとして、上空と地平線を混ぜた色にする。
-    // コース本来の遠景フォグは従来どおり地平線の色のまま。
-    if (fog === weatherFogInstance) fog.color.copy(horizon).lerp(top, 0.5);
-    else if (fog) fog.color.copy(horizon);
+    if (fog) fog.color.copy(horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
@@ -957,7 +935,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const TRUCK_LAMP_HALO_OPACITY = 0.5;
   const TRUCK_LAMP_CORE_SIZE = 1.45;
 
-  function addCarLights(group, bike, lightProfile = 'default', bodyKind = 'car') {
+  function addCarLights(group, bike, lightProfile = 'default', lampLayout = 'car') {
     const lights = new THREE.Group();
     lights.visible = vehicleLightsShouldBeVisible();
     const seaCpuBoost = lightProfile === 'seaCpuBoost';
@@ -992,7 +970,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // ボンネット側へ光がかからないようにする)
       headLamp(0, 0.72, 1.05, 0.3, 0.85);
       lamp(tailGlowTex, 0xff2018, 0, 0.6, -0.95, 0.48, 0.95);
-    } else if (bodyKind === 'truck') {
+    } else if (lampLayout === 'truck') {
       // 前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
       // 淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
       for (const row of [TRUCK_LAMPS.low, TRUCK_LAMPS.high]) {
@@ -4172,57 +4150,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     activateCar2Cpu(waiting[Math.floor(Math.random() * waiting.length)]);
   }
 
-  // 追い抜き・追い越された時の音。速度差10km/h以上で、真横に並ぶくらい
-  // 近くを通った時だけ鳴らす。常時鳴る走行音は持たない（ユーザー指定）。
-  // 最接近は前フレームとの線分から解析的に出す。毎フレームの距離だけを見ると、
-  // 速い相手はフレーム間で通り過ぎてしまい、最接近を大きく取り逃がす。
-  const CPU_PASS_MISS_M = 9;              // 最接近がこれより離れていたら鳴らさない
-  const CPU_PASS_MIN_REL_MS = 10 / 3.6;   // 速度差10km/h未満は鳴らさない
-  const CPU_PASS_COOLDOWN_S = 2;          // 同じ車で鳴らし直すまでの間隔
-  let cpuPassSoundTotal = 0;
-  let cpuOvertakenSoundTotal = 0;
-  function updateCpuPassSounds() {
-    // 進行方向は速度から取る。止まりかけの時だけヘディングへ落とす。
-    const speed = Math.hypot(player.vel.x, player.vel.z);
-    const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
-    const fz = speed > 1 ? player.vel.z / speed : Math.cos(player.heading);
-    const now = performance.now() / 1000;
-    for (const ai of aiCars) {
-      const visible = ai.group.visible && (!ai.appearManaged || ai.active);
-      if (!visible) { ai.passRelX = undefined; continue; }
-      const dx = ai.pos.x - player.pos.x, dz = ai.pos.z - player.pos.z;
-      const previousX = ai.passRelX, previousZ = ai.passRelZ;
-      ai.passRelX = dx; ai.passRelZ = dz;
-      if (previousX === undefined) continue;
-      // このフレームで相対位置が動いた向き。
-      const moveX = dx - previousX, moveZ = dz - previousZ;
-      const moved = Math.hypot(moveX, moveZ);
-      if (moved < 1e-4) continue;
-      // 前フレームで近づいていて、今フレームで離れ始めた区間だけが最接近を跨ぐ。
-      if (previousX * moveX + previousZ * moveZ > 0) continue;
-      if (dx * moveX + dz * moveZ < 0) continue;
-      // 線分とユーザー車の距離＝実際にどれだけ近くを通ったか。
-      const miss = Math.abs(previousX * moveZ - previousZ * moveX) / moved;
-      if (miss > CPU_PASS_MISS_M) continue;
-      if (now - (ai.passSoundAt || -Infinity) < CPU_PASS_COOLDOWN_S) continue;
-      // 相手の速度は相手の向きへ向いているものとして、進行方向の速度差を出す。
-      const aiSpeed = ai.v ?? 0;
-      const relative = (player.vel.x - Math.sin(ai.heading) * aiSpeed) * fx
-        + (player.vel.z - Math.cos(ai.heading) * aiSpeed) * fz;
-      if (Math.abs(relative) < CPU_PASS_MIN_REL_MS) continue;
-      ai.passSoundAt = now;
-      AUDIO.passBy({
-        relSpeed: Math.abs(relative),
-        side: Math.sign(previousX * fz - previousZ * fx) || 1,
-        nearness: 1 - Math.min(1, miss / CPU_PASS_MISS_M),
-      });
-      if (relative < 0) cpuOvertakenSoundTotal++;   // 相手のほうが速い＝抜かれた
-      else cpuPassSoundTotal++;
-      document.body.dataset.cpuPassMissM = miss.toFixed(1);
-      document.body.dataset.cpuPassRelKmh = (Math.abs(relative) * 3.6).toFixed(0);
-    }
-  }
-
   // --------------------------------------------------------------- init ---
   // Soft contact shadow that sits directly under a car at all times —
   // the directional shadow alone lands beside the body when the sun is low.
@@ -4295,8 +4222,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     group.userData.bodyRadius = shadowSize.w / 2;
     group.add(makeBlobShadow(shadowSize));
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
-    group.userData.bodyKind = mesh.userData.bodyKind ?? 'car';
-    addCarLights(tilt, bike, lightProfile, group.userData.bodyKind);
+    addCarLights(tilt, bike, lightProfile, mesh.userData.lampLayout);
     group.userData.nightLights = tilt.userData.nightLights;
     scene.add(group);
     return { group, tilt };
@@ -4472,17 +4398,16 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 車種ごとの見た目の調整。track.vox は車体が小さいので丸ごと拡大する（ユーザー指定）。
   // scale は縦・横・高さを同じ倍率で広げる。広げた分は voxSize にも反映するので、
   // 接地影も当たり判定も一緒に追随する。
-  // kind は車の種類。灯火の並びと走行音がこれで変わる。
-  // TRUCK_LAMPS の座標は scale 適用後のモデルで実測している。
+  // lamps は灯火の並び。TRUCK_LAMPS の座標は scale 適用後のモデルで実測している。
   const VOX_MODEL_TWEAKS = new Map([
-    ['track.vox', { scale: 1.4, kind: 'truck' }],
+    ['track.vox', { scale: 1.4, lamps: 'truck' }],
   ]);
   function applyVoxModelTweaks(url, mesh) {
     const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
     const tweak = VOX_MODEL_TWEAKS.get(file);
     // clone される前の1体だけを直す。以降の clone はこの形を受け継ぐ。
     if (!tweak || !mesh?.geometry) return mesh;
-    if (tweak.kind) mesh.userData.bodyKind = tweak.kind;
+    if (tweak.lamps) mesh.userData.lampLayout = tweak.lamps;
     if (tweak.scale) {
       // 原点(車体の底面・中心)を基準に拡大するので、接地したまま大きくなる。
       mesh.geometry.scale(tweak.scale, tweak.scale, tweak.scale);
@@ -7010,7 +6935,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let weatherSkyColorButton = null;
   let weatherHorizonColorButton = null;
   let weatherRainButton = null;
-  let weatherFogButton = null;
   let weatherStarButton = null;
   let weatherMusicSkyButton = null;
   let weatherCloudButton = null;
@@ -7547,13 +7471,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherSatInput?.renderMeter(hsl.s);
     weatherLightInput?.renderMeter(brightnessPercentage / 100);
     weatherRainButton?.renderToggle(weatherRain);
-    weatherFogButton?.renderToggle(weatherFog);
     weatherStarButton?.renderToggle(weatherStars);
     weatherMusicSkyButton?.renderToggle(musicSkyEnabled);
     document.body.dataset.weatherMusicSky = String(musicSkyEnabled);
     weatherCloudButton?.renderCloud(weatherCloudMode);
     document.body.dataset.weatherRain = String(weatherRain);
-    document.body.dataset.weatherFog = String(weatherFog);
     document.body.dataset.weatherStars = String(weatherStars);
     document.body.dataset.weatherCloudMode = String(weatherCloudMode);
     document.body.dataset.weatherPeriod = nightMode ? 'night' : 'day';
@@ -7889,7 +7811,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
       const weatherButtons = document.createElement('div');
       weatherButtons.style.cssText =
-        'display:grid;flex:1;grid-template-columns:1.15fr 1fr 1fr 1fr 1.15fr;gap:8px;'
+        'display:grid;flex:1;grid-template-columns:1.25fr 1fr 1fr 1.25fr;gap:10px;'
         + 'min-height:62px;margin:8px 0 0;padding:4px 8px;'
         + 'border:1px solid #666;box-sizing:border-box;'
         + 'background:repeating-linear-gradient(0deg,rgba(77,35,0,.035) 0,'
@@ -7958,11 +7880,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       weatherMusicSkyButton = makeMusicSkyCheckbox();
       weatherRainButton = makeWeatherSwitch('☂ Rain', () => {
         weatherRain = !weatherRain;
-        refreshWeatherControls();
-      });
-      weatherFogButton = makeWeatherSwitch('░ Fog', () => {
-        weatherFog = !weatherFog;
-        applyWeatherSky();      // フォグの入替えと、霧の色の作り直し
         refreshWeatherControls();
       });
       weatherStarButton = makeWeatherSwitch('★ Star', () => {
@@ -8876,7 +8793,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     });
 
     updateInteriorSound(player.vel.length() * 3.6);
-    updateCpuPassSounds();
 
     // HUD
     speedEl.textContent = Math.round(player.vel.length() * 3.6);
@@ -9558,9 +9474,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         }
       }
     }
-    // すれ違い音・抜かれた音を鳴らした回数（海岸線のみ）。
-    document.body.dataset.cpuPassSounds = String(cpuPassSoundTotal);
-    document.body.dataset.cpuOvertakenSounds = String(cpuOvertakenSoundTotal);
     if (CAR2_MODE) {
       // 首都高速CPUの走行状態。震え・固まりは最小移動距離が伸びないことで分かる。
       const tokyoCpus = aiCars.filter((ai) => ai.driftOnSharpCurve && ai.active);
