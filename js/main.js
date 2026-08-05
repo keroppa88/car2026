@@ -1958,6 +1958,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   // ------------------------------------------------------------- camera ---
   const cam = { yaw: 0, pitch: 0.34, dist: 10, dragging: false, lastDrag: 0 };
+  // 追従カメラの振れる範囲。下げすぎると地面へ潜るので 0.08 で止める。
+  const CAM_PITCH_MIN = 0.08;
+  const CAM_PITCH_MAX = 1.25;
+  // 主観視点(bonnetView 2)は車体を映さないので、真上まで見上げられるようにする。
+  // 見上げる角度は lookPitch = 0.34 - cam.pitch なので、真上(π/2)には
+  // cam.pitch が負まで必要になる。真上ちょうどは lookAt の上方向と重なって
+  // 向きが定まらないため、わずかに手前(約89度)で止める。
+  const CAM_LOOK_BASE_PITCH = 0.34;
+  const CAM_PITCH_MIN_FIRST_PERSON = CAM_LOOK_BASE_PITCH - (Math.PI / 2 - 0.02);
   // V相当の視点切替。ドラッグで振った向きはそのまま残し、
   // 一周して通常カメラへ戻った時だけ既定の位置へ戻す。
   function switchBonnetView() {
@@ -1998,7 +2007,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     if (!cam.dragging) return;
     demoTapMove += Math.abs(e.movementX) + Math.abs(e.movementY);
     cam.yaw -= e.movementX * 0.005;
-    cam.pitch = clamp(cam.pitch + e.movementY * 0.004, 0.08, 1.25);
+    const pitchMin = bonnetView === 2 ? CAM_PITCH_MIN_FIRST_PERSON : CAM_PITCH_MIN;
+    cam.pitch = clamp(cam.pitch + e.movementY * 0.004, pitchMin, CAM_PITCH_MAX);
     cam.lastDrag = performance.now();
   });
 
@@ -9788,7 +9798,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // ドラッグの角度系は追従カメラと同じ cam.yaw / cam.pitch を使う
       // (cam.pitch=0.34 を正面として上下に振る)。
       const lookYaw = player.heading + cam.yaw;
-      const lookPitch = 0.34 - cam.pitch;   // 上ドラッグで上を向く
+      const lookPitch = CAM_LOOK_BASE_PITCH - cam.pitch;   // 上ドラッグで上を向く
       const cp = Math.cos(lookPitch);
       camera.position.set(player.pos.x, player.pos.y + 1.2, player.pos.z);
       camera.lookAt(
