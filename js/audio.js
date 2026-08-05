@@ -44,9 +44,6 @@ function audioModule() {
   let rpmSmooth = 0;
   let roughPhase = 0;
   let revN = 0;              // free-rev state for neutral
-  let noiseBuf = null;       // すれ違い音で使い回すノイズ
-  let passSounds = 0;        // 鳴らした回数(デバッグ表示用)
-  let lastPassAt = 0;        // 直前に鳴らした時刻。連発を抑える
 
   function init() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -106,7 +103,6 @@ function audioModule() {
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    noiseBuf = buf;                 // すれ違い音でも同じノイズを使い回す
     const noise = ctx.createBufferSource();
     noise.buffer = buf;
     noise.loop = true;
@@ -330,74 +326,6 @@ function audioModule() {
   // 鳴っている音を全て止め、次のユーザー操作(unlock)まで無音へ戻す。
   // ページ再読込で音が消えるのと同じ状態を、再読込せずに作る。
   // デモ画面が「ドラッグで鳴り始めたエンジン音」を消すために使う。
-  // すれ違い・追い抜かれの風切り音。1回ごとに使い捨てのノイズ源をつくる。
-  //   relSpeed : 相対速度(m/s)。大きいほど短く鋭く、音量も上がる
-  //   side     : 相手が通る側 -1=左 / +1=右。音が左右へ流れる
-  //   nearness : 1=すぐ横 0=判定の端。距離による減衰
-  // 近づく間は高く、通り過ぎると低くなる(ドップラー)。
-  function passBy(opts = {}) {
-    if (!ctx || ctx.state !== 'running' || muted || !noiseBuf) return false;
-    const t = ctx.currentTime;
-    // 何台もまとめて入れ替わった時に音が重なって潰れないよう間隔を空ける。
-    if (t - lastPassAt < 0.16) return false;
-    lastPassAt = t;
-
-    const relSpeed = Math.min(60, Math.max(3, opts.relSpeed || 12));
-    const side = Math.max(-1, Math.min(1, opts.side ?? 0));
-    const near = Math.max(0, Math.min(1, opts.nearness ?? 1));
-    // 抜く側も抜かれる側も同じ音にする（抜かれる側の鳴りがちょうどよいため）。
-    // 速いほど一瞬で通り過ぎる。
-    const dur = 1.15 * (1 - Math.min(0.45, relSpeed / 140));
-    const peakAt = t + dur * 0.62;
-
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuf;
-    src.loop = true;
-    // 再生位置をずらして、毎回同じ音にならないようにする。
-    const offset = Math.random() * (noiseBuf.duration - dur - 0.05);
-
-    // 通過前は高く、通過後は低い。相対速度が大きいほど落差も大きい。
-    const base = 240 + relSpeed * 16;
-    const shift = 1 + Math.min(0.5, relSpeed / 70);
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.Q.value = 0.9;
-    band.frequency.setValueAtTime(base * shift, t);
-    band.frequency.exponentialRampToValueAtTime(base / shift, t + dur);
-
-    // 耳につくシャーッとした高域を落として、風切りらしくする。
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(base * shift * 3.2, t);
-    lp.frequency.exponentialRampToValueAtTime(base * 1.6, t + dur);
-
-    const gain = ctx.createGain();
-    // 走行中のエンジン音に埋もれないだけの音量。ここだけ直せば全体が変わる。
-    const peak = (0.07 + Math.min(1, relSpeed / 26) * 0.26) * near;
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), peakAt);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-    let tail = gain;
-    if (ctx.createStereoPanner) {
-      const pan = ctx.createStereoPanner();
-      // 相手のいる側から入ってきて、反対側へ抜けていく。
-      pan.pan.setValueAtTime(side * 0.85, t);
-      pan.pan.linearRampToValueAtTime(-side * 0.85, t + dur);
-      gain.connect(pan);
-      tail = pan;
-    }
-    src.connect(band);
-    band.connect(lp);
-    lp.connect(gain);
-    tail.connect(master);
-    src.start(t, Math.max(0, offset));
-    src.stop(t + dur + 0.05);
-    src.onended = () => { try { src.disconnect(); tail.disconnect(); } catch (_) { /* 済 */ } };
-    passSounds++;
-    return true;
-  }
-
   function silence() {
     if (!ctx) return;
     stopInteriorNow();
@@ -467,10 +395,9 @@ function audioModule() {
   }
 
   return {
-    unlock, toggle, setEngineMuted, setVolume, update, silence, passBy,
+    unlock, toggle, setEngineMuted, setVolume, update, silence,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
-    passSoundCount: () => passSounds,
     _debug() {
       return ctx ? {
         state: ctx.state,
@@ -478,7 +405,6 @@ function audioModule() {
         engVol: engGain.gain.value,
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
-        passSounds,
       } : null;
     },
   };
