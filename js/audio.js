@@ -152,6 +152,58 @@ function audioModule() {
       try { init(); } catch (e) { console.warn('WebAudio unavailable:', e); return; }
     }
     if (ctx.state === 'suspended') ctx.resume();
+    loadGearSound();
+  }
+
+  // ------------------------------------------------------ シフトチェンジ音 ----
+  // sound/gear.m4a の頭1秒だけを鳴らす。エンジン音とは別系統で master へ直結する
+  // ので、重なって鳴ってよい。ファイルが無い間は何も鳴らさずそのまま走る。
+  const GEAR_SOUND_URL = 'sound/gear.m4a';
+  const GEAR_SOUND_SECONDS = 1;
+  const GEAR_SOUND_VOLUME = 0.85;
+  let gearBuffer = null;
+  let gearLoading = null;
+  let gearLoadFailed = false;
+  let gearShiftSounds = 0;
+
+  function loadGearSound() {
+    if (!ctx || gearBuffer || gearLoading || gearLoadFailed) return;
+    gearLoading = fetch(GEAR_SOUND_URL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`${response.status} ${GEAR_SOUND_URL}`);
+        return response.arrayBuffer();
+      })
+      .then((raw) => ctx.decodeAudioData(raw))
+      .then((buffer) => { gearBuffer = buffer; })
+      .catch((error) => {
+        // 音源は後から用意される。無い間は黙って鳴らさない(毎回試さない)。
+        gearLoadFailed = true;
+        console.info(`${GEAR_SOUND_URL} が読めないのでシフト音は鳴らしません:`, error.message);
+      })
+      .finally(() => { gearLoading = null; });
+  }
+
+  // シフトアップ/ダウンのたびに呼ぶ。鳴らせた時だけ true。
+  function playGearShift() {
+    if (!ctx || ctx.state !== 'running' || muted) return false;
+    if (!gearBuffer) { loadGearSound(); return false; }
+    const t = ctx.currentTime;
+    const length = Math.min(GEAR_SOUND_SECONDS, gearBuffer.duration);
+    const src = ctx.createBufferSource();
+    src.buffer = gearBuffer;
+    const gain = ctx.createGain();
+    // 1秒で切るので、終わり際だけ短く落としてプツッという切れ目を防ぐ。
+    gain.gain.setValueAtTime(GEAR_SOUND_VOLUME, t);
+    gain.gain.setValueAtTime(GEAR_SOUND_VOLUME, t + Math.max(0, length - 0.03));
+    gain.gain.linearRampToValueAtTime(0, t + length);
+    src.connect(gain);
+    gain.connect(master);
+    src.start(t, 0, length);
+    src.onended = () => {
+      try { src.disconnect(); gain.disconnect(); } catch (_) { /* 済 */ }
+    };
+    gearShiftSounds++;
+    return true;
   }
 
   // ---------------------------------------------------- 車内音(mp3ループ) ----
@@ -395,7 +447,7 @@ function audioModule() {
   }
 
   return {
-    unlock, toggle, setEngineMuted, setVolume, update, silence,
+    unlock, toggle, setEngineMuted, setVolume, update, silence, playGearShift,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
     _debug() {
@@ -405,6 +457,8 @@ function audioModule() {
         engVol: engGain.gain.value,
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
+        gearShiftSounds,
+        gearSoundReady: !!gearBuffer,
       } : null;
     },
   };
