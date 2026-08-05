@@ -8317,8 +8317,19 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 4コースデモはすべて各コースのY自動運転と同じ5速巡航。
     if (demoActive) player.gear = car2AutoRoute ? 6 : (SUZUKA_MODE ? 5 : 3);
     // gears
-    if (shiftUp) { player.gear = Math.min(player.gear + 1, GEARS.length - 1); shiftUp = false; }
-    if (shiftDown) { player.gear = Math.max(player.gear - 1, 0); shiftDown = false; }
+    // シフトが実際に動いた時だけ音を鳴らす（端で押しても鳴らさない）。
+    if (shiftUp) {
+      const next = Math.min(player.gear + 1, GEARS.length - 1);
+      if (next !== player.gear) AUDIO.playGearShift();
+      player.gear = next;
+      shiftUp = false;
+    }
+    if (shiftDown) {
+      const next = Math.max(player.gear - 1, 0);
+      if (next !== player.gear) AUDIO.playGearShift();
+      player.gear = next;
+      shiftDown = false;
+    }
     const gear = GEARS[player.gear];
 
     let throttle, brake, handbrake, input;
