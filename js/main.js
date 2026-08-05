@@ -935,7 +935,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const TRUCK_LAMP_HALO_OPACITY = 0.5;
   const TRUCK_LAMP_CORE_SIZE = 1.45;
 
-  function addCarLights(group, bike, lightProfile = 'default', lampLayout = 'car') {
+  function addCarLights(group, bike, lightProfile = 'default', bodyKind = 'car') {
     const lights = new THREE.Group();
     lights.visible = vehicleLightsShouldBeVisible();
     const seaCpuBoost = lightProfile === 'seaCpuBoost';
@@ -970,7 +970,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       // ボンネット側へ光がかからないようにする)
       headLamp(0, 0.72, 1.05, 0.3, 0.85);
       lamp(tailGlowTex, 0xff2018, 0, 0.6, -0.95, 0.48, 0.95);
-    } else if (lampLayout === 'truck') {
+    } else if (bodyKind === 'truck') {
       // 前面のマーカーランプを黄色で灯す(下段2つ・上段3つ)。
       // 淡い外光と明るい芯の二層で、光っていると分かる明るさにする。
       for (const row of [TRUCK_LAMPS.low, TRUCK_LAMPS.high]) {
@@ -4199,6 +4199,48 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     }
   }
 
+  // 近くを走るCPU車の走行音。首都高とインディで、距離に応じて鳴らす。
+  // 真横に並んだ時がいちばん大きく、前後それぞれ車3台ぶん(合わせて6台ぶん)
+  // 離れると聞こえなくなる。
+  const CPU_TRAFFIC_RANGE_M = 4.8 * 3;
+  const CPU_TRAFFIC_SOUND_COURSE = CAR2_MODE || COURSE_KEY === 'indy';
+  function updateCpuTrafficSound() {
+    if (!CPU_TRAFFIC_SOUND_COURSE) return;
+    let level = 0;
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const ai of aiCars) {
+      const visible = ai.group.visible && (!ai.appearManaged || ai.active);
+      if (!visible) continue;
+      const distance = Math.hypot(ai.pos.x - player.pos.x, ai.pos.z - player.pos.z);
+      if (distance >= CPU_TRAFFIC_RANGE_M) continue;
+      // 近いほど急に大きくなるよう、距離に対して曲げる。
+      level += (1 - distance / CPU_TRAFFIC_RANGE_M) ** 1.5;
+      if (distance < nearestDistance) { nearestDistance = distance; nearest = ai; }
+    }
+    level = Math.min(1, level);
+    if (!nearest) {
+      AUDIO.setCpuTraffic({ level: 0 });
+      document.body.dataset.cpuTrafficLevel = '0.00';
+      return;
+    }
+    // 左右は速度の向きを基準にする。ヘディングはドリフト中に大きく振れる。
+    const speed = Math.hypot(player.vel.x, player.vel.z);
+    const fx = speed > 1 ? player.vel.x / speed : Math.sin(player.heading);
+    const fz = speed > 1 ? player.vel.z / speed : Math.cos(player.heading);
+    const dx = nearest.pos.x - player.pos.x, dz = nearest.pos.z - player.pos.z;
+    AUDIO.setCpuTraffic({
+      level,
+      speedKmh: (nearest.v ?? 0) * 3.6,
+      side: clamp((dx * fz - dz * fx) / 4, -1, 1),
+      truck: nearest.group.userData.bodyKind === 'truck',
+    });
+    document.body.dataset.cpuTrafficLevel = level.toFixed(2);
+    document.body.dataset.cpuTrafficNearestM = nearestDistance.toFixed(1);
+    document.body.dataset.cpuTrafficTruck =
+      String(nearest.group.userData.bodyKind === 'truck');
+  }
+
   // --------------------------------------------------------------- init ---
   // Soft contact shadow that sits directly under a car at all times —
   // the directional shadow alone lands beside the body when the sun is low.
@@ -4271,7 +4313,8 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     group.userData.bodyRadius = shadowSize.w / 2;
     group.add(makeBlobShadow(shadowSize));
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
-    addCarLights(tilt, bike, lightProfile, mesh.userData.lampLayout);
+    group.userData.bodyKind = mesh.userData.bodyKind ?? 'car';
+    addCarLights(tilt, bike, lightProfile, group.userData.bodyKind);
     group.userData.nightLights = tilt.userData.nightLights;
     scene.add(group);
     return { group, tilt };
@@ -4447,16 +4490,17 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   // 車種ごとの見た目の調整。track.vox は車体が小さいので丸ごと拡大する（ユーザー指定）。
   // scale は縦・横・高さを同じ倍率で広げる。広げた分は voxSize にも反映するので、
   // 接地影も当たり判定も一緒に追随する。
-  // lamps は灯火の並び。TRUCK_LAMPS の座標は scale 適用後のモデルで実測している。
+  // kind は車の種類。灯火の並びと走行音がこれで変わる。
+  // TRUCK_LAMPS の座標は scale 適用後のモデルで実測している。
   const VOX_MODEL_TWEAKS = new Map([
-    ['track.vox', { scale: 1.4, lamps: 'truck' }],
+    ['track.vox', { scale: 1.4, kind: 'truck' }],
   ]);
   function applyVoxModelTweaks(url, mesh) {
     const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '').toLowerCase();
     const tweak = VOX_MODEL_TWEAKS.get(file);
     // clone される前の1体だけを直す。以降の clone はこの形を受け継ぐ。
     if (!tweak || !mesh?.geometry) return mesh;
-    if (tweak.lamps) mesh.userData.lampLayout = tweak.lamps;
+    if (tweak.kind) mesh.userData.bodyKind = tweak.kind;
     if (tweak.scale) {
       // 原点(車体の底面・中心)を基準に拡大するので、接地したまま大きくなる。
       mesh.geometry.scale(tweak.scale, tweak.scale, tweak.scale);
@@ -8843,6 +8887,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
     updateInteriorSound(player.vel.length() * 3.6);
     updateCpuPassSounds();
+    updateCpuTrafficSound();
 
     // HUD
     speedEl.textContent = Math.round(player.vel.length() * 3.6);
@@ -9951,6 +9996,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       if (musicMode || pauseMode) {
         // 音楽選択・一時停止中は運転(シミュレーション)を停止。音はアイドルへ。
         AUDIO.update(dt, { gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false, speed: 0 });
+        AUDIO.setCpuTraffic({ level: 0 });   // 止めている間は周りの車の音も消す
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);

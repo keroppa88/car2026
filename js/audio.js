@@ -44,6 +44,11 @@ function audioModule() {
   let rpmSmooth = 0;
   let roughPhase = 0;
   let revN = 0;              // free-rev state for neutral
+  let cpuOsc, cpuOsc2, cpuSub, cpuSubGain, cpuFilt, cpuGain, cpuPan, cpuNoiseFilter;
+  // 近くのCPU車の走行音。真横に並んだ時でこの音量。
+  // 環境音なので本来はもっと控えめでよい。まず聞こえることを確かめるための
+  // 暫定値で、実際に走って聴いてから下げる想定（ここだけ直せば全体が変わる）。
+  const CPU_TRAFFIC_PEAK = 0.12;
   let noiseBuf = null;       // すれ違い音で使い回すノイズ
   let passSounds = 0;        // 鳴らした回数(デバッグ表示用)
   let lastPassAt = 0;        // 直前に鳴らした時刻。連発を抑える
@@ -139,6 +144,49 @@ function audioModule() {
     bp2.connect(screechGain);
     screechGain.connect(master);
     noise.start();
+
+    // ----- 近くのCPU車の走行音 -----
+    // 唸りが出るよう、わずかにずらした2音を重ねる。距離に応じて音量を上げ下げする。
+    cpuOsc = ctx.createOscillator();
+    cpuOsc.type = 'sawtooth';
+    cpuOsc.frequency.value = 90;
+    cpuOsc2 = ctx.createOscillator();
+    cpuOsc2.type = 'sawtooth';
+    cpuOsc2.frequency.value = 91.3;
+    cpuFilt = ctx.createBiquadFilter();
+    cpuFilt.type = 'lowpass';
+    cpuFilt.frequency.value = 600;
+    // ロードノイズぶんの帯域ノイズ。ノイズ源はタイヤ音と共用する。
+    cpuNoiseFilter = ctx.createBiquadFilter();
+    cpuNoiseFilter.type = 'bandpass';
+    cpuNoiseFilter.frequency.value = 900;
+    cpuNoiseFilter.Q.value = 1.2;
+    const cpuNoiseGain = ctx.createGain();
+    cpuNoiseGain.gain.value = 0.5;
+    // トラック用の低音。乗用車ではほとんど鳴らさず、トラックで大きく出す。
+    cpuSub = ctx.createOscillator();
+    cpuSub.type = 'sine';
+    cpuSub.frequency.value = 45;
+    cpuSubGain = ctx.createGain();
+    cpuSubGain.gain.value = 0;
+    cpuGain = ctx.createGain();
+    cpuGain.gain.value = 0;
+    cpuOsc.connect(cpuFilt);
+    cpuOsc2.connect(cpuFilt);
+    cpuSub.connect(cpuSubGain);
+    cpuSubGain.connect(cpuFilt);
+    noise.connect(cpuNoiseFilter);
+    cpuNoiseFilter.connect(cpuNoiseGain);
+    cpuNoiseGain.connect(cpuFilt);
+    cpuFilt.connect(cpuGain);
+    if (ctx.createStereoPanner) {
+      cpuPan = ctx.createStereoPanner();
+      cpuGain.connect(cpuPan);
+      cpuPan.connect(master);
+    } else {
+      cpuGain.connect(master);
+    }
+    cpuOsc.start(); cpuOsc2.start(); cpuSub.start();
 
     // wobble so the screech "sings" instead of hissing statically
     const lfo = ctx.createOscillator();
@@ -398,11 +446,43 @@ function audioModule() {
     return true;
   }
 
+  // 近くを走るCPU車の音。毎フレーム呼んで、距離から出した level で上げ下げする。
+  //   level    : 0=聞こえない 1=真横に並んだ状態
+  //   speedKmh : 相手の速度。音の高さに使う
+  //   side     : -1=左 0=正面 +1=右
+  //   truck    : true でトラックの音。低く重いディーゼル寄りにする
+  function setCpuTraffic(state) {
+    if (!ctx || ctx.state !== 'running' || !cpuGain) return;
+    const t = ctx.currentTime;
+    const level = Math.max(0, Math.min(1, state?.level ?? 0));
+    cpuGain.gain.setTargetAtTime(muted ? 0 : level * CPU_TRAFFIC_PEAK, t, 0.1);
+    if (level <= 0) return;
+    const truck = !!state.truck;
+    const speedKmh = Math.max(0, state.speedKmh ?? 60);
+    // トラックは同じ速度でも音程を低くとり、唸りも粗くする。
+    const freq = truck ? 26 + speedKmh * 0.5 : 42 + speedKmh * 0.85;
+    cpuOsc.frequency.setTargetAtTime(freq, t, 0.12);
+    cpuOsc2.frequency.setTargetAtTime(freq * (truck ? 1.022 : 1.014), t, 0.12);
+    cpuSub.frequency.setTargetAtTime(freq / 2, t, 0.12);
+    cpuSubGain.gain.setTargetAtTime(truck ? 0.9 : 0.12, t, 0.15);
+    // 近いほど高域まで開いて、すぐ隣にいる感じを出す。トラックは開かず低いまま。
+    cpuFilt.frequency.setTargetAtTime(
+      truck ? 150 + freq * 3 + level * 400 : 260 + freq * 4 + level * 900, t, 0.12
+    );
+    cpuNoiseFilter.frequency.setTargetAtTime(
+      truck ? 260 + freq * 3 : 480 + freq * 5, t, 0.18
+    );
+    if (cpuPan) {
+      cpuPan.pan.setTargetAtTime(Math.max(-1, Math.min(1, state.side ?? 0)) * 0.7, t, 0.12);
+    }
+  }
+
   function silence() {
     if (!ctx) return;
     stopInteriorNow();
     const t = ctx.currentTime;
-    for (const g of [engGain, engNoiseGain, screechGain]) {
+    for (const g of [engGain, engNoiseGain, screechGain, cpuGain]) {
+      if (!g) continue;
       g.gain.cancelScheduledValues(t);
       g.gain.setValueAtTime(0, t);
     }
@@ -467,7 +547,7 @@ function audioModule() {
   }
 
   return {
-    unlock, toggle, setEngineMuted, setVolume, update, silence, passBy,
+    unlock, toggle, setEngineMuted, setVolume, update, silence, passBy, setCpuTraffic,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
     passSoundCount: () => passSounds,
@@ -479,6 +559,7 @@ function audioModule() {
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
         passSounds,
+        cpuTraffic: cpuGain ? cpuGain.gain.value : null,
       } : null;
     },
   };
