@@ -48,18 +48,17 @@ function audioModule() {
   // 音量はエンジン音とは別建てで、setGearToneVolume から変えられる。
   // 変調は周波数変調。modDepth が振れ幅(Hz)、modRate が揺れる速さ(Hz)。
   // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 4=3速 5=4速 6=5速)。
-  // 1速〜5速は、1速(60Hz/±50Hz)から5速(120Hz/±80Hz)まで均等に増やす。
+  // 1速〜5速の周波数は 60Hz から 120Hz まで均等に増やす。
   const DRIVE_GEAR_TONES = (() => {
-    const first = { freq: 60, modDepth: 50 };
-    const fifth = { freq: 120, modDepth: 80 };
     const tones = {};
+    // 変調(ビブラート)の振れ幅はギアごとの指定値。
+    const depths = [56, 63, 72, 81, 95];
     for (let step = 0; step < 5; step++) {
-      const ratio = step / 4;
       tones[2 + step] = {
-        freq: first.freq + (fifth.freq - first.freq) * ratio,
+        freq: 60 + (120 - 60) * (step / 4),
         wave: 'triangle',
         lpf: 8000,
-        modDepth: first.modDepth + (fifth.modDepth - first.modDepth) * ratio,
+        modDepth: depths[step],
         modRate: 20,
       };
     }
@@ -68,8 +67,8 @@ function audioModule() {
   const GEAR_TONES = {
     // R: 1速と同じ60Hzの三角波だが、変調は浅め
     0: { freq: 60, wave: 'triangle', lpf: 8000, modDepth: 40, modRate: 20 },
-    // N(アイドリング): 40Hzのサイン波を±100Hz・20Hzで揺らし、6025Hzで切る
-    1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 100, modRate: 20 },
+    // N(アイドリング): 40Hzのサイン波を±50Hz・20Hzで揺らし、6025Hzで切る
+    1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 50, modRate: 20 },
     ...DRIVE_GEAR_TONES,
   };
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
@@ -500,10 +499,13 @@ function audioModule() {
       toneOsc.type = tone.wave;
       toneOsc.frequency.setTargetAtTime(tone.freq, t, 0.05);
       toneModOsc.frequency.setTargetAtTime(tone.modRate, t, 0.05);
-      toneModGain.gain.setTargetAtTime(tone.modDepth, t, 0.05);
       toneFilt.frequency.setTargetAtTime(tone.lpf, t, 0.05);
     }
     if (!tone) gearToneNow = null;
+    // 変調(ビブラート)はアクセルを踏んでいる間だけ。離すと揺れが消えて素の音になる。
+    toneModGain.gain.setTargetAtTime(
+      tone && s.throttle ? tone.modDepth : 0, t, 0.06
+    );
     toneGain.gain.setTargetAtTime(tone && !engineMuted ? gearToneVolume : 0, t, 0.08);
 
     // screech: whichever is stronger — drifting or locked-up braking
