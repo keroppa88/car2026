@@ -1,0 +1,41 @@
+# 静的サイトをそのまま GitHub Pages へ公開する。
+# GitHub が自動生成する pages-build-deployment(Jekyll ビルド)は使わず、
+# actions/upload-pages-artifact + actions/deploy-pages の経路で配信する。
+# 使うには Settings -> Pages -> Source を "GitHub Actions" にしておくこと。
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # 手動でも回せるようにしておく
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 走っているデプロイが詰まっても、新しい push で置き換わるようにする。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # リポジトリ全体をそのまま上げる。Jekyll を通さないので
+      # 先頭がアンダースコアのファイルやフォルダもそのまま配信される。
+      # .git と .github はこのアクションが既定で除外する。
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
