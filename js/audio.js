@@ -65,15 +65,18 @@ function audioModule() {
   const GEAR_TONE_ON_LPF = 8000;
   const GEAR_TONE_OFF_LPF = 220;
   const GEAR_TONE_MOD_RATE = 20;
-  // アクセルオフの余韻。振幅を脈打たせながら落として消す。
-  // 「ババババババ…」とフェードアウトする感じ。
-  // RATE が脈の速さ、DECAY が消えるまでの秒数、BOOST が鳴り始めの大きさ。
-  // 一本の直線で落とすと頭の一発だけが目立つので、前半は SUSTAIN まで
-  // ゆるく落として脈をそろえ、後半で 0 まで引く二段構えにしている。
-  const GEAR_TONE_OFF_PULSE_RATE = 7;
-  const GEAR_TONE_OFF_DECAY = 1.1;
-  const GEAR_TONE_OFF_BOOST = 0.8;
-  const GEAR_TONE_OFF_SUSTAIN = 0.75;   // 半分過ぎた時点で残す割合
+  // アクセルオフの余韻。振幅を脈打たせて「ババババババ…」と鳴らす。
+  // 離した直後はローパスが落ちきる過渡音で一発だけ強く出てしまうので、
+  // MUTE の間は消音して頭を隠し、そこから脈を始める。
+  // 脈は HOLD の間 BOOST の大きさで続き、そこから FADE 秒かけて FLOOR まで
+  // 落として、あとはアクセルを踏むまで FLOOR で鳴り続ける。0 までは落とさない。
+  const GEAR_TONE_OFF_PULSE_RATE = 7;    // 脈の速さ(Hz)
+  const GEAR_TONE_OFF_MUTE = 0.3;        // 離した直後に消音する秒数
+  const GEAR_TONE_OFF_HOLD = 2.2;        // 大きいまま脈が続く秒数(消音明けから)
+  const GEAR_TONE_OFF_FADE = 0.5;        // 落としていく秒数
+  const GEAR_TONE_OFF_BOOST = 0.8;       // 脈の大きさ
+  const GEAR_TONE_OFF_FLOOR = 0.5;       // 落ち着く先の大きさ
+  const GEAR_TONE_OFF_ATTACK = 0.06;     // 消音明けの立ち上がり
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
   let toneAmGain, tonePulseGain, tonePulseOsc = null;
   let gearToneVolume = 0.25;
@@ -454,10 +457,12 @@ function audioModule() {
 
   // アクセルオフの余韻を鳴らし直す。脈の深さは土台と同じ量にしてあるので、
   // 音量は 0 と土台の2倍の間を行き来する = 完全に途切れる脈になる。
-  // 土台と脈を同じ直線で 0 まで落とすため、脈打ちながら消えていく。
-  // 脈の位相を毎回そろえたいので、オシレータはその都度作り直す。
+  // 消音 → 立ち上がり → BOOST で持続 → FLOOR まで落として据え置き、の順。
+  // 脈の位相を消音明けにそろえたいので、オシレータはその都度作り直す。
   function burbleGearTone(t) {
-    const end = t + GEAR_TONE_OFF_DECAY;
+    const start = t + GEAR_TONE_OFF_MUTE;             // 消音明け
+    const peak = start + GEAR_TONE_OFF_ATTACK;        // 脈が本来の大きさになる
+    const fadeAt = peak + GEAR_TONE_OFF_HOLD;         // 落とし始め
     if (tonePulseOsc) {
       try { tonePulseOsc.stop(t); } catch { /* 既に停止済み */ }
     }
@@ -465,15 +470,14 @@ function audioModule() {
     tonePulseOsc.type = 'sine';
     tonePulseOsc.frequency.value = GEAR_TONE_OFF_PULSE_RATE;
     tonePulseOsc.connect(tonePulseGain);
-    tonePulseOsc.start(t);
-    tonePulseOsc.stop(end + 0.05);
+    tonePulseOsc.start(start);                        // 止めない(踏むまで鳴り続ける)
     for (const p of [toneAmGain.gain, tonePulseGain.gain]) {
       p.cancelScheduledValues(t);
-      p.setValueAtTime(GEAR_TONE_OFF_BOOST, t);
-      p.linearRampToValueAtTime(
-        GEAR_TONE_OFF_BOOST * GEAR_TONE_OFF_SUSTAIN, t + GEAR_TONE_OFF_DECAY * 0.5
-      );
-      p.linearRampToValueAtTime(0, end);
+      p.setValueAtTime(0, t);
+      p.setValueAtTime(0, start);
+      p.linearRampToValueAtTime(GEAR_TONE_OFF_BOOST, peak);
+      p.setValueAtTime(GEAR_TONE_OFF_BOOST, fadeAt);
+      p.linearRampToValueAtTime(GEAR_TONE_OFF_FLOOR, fadeAt + GEAR_TONE_OFF_FADE);
     }
   }
 
@@ -594,7 +598,10 @@ function audioModule() {
         gearToneAm: toneAmGain ? +toneAmGain.gain.value.toFixed(4) : null,
         gearTonePulse: tonePulseGain ? +tonePulseGain.gain.value.toFixed(4) : null,
         gearToneOffPulseRate: GEAR_TONE_OFF_PULSE_RATE,
-        gearToneOffDecay: GEAR_TONE_OFF_DECAY,
+        gearToneOffMute: GEAR_TONE_OFF_MUTE,
+        gearToneOffHold: GEAR_TONE_OFF_HOLD,
+        gearToneOffFade: GEAR_TONE_OFF_FADE,
+        gearToneOffFloor: GEAR_TONE_OFF_FLOOR,
         gearShiftSounds,
         gearSoundReady: !!gearBuffer,
       } : null;
