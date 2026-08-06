@@ -70,7 +70,7 @@ function audioModule() {
   // MUTE の間は消音して頭を隠し、そこから脈を始める。
   // 脈は HOLD の間 BOOST の大きさで続き、そこから FADE 秒かけて FLOOR まで
   // 落として、あとはアクセルを踏むまで FLOOR で鳴り続ける。0 までは落とさない。
-  const GEAR_TONE_OFF_PULSE_RATE = 7;    // 脈の速さ(Hz)
+  const GEAR_TONE_OFF_PULSE_RATE = 14;   // 脈の速さ(Hz)
   const GEAR_TONE_OFF_MUTE = 0.3;        // 離した直後に消音する秒数
   const GEAR_TONE_OFF_HOLD = 2.2;        // 大きいまま脈が続く秒数(消音明けから)
   const GEAR_TONE_OFF_FADE = 0.5;        // 落としていく秒数
@@ -79,7 +79,7 @@ function audioModule() {
   const GEAR_TONE_OFF_ATTACK = 0.06;     // 消音明けの立ち上がり
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
   let toneAmGain, tonePulseGain, tonePulseOsc = null;
-  let gearToneVolume = 0.25;
+  let gearToneVolume = 0.125;  // 重ね音の音量(アクセルON/OFF共通)
   let gearToneNow = null;      // 今あてているギア(切り替え時だけ設定し直す)
 
   function init() {
