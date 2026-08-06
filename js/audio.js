@@ -65,6 +65,9 @@ function audioModule() {
   const GEAR_TONE_ON_LPF = 8000;
   const GEAR_TONE_OFF_LPF = 220;
   const GEAR_TONE_MOD_RATE = 20;
+  // これより遅ければ「止まっている」とみなす(m/s)。約1.8km/h。
+  // 完全な 0 だけを見ると、わずかな転がりで音が行き来してしまう。
+  const IDLE_SPEED = 0.5;
   // アクセルオフの余韻。振幅を脈打たせて「ババババババ…」と鳴らす。
   // 離した瞬間から鳴らす。頭の一発が大きくなりすぎないよう、ローパスは
   // なめらかにではなく即座に落とす(落ちきる前の開いたフィルタを鋸波が
@@ -81,6 +84,7 @@ function audioModule() {
   let toneAmGain, tonePulseGain, tonePulseOsc = null;
   let gearToneVolume = 0.125;  // 重ね音の音量(アクセルON/OFF共通)
   let gearToneNow = null;      // 今あてているギア(切り替え時だけ設定し直す)
+  let gearToneThrottle = null; // 直前のアクセル状態(離した瞬間を見るため)
 
   function init() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -494,6 +498,7 @@ function audioModule() {
     rpmSmooth = 0;
     revN = 0;
     gearToneNow = null;
+    gearToneThrottle = null;
     if (ctx.state === 'running') ctx.suspend();
   }
 
@@ -504,10 +509,14 @@ function audioModule() {
   function update(dt, s) {
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
-    const f = FREQS[s.gear] || FREQS[2];
+
+    // 止まっていてアクセルも踏んでいないときは、何速に入っていてもエンジンは
+    // アイドリングしているだけなので、ギア位置に関わらず N の音として鳴らす。
+    const gear = (!s.throttle && s.speed < IDLE_SPEED) ? 1 : s.gear;
+    const f = FREQS[gear] || FREQS[2];
 
     let rpm;
-    if (s.gear === 1) {
+    if (gear === 1) {
       // neutral: nothing drives the wheels, so rev with the pedal
       revN += ((s.throttle ? 1 : 0) - revN) * Math.min(1, dt * (s.throttle ? 1.8 : 2.6));
       rpm = revN;
@@ -548,8 +557,12 @@ function audioModule() {
     // ギアごとの重ね音。設定のあるギアでだけ鳴らし、音量は別建てで持つ。
     // 波形とローパスはアクセルの踏み具合で切り替える。
     // 踏んでいる間は鳴らしっぱなし、離した瞬間に脈打つ余韻へ切り替える。
-    const tone = GEAR_TONES[s.gear];
-    const toneKey = tone ? `${s.gear}/${s.throttle ? 'on' : 'off'}` : null;
+    // 余韻を叩き直すのはアクセルを離した瞬間だけ。止まって N の音に変わる
+    // ときにも音程は切り替わるが、そこで余韻を鳴らし直すと不自然になる。
+    const wasThrottle = gearToneThrottle;
+    gearToneThrottle = !!s.throttle;
+    const tone = GEAR_TONES[gear];
+    const toneKey = tone ? `${gear}/${s.throttle ? 'on' : 'off'}` : null;
     if (tone && gearToneNow !== toneKey) {
       gearToneNow = toneKey;
       toneOsc.type = s.throttle ? GEAR_TONE_ON_WAVE : GEAR_TONE_OFF_WAVE;
@@ -564,7 +577,7 @@ function audioModule() {
         // フィルタを鋸波が通り抜けて、頭の一発だけ明るく大きくなる。
         toneFilt.frequency.cancelScheduledValues(t);
         toneFilt.frequency.setValueAtTime(GEAR_TONE_OFF_LPF, t);
-        burbleGearTone(t);
+        if (wasThrottle) burbleGearTone(t);
       }
     }
     if (!tone) {
@@ -603,6 +616,7 @@ function audioModule() {
         gearTonePulse: tonePulseGain ? +tonePulseGain.gain.value.toFixed(4) : null,
         gearToneOffPulseRate: GEAR_TONE_OFF_PULSE_RATE,
         gearToneOffAttack: GEAR_TONE_OFF_ATTACK,
+        gearToneGear: gearToneNow,   // 実際に鳴らしているギア/アクセル状態
         gearToneOffHold: GEAR_TONE_OFF_HOLD,
         gearToneOffFade: GEAR_TONE_OFF_FADE,
         gearToneOffFloor: GEAR_TONE_OFF_FLOOR,
