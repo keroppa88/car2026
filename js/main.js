@@ -713,9 +713,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const NIGHT_SKY = 0x050a12;
   const nightLampGroups = [];        // 車両・街灯を含む完全夜間用の灯火
   const vehicleLampGroups = [];      // 薄暗い天候でも点灯する車両灯火だけ
-  let playerHeadlight = null;        // 自車の前方約5mだけ照らす実光源
+  let playerHeadlights = [];         // 自車の前方約5mだけ照らす実光源(左右2灯)
   let playerDayMesh = null;          // 昼の自車(toyota86.vox)
   let playerNightMesh = null;        // 夜の自車(toyota86n.vox: ライト拡大版)
+
+  // 前照灯の左右の位置。車体幅2.1mの左から20%(=中心から-0.63m)と80%(+0.63m)。
+  const HEADLIGHT_OFFSET_X = 0.63;
+  // 8m先で内側へ寄せる量。0にすると平行で重なりが薄いので、少し内向きにする。
+  const HEADLIGHT_AIM_X = 0.2;
 
   function vehicleLightsShouldBeVisible() {
     return nightMode || manualLampMode || weatherDimVehicleLights;
@@ -724,7 +729,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   function refreshVehicleLightsVisibility() {
     const visible = vehicleLightsShouldBeVisible();
     for (const lights of vehicleLampGroups) lights.visible = visible;
-    if (playerHeadlight) playerHeadlight.visible = visible;
+    for (const light of playerHeadlights) light.visible = visible;
     if (playerDayMesh && playerNightMesh) {
       playerDayMesh.visible = !visible;
       playerNightMesh.visible = visible;
@@ -5927,12 +5932,18 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 夜間: 自車の前方約5mの路面・オブジェクトだけをほんのり照らす実光源。
     // ボンネットが光って見えないよう、光源は車体前端より前に置いて前方だけへ
     // 向ける(発光スプライトや光だまりは使わない)。
-    playerHeadlight = new THREE.SpotLight(0xffeecb, 0.7, 7, 0.65, 0.6, 1.5);
-    playerHeadlight.position.set(0, 0.75, 2.55);
-    playerHeadlight.visible = vehicleLightsShouldBeVisible();
-    playerHeadlight.target.position.set(0, 0, 8);
-    player.tilt.add(playerHeadlight);
-    player.tilt.add(playerHeadlight.target);
+    // 実車と同じく左右2灯。車体幅2.1mの左から20%と80%の位置に置き、
+    // 8m先ではやや内側を向けて、前方で二つの光が重なるようにする。
+    // 明るさは1灯あたりを下げ、重なった中央が以前の1灯とほぼ同じになるようにする。
+    for (const side of [-1, 1]) {
+      const light = new THREE.SpotLight(0xffeecb, 0.42, 7, 0.65, 0.6, 1.5);
+      light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
+      light.visible = vehicleLightsShouldBeVisible();
+      light.target.position.set(side * HEADLIGHT_AIM_X, 0, 8);
+      player.tilt.add(light);
+      player.tilt.add(light.target);
+      playerHeadlights.push(light);
+    }
 
     if (MAP_GLTF) {
       const info = await loadGltfMap(MAP_GLTF);
