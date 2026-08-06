@@ -160,7 +160,7 @@ function audioModule() {
   // ので、重なって鳴ってよい。ファイルが無い間は何も鳴らさずそのまま走る。
   const GEAR_SOUND_URL = 'sound/gear.m4a';
   const GEAR_SOUND_SECONDS = 1;
-  const GEAR_SOUND_VOLUME = 0.85;
+  const GEAR_SOUND_VOLUME = 0.2125;   // 0.85 の1/4
   let gearBuffer = null;
   let gearLoading = null;
   let gearLoadFailed = false;
