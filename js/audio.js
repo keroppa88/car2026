@@ -47,19 +47,21 @@ function audioModule() {
   // ギアごとの重ね音(別トラック)。既存のエンジン音へ重ねて鳴らす。
   // 音量はエンジン音とは別建てで、setGearToneVolume から変えられる。
   // 変調は周波数変調。depth が振れ幅(Hz)、rate が揺れる速さ(Hz)。
-  // アクセルON/OFFで波形とローパスが変わる。踏むと開いて鋭く、離すと
-  // 220Hzで切って籠もった音になる。5速だけ離した時に鋸波へ変わる。
+  // アクセルON/OFFで波形とローパスが変わる。踏むと三角波を8000Hzで開いて
+  // 鋭く、離すと鋸波を220Hzで切って籠もった音にする。
+  // 周波数と変調量はギアごと、波形・ローパス・変調速度は全ギア共通。
   // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 4=3速 5=4速 6=5速)。
   const GEAR_TONES = {
-    0: { freq: 60, depth: 55, offWave: 'triangle' },   // R
-    1: { freq: 40, depth: 50, offWave: 'triangle' },   // N
-    2: { freq: 60, depth: 56, offWave: 'triangle' },   // 1速
-    3: { freq: 75, depth: 63, offWave: 'triangle' },   // 2速
-    4: { freq: 90, depth: 72, offWave: 'triangle' },   // 3速
-    5: { freq: 105, depth: 81, offWave: 'triangle' },  // 4速
-    6: { freq: 120, depth: 95, offWave: 'sawtooth' },  // 5速
+    0: { freq: 60, depth: 55 },    // R
+    1: { freq: 40, depth: 50 },    // N
+    2: { freq: 60, depth: 56 },    // 1速
+    3: { freq: 75, depth: 63 },    // 2速
+    4: { freq: 90, depth: 72 },    // 3速
+    5: { freq: 105, depth: 81 },   // 4速
+    6: { freq: 120, depth: 95 },   // 5速
   };
   const GEAR_TONE_ON_WAVE = 'triangle';
+  const GEAR_TONE_OFF_WAVE = 'sawtooth';
   const GEAR_TONE_ON_LPF = 8000;
   const GEAR_TONE_OFF_LPF = 220;
   const GEAR_TONE_MOD_RATE = 20;
@@ -490,7 +492,7 @@ function audioModule() {
     const toneKey = tone ? `${s.gear}/${s.throttle ? 'on' : 'off'}` : null;
     if (tone && gearToneNow !== toneKey) {
       gearToneNow = toneKey;
-      toneOsc.type = s.throttle ? GEAR_TONE_ON_WAVE : tone.offWave;
+      toneOsc.type = s.throttle ? GEAR_TONE_ON_WAVE : GEAR_TONE_OFF_WAVE;
       toneOsc.frequency.setTargetAtTime(tone.freq, t, 0.05);
       toneModOsc.frequency.setTargetAtTime(GEAR_TONE_MOD_RATE, t, 0.05);
       toneModGain.gain.setTargetAtTime(tone.depth, t, 0.05);
