@@ -66,6 +66,8 @@ function audioModule() {
     return tones;
   })();
   const GEAR_TONES = {
+    // R: 1速と同じ60Hzの三角波だが、変調は浅め
+    0: { freq: 60, wave: 'triangle', lpf: 8000, modDepth: 40, modRate: 20 },
     // N(アイドリング): 40Hzのサイン波を±100Hz・20Hzで揺らし、6025Hzで切る
     1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 100, modRate: 20 },
     ...DRIVE_GEAR_TONES,
