@@ -46,31 +46,23 @@ function audioModule() {
   let revN = 0;              // free-rev state for neutral
   // ギアごとの重ね音(別トラック)。既存のエンジン音へ重ねて鳴らす。
   // 音量はエンジン音とは別建てで、setGearToneVolume から変えられる。
-  // 変調は周波数変調。modDepth が振れ幅(Hz)、modRate が揺れる速さ(Hz)。
+  // 変調は周波数変調。depth が振れ幅(Hz)、rate が揺れる速さ(Hz)。
+  // アクセルON/OFFで波形とローパスが変わる。踏むと開いて鋭く、離すと
+  // 220Hzで切って籠もった音になる。5速だけ離した時に鋸波へ変わる。
   // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 4=3速 5=4速 6=5速)。
-  // 1速〜5速の周波数は 60Hz から 120Hz まで均等に増やす。
-  const DRIVE_GEAR_TONES = (() => {
-    const tones = {};
-    // 変調(ビブラート)の振れ幅はギアごとの指定値。
-    const depths = [56, 63, 72, 81, 95];
-    for (let step = 0; step < 5; step++) {
-      tones[2 + step] = {
-        freq: 60 + (120 - 60) * (step / 4),
-        wave: 'triangle',
-        lpf: 8000,
-        modDepth: depths[step],
-        modRate: 20,
-      };
-    }
-    return tones;
-  })();
   const GEAR_TONES = {
-    // R: 1速と同じ60Hzの三角波だが、変調は浅め
-    0: { freq: 60, wave: 'triangle', lpf: 8000, modDepth: 40, modRate: 20 },
-    // N(アイドリング): 40Hzのサイン波を±50Hz・20Hzで揺らし、6025Hzで切る
-    1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 50, modRate: 20 },
-    ...DRIVE_GEAR_TONES,
+    0: { freq: 60, depth: 55, offWave: 'triangle' },   // R
+    1: { freq: 40, depth: 50, offWave: 'triangle' },   // N
+    2: { freq: 60, depth: 56, offWave: 'triangle' },   // 1速
+    3: { freq: 75, depth: 63, offWave: 'triangle' },   // 2速
+    4: { freq: 90, depth: 72, offWave: 'triangle' },   // 3速
+    5: { freq: 105, depth: 81, offWave: 'triangle' },  // 4速
+    6: { freq: 120, depth: 95, offWave: 'sawtooth' },  // 5速
   };
+  const GEAR_TONE_ON_WAVE = 'triangle';
+  const GEAR_TONE_ON_LPF = 8000;
+  const GEAR_TONE_OFF_LPF = 220;
+  const GEAR_TONE_MOD_RATE = 20;
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
   let gearToneVolume = 0.25;
   let gearToneNow = null;      // 今あてているギア(切り替え時だけ設定し直す)
@@ -493,19 +485,20 @@ function audioModule() {
     engNoiseFilter.frequency.setTargetAtTime(200 + roughFreq * 2, t, 0.05);
 
     // ギアごとの重ね音。設定のあるギアでだけ鳴らし、音量は別建てで持つ。
+    // 波形とローパスはアクセルの踏み具合で切り替える。
     const tone = GEAR_TONES[s.gear];
-    if (tone && gearToneNow !== s.gear) {
-      gearToneNow = s.gear;
-      toneOsc.type = tone.wave;
+    const toneKey = tone ? `${s.gear}/${s.throttle ? 'on' : 'off'}` : null;
+    if (tone && gearToneNow !== toneKey) {
+      gearToneNow = toneKey;
+      toneOsc.type = s.throttle ? GEAR_TONE_ON_WAVE : tone.offWave;
       toneOsc.frequency.setTargetAtTime(tone.freq, t, 0.05);
-      toneModOsc.frequency.setTargetAtTime(tone.modRate, t, 0.05);
-      toneFilt.frequency.setTargetAtTime(tone.lpf, t, 0.05);
+      toneModOsc.frequency.setTargetAtTime(GEAR_TONE_MOD_RATE, t, 0.05);
+      toneModGain.gain.setTargetAtTime(tone.depth, t, 0.05);
+      toneFilt.frequency.setTargetAtTime(
+        s.throttle ? GEAR_TONE_ON_LPF : GEAR_TONE_OFF_LPF, t, 0.06
+      );
     }
     if (!tone) gearToneNow = null;
-    // 変調(ビブラート)はアクセルを踏んでいる間だけ。離すと揺れが消えて素の音になる。
-    toneModGain.gain.setTargetAtTime(
-      tone && s.throttle ? tone.modDepth : 0, t, 0.06
-    );
     toneGain.gain.setTargetAtTime(tone && !engineMuted ? gearToneVolume : 0, t, 0.08);
 
     // screech: whichever is stronger — drifting or locked-up braking
