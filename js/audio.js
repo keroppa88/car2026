@@ -65,7 +65,17 @@ function audioModule() {
   const GEAR_TONE_ON_LPF = 8000;
   const GEAR_TONE_OFF_LPF = 220;
   const GEAR_TONE_MOD_RATE = 20;
+  // アクセルオフの余韻。振幅を脈打たせながら落として消す。
+  // 「ババババババ…」とフェードアウトする感じ。
+  // RATE が脈の速さ、DECAY が消えるまでの秒数、BOOST が鳴り始めの大きさ。
+  // 一本の直線で落とすと頭の一発だけが目立つので、前半は SUSTAIN まで
+  // ゆるく落として脈をそろえ、後半で 0 まで引く二段構えにしている。
+  const GEAR_TONE_OFF_PULSE_RATE = 7;
+  const GEAR_TONE_OFF_DECAY = 1.1;
+  const GEAR_TONE_OFF_BOOST = 0.8;
+  const GEAR_TONE_OFF_SUSTAIN = 0.75;   // 半分過ぎた時点で残す割合
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
+  let toneAmGain, tonePulseGain, tonePulseOsc = null;
   let gearToneVolume = 0.25;
   let gearToneNow = null;      // 今あてているギア(切り替え時だけ設定し直す)
 
@@ -170,10 +180,19 @@ function audioModule() {
     toneModGain.connect(toneOsc.frequency);      // 周波数変調
     toneFilt = ctx.createBiquadFilter();
     toneFilt.type = 'lowpass';
+    // 振幅変調の段。踏んでいる間は 1 で素通し、アクセルオフの余韻のときだけ
+    // 脈と減衰をここに書き込む。トラック全体の音量(toneGain)とは別段にして、
+    // setGearToneVolume と余韻のエンベロープが干渉しないようにする。
+    toneAmGain = ctx.createGain();
+    toneAmGain.gain.value = 1;
+    tonePulseGain = ctx.createGain();
+    tonePulseGain.gain.value = 0;
+    tonePulseGain.connect(toneAmGain.gain);
     toneGain = ctx.createGain();
     toneGain.gain.value = 0;
     toneOsc.connect(toneFilt);
-    toneFilt.connect(toneGain);
+    toneFilt.connect(toneAmGain);
+    toneAmGain.connect(toneGain);
     toneGain.connect(master);
     toneOsc.start(); toneModOsc.start();
 
@@ -421,6 +440,43 @@ function audioModule() {
     engineMuted = !!v;
   }
 
+  // 重ね音の振幅変調を止め、素通し(1倍)へ戻す。アクセルを踏んだときに使う。
+  function holdGearTone(t) {
+    if (tonePulseOsc) {
+      try { tonePulseOsc.stop(t); } catch { /* 既に停止済み */ }
+      tonePulseOsc = null;
+    }
+    tonePulseGain.gain.cancelScheduledValues(t);
+    tonePulseGain.gain.setTargetAtTime(0, t, 0.04);
+    toneAmGain.gain.cancelScheduledValues(t);
+    toneAmGain.gain.setTargetAtTime(1, t, 0.04);
+  }
+
+  // アクセルオフの余韻を鳴らし直す。脈の深さは土台と同じ量にしてあるので、
+  // 音量は 0 と土台の2倍の間を行き来する = 完全に途切れる脈になる。
+  // 土台と脈を同じ直線で 0 まで落とすため、脈打ちながら消えていく。
+  // 脈の位相を毎回そろえたいので、オシレータはその都度作り直す。
+  function burbleGearTone(t) {
+    const end = t + GEAR_TONE_OFF_DECAY;
+    if (tonePulseOsc) {
+      try { tonePulseOsc.stop(t); } catch { /* 既に停止済み */ }
+    }
+    tonePulseOsc = ctx.createOscillator();
+    tonePulseOsc.type = 'sine';
+    tonePulseOsc.frequency.value = GEAR_TONE_OFF_PULSE_RATE;
+    tonePulseOsc.connect(tonePulseGain);
+    tonePulseOsc.start(t);
+    tonePulseOsc.stop(end + 0.05);
+    for (const p of [toneAmGain.gain, tonePulseGain.gain]) {
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(GEAR_TONE_OFF_BOOST, t);
+      p.linearRampToValueAtTime(
+        GEAR_TONE_OFF_BOOST * GEAR_TONE_OFF_SUSTAIN, t + GEAR_TONE_OFF_DECAY * 0.5
+      );
+      p.linearRampToValueAtTime(0, end);
+    }
+  }
+
   // 鳴っている音を全て止め、次のユーザー操作(unlock)まで無音へ戻す。
   // ページ再読込で音が消えるのと同じ状態を、再読込せずに作る。
   // デモ画面が「ドラッグで鳴り始めたエンジン音」を消すために使う。
@@ -432,6 +488,7 @@ function audioModule() {
       g.gain.cancelScheduledValues(t);
       g.gain.setValueAtTime(0, t);
     }
+    holdGearTone(t);
     rpmSmooth = 0;
     revN = 0;
     gearToneNow = null;
@@ -488,6 +545,7 @@ function audioModule() {
 
     // ギアごとの重ね音。設定のあるギアでだけ鳴らし、音量は別建てで持つ。
     // 波形とローパスはアクセルの踏み具合で切り替える。
+    // 踏んでいる間は鳴らしっぱなし、離した瞬間に脈打つ余韻へ切り替える。
     const tone = GEAR_TONES[s.gear];
     const toneKey = tone ? `${s.gear}/${s.throttle ? 'on' : 'off'}` : null;
     if (tone && gearToneNow !== toneKey) {
@@ -499,8 +557,12 @@ function audioModule() {
       toneFilt.frequency.setTargetAtTime(
         s.throttle ? GEAR_TONE_ON_LPF : GEAR_TONE_OFF_LPF, t, 0.06
       );
+      if (s.throttle) holdGearTone(t); else burbleGearTone(t);
     }
-    if (!tone) gearToneNow = null;
+    if (!tone) {
+      if (gearToneNow !== null) holdGearTone(t);
+      gearToneNow = null;
+    }
     toneGain.gain.setTargetAtTime(tone && !engineMuted ? gearToneVolume : 0, t, 0.08);
 
     // screech: whichever is stronger — drifting or locked-up braking
@@ -529,6 +591,10 @@ function audioModule() {
         gearToneLpf: toneFilt ? +toneFilt.frequency.value.toFixed(0) : null,
         gearToneModRate: toneModOsc ? +toneModOsc.frequency.value.toFixed(1) : null,
         gearToneModDepth: toneModGain ? +toneModGain.gain.value.toFixed(0) : null,
+        gearToneAm: toneAmGain ? +toneAmGain.gain.value.toFixed(4) : null,
+        gearTonePulse: tonePulseGain ? +tonePulseGain.gain.value.toFixed(4) : null,
+        gearToneOffPulseRate: GEAR_TONE_OFF_PULSE_RATE,
+        gearToneOffDecay: GEAR_TONE_OFF_DECAY,
         gearShiftSounds,
         gearSoundReady: !!gearBuffer,
       } : null;
