@@ -66,17 +66,17 @@ function audioModule() {
   const GEAR_TONE_OFF_LPF = 220;
   const GEAR_TONE_MOD_RATE = 20;
   // アクセルオフの余韻。振幅を脈打たせて「ババババババ…」と鳴らす。
-  // 離した直後はローパスが落ちきる過渡音で一発だけ強く出てしまうので、
-  // MUTE の間は消音して頭を隠し、そこから脈を始める。
+  // 離した瞬間から鳴らす。頭の一発が大きくなりすぎないよう、ローパスは
+  // なめらかにではなく即座に落とす(落ちきる前の開いたフィルタを鋸波が
+  // 通り抜けると、そこだけ明るく大きくなるため)。
   // 脈は HOLD の間 BOOST の大きさで続き、そこから FADE 秒かけて FLOOR まで
   // 落として、あとはアクセルを踏むまで FLOOR で鳴り続ける。0 までは落とさない。
   const GEAR_TONE_OFF_PULSE_RATE = 14;   // 脈の速さ(Hz)
-  const GEAR_TONE_OFF_MUTE = 0.3;        // 離した直後に消音する秒数
-  const GEAR_TONE_OFF_HOLD = 2.2;        // 大きいまま脈が続く秒数(消音明けから)
+  const GEAR_TONE_OFF_HOLD = 2.2;        // 大きいまま脈が続く秒数
   const GEAR_TONE_OFF_FADE = 0.5;        // 落としていく秒数
   const GEAR_TONE_OFF_BOOST = 0.8;       // 脈の大きさ
   const GEAR_TONE_OFF_FLOOR = 0.5;       // 落ち着く先の大きさ
-  const GEAR_TONE_OFF_ATTACK = 0.06;     // 消音明けの立ち上がり
+  const GEAR_TONE_OFF_ATTACK = 0.02;     // 鳴り始めの立ち上がり(クリック防止)
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
   let toneAmGain, tonePulseGain, tonePulseOsc = null;
   let gearToneVolume = 0.125;  // 重ね音の音量(アクセルON/OFF共通)
@@ -457,11 +457,10 @@ function audioModule() {
 
   // アクセルオフの余韻を鳴らし直す。脈の深さは土台と同じ量にしてあるので、
   // 音量は 0 と土台の2倍の間を行き来する = 完全に途切れる脈になる。
-  // 消音 → 立ち上がり → BOOST で持続 → FLOOR まで落として据え置き、の順。
-  // 脈の位相を消音明けにそろえたいので、オシレータはその都度作り直す。
+  // 立ち上がり → BOOST で持続 → FLOOR まで落として据え置き、の順。
+  // 脈の位相を離した瞬間にそろえたいので、オシレータはその都度作り直す。
   function burbleGearTone(t) {
-    const start = t + GEAR_TONE_OFF_MUTE;             // 消音明け
-    const peak = start + GEAR_TONE_OFF_ATTACK;        // 脈が本来の大きさになる
+    const peak = t + GEAR_TONE_OFF_ATTACK;            // 脈が本来の大きさになる
     const fadeAt = peak + GEAR_TONE_OFF_HOLD;         // 落とし始め
     if (tonePulseOsc) {
       try { tonePulseOsc.stop(t); } catch { /* 既に停止済み */ }
@@ -470,11 +469,10 @@ function audioModule() {
     tonePulseOsc.type = 'sine';
     tonePulseOsc.frequency.value = GEAR_TONE_OFF_PULSE_RATE;
     tonePulseOsc.connect(tonePulseGain);
-    tonePulseOsc.start(start);                        // 止めない(踏むまで鳴り続ける)
+    tonePulseOsc.start(t);                            // 止めない(踏むまで鳴り続ける)
     for (const p of [toneAmGain.gain, tonePulseGain.gain]) {
       p.cancelScheduledValues(t);
       p.setValueAtTime(0, t);
-      p.setValueAtTime(0, start);
       p.linearRampToValueAtTime(GEAR_TONE_OFF_BOOST, peak);
       p.setValueAtTime(GEAR_TONE_OFF_BOOST, fadeAt);
       p.linearRampToValueAtTime(GEAR_TONE_OFF_FLOOR, fadeAt + GEAR_TONE_OFF_FADE);
@@ -558,10 +556,16 @@ function audioModule() {
       toneOsc.frequency.setTargetAtTime(tone.freq, t, 0.05);
       toneModOsc.frequency.setTargetAtTime(GEAR_TONE_MOD_RATE, t, 0.05);
       toneModGain.gain.setTargetAtTime(tone.depth, t, 0.05);
-      toneFilt.frequency.setTargetAtTime(
-        s.throttle ? GEAR_TONE_ON_LPF : GEAR_TONE_OFF_LPF, t, 0.06
-      );
-      if (s.throttle) holdGearTone(t); else burbleGearTone(t);
+      if (s.throttle) {
+        toneFilt.frequency.setTargetAtTime(GEAR_TONE_ON_LPF, t, 0.06);
+        holdGearTone(t);
+      } else {
+        // 離すときは即座に閉じる。なめらかに落とすと、閉じきる前の開いた
+        // フィルタを鋸波が通り抜けて、頭の一発だけ明るく大きくなる。
+        toneFilt.frequency.cancelScheduledValues(t);
+        toneFilt.frequency.setValueAtTime(GEAR_TONE_OFF_LPF, t);
+        burbleGearTone(t);
+      }
     }
     if (!tone) {
       if (gearToneNow !== null) holdGearTone(t);
@@ -598,7 +602,7 @@ function audioModule() {
         gearToneAm: toneAmGain ? +toneAmGain.gain.value.toFixed(4) : null,
         gearTonePulse: tonePulseGain ? +tonePulseGain.gain.value.toFixed(4) : null,
         gearToneOffPulseRate: GEAR_TONE_OFF_PULSE_RATE,
-        gearToneOffMute: GEAR_TONE_OFF_MUTE,
+        gearToneOffAttack: GEAR_TONE_OFF_ATTACK,
         gearToneOffHold: GEAR_TONE_OFF_HOLD,
         gearToneOffFade: GEAR_TONE_OFF_FADE,
         gearToneOffFloor: GEAR_TONE_OFF_FLOOR,
