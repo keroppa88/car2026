@@ -47,12 +47,28 @@ function audioModule() {
   // ギアごとの重ね音(別トラック)。既存のエンジン音へ重ねて鳴らす。
   // 音量はエンジン音とは別建てで、setGearToneVolume から変えられる。
   // 変調は周波数変調。modDepth が振れ幅(Hz)、modRate が揺れる速さ(Hz)。
-  // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 …)。
+  // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 4=3速 5=4速 6=5速)。
+  // 1速〜5速は、1速(60Hz/±50Hz)から5速(120Hz/±80Hz)まで均等に増やす。
+  const DRIVE_GEAR_TONES = (() => {
+    const first = { freq: 60, modDepth: 50 };
+    const fifth = { freq: 120, modDepth: 80 };
+    const tones = {};
+    for (let step = 0; step < 5; step++) {
+      const ratio = step / 4;
+      tones[2 + step] = {
+        freq: first.freq + (fifth.freq - first.freq) * ratio,
+        wave: 'triangle',
+        lpf: 8000,
+        modDepth: first.modDepth + (fifth.modDepth - first.modDepth) * ratio,
+        modRate: 20,
+      };
+    }
+    return tones;
+  })();
   const GEAR_TONES = {
     // N(アイドリング): 40Hzのサイン波を±100Hz・20Hzで揺らし、6025Hzで切る
     1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 100, modRate: 20 },
-    // 1速: 60Hzの三角波、8000Hzで切る。変調はアイドリングと同じ値を暫定で使う
-    2: { freq: 60, wave: 'triangle', lpf: 8000, modDepth: 100, modRate: 20 },
+    ...DRIVE_GEAR_TONES,
   };
   let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
   let gearToneVolume = 0.25;
