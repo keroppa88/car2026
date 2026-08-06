@@ -44,6 +44,19 @@ function audioModule() {
   let rpmSmooth = 0;
   let roughPhase = 0;
   let revN = 0;              // free-rev state for neutral
+  // ギアごとの重ね音(別トラック)。既存のエンジン音へ重ねて鳴らす。
+  // 音量はエンジン音とは別建てで、setGearToneVolume から変えられる。
+  // 変調は周波数変調。modDepth が振れ幅(Hz)、modRate が揺れる速さ(Hz)。
+  // 添字は player.gear と同じ (0=R 1=N 2=1速 3=2速 …)。
+  const GEAR_TONES = {
+    // N(アイドリング): 40Hzのサイン波を±100Hz・20Hzで揺らし、6025Hzで切る
+    1: { freq: 40, wave: 'sine', lpf: 6025, modDepth: 100, modRate: 20 },
+    // 1速: 60Hzの三角波、8000Hzで切る。変調はアイドリングと同じ値を暫定で使う
+    2: { freq: 60, wave: 'triangle', lpf: 8000, modDepth: 100, modRate: 20 },
+  };
+  let toneOsc, toneModOsc, toneModGain, toneFilt, toneGain;
+  let gearToneVolume = 0.25;
+  let gearToneNow = null;      // 今あてているギア(切り替え時だけ設定し直す)
 
   function init() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -135,6 +148,23 @@ function audioModule() {
     bp2.connect(screechGain);
     screechGain.connect(master);
     noise.start();
+
+    // ----- ギアごとの重ね音(別トラック) -----
+    toneOsc = ctx.createOscillator();
+    toneOsc.type = 'sine';
+    toneModOsc = ctx.createOscillator();
+    toneModOsc.type = 'sine';
+    toneModGain = ctx.createGain();
+    toneModOsc.connect(toneModGain);
+    toneModGain.connect(toneOsc.frequency);      // 周波数変調
+    toneFilt = ctx.createBiquadFilter();
+    toneFilt.type = 'lowpass';
+    toneGain = ctx.createGain();
+    toneGain.gain.value = 0;
+    toneOsc.connect(toneFilt);
+    toneFilt.connect(toneGain);
+    toneGain.connect(master);
+    toneOsc.start(); toneModOsc.start();
 
     // wobble so the screech "sings" instead of hissing statically
     const lfo = ctx.createOscillator();
@@ -364,6 +394,11 @@ function audioModule() {
   }
 
   // ゲーム効果音(エンジン・スクリーチ等)全体の音量 0..1。
+  // ギアごとの重ね音だけの音量。0で消える。
+  function setGearToneVolume(v) {
+    gearToneVolume = Math.max(0, Math.min(1, v));
+  }
+
   function setVolume(v) {
     volume = Math.max(0, Math.min(1, v)) * 0.9;
     if (ctx && !muted) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.03);
@@ -382,12 +417,13 @@ function audioModule() {
     if (!ctx) return;
     stopInteriorNow();
     const t = ctx.currentTime;
-    for (const g of [engGain, engNoiseGain, screechGain]) {
+    for (const g of [engGain, engNoiseGain, screechGain, toneGain]) {
       g.gain.cancelScheduledValues(t);
       g.gain.setValueAtTime(0, t);
     }
     rpmSmooth = 0;
     revN = 0;
+    gearToneNow = null;
     if (ctx.state === 'running') ctx.suspend();
   }
 
@@ -439,6 +475,19 @@ function audioModule() {
     engNoiseGain.gain.setTargetAtTime(engineMuted ? 0 : engineNoise, t, 0.035);
     engNoiseFilter.frequency.setTargetAtTime(200 + roughFreq * 2, t, 0.05);
 
+    // ギアごとの重ね音。設定のあるギアでだけ鳴らし、音量は別建てで持つ。
+    const tone = GEAR_TONES[s.gear];
+    if (tone && gearToneNow !== s.gear) {
+      gearToneNow = s.gear;
+      toneOsc.type = tone.wave;
+      toneOsc.frequency.setTargetAtTime(tone.freq, t, 0.05);
+      toneModOsc.frequency.setTargetAtTime(tone.modRate, t, 0.05);
+      toneModGain.gain.setTargetAtTime(tone.modDepth, t, 0.05);
+      toneFilt.frequency.setTargetAtTime(tone.lpf, t, 0.05);
+    }
+    if (!tone) gearToneNow = null;
+    toneGain.gain.setTargetAtTime(tone && !engineMuted ? gearToneVolume : 0, t, 0.08);
+
     // screech: whichever is stronger — drifting or locked-up braking
     const drift = s.drifting ? Math.min(1, Math.max(0, s.slip - 1.5) / 5) : 0;
     const brake = s.brakeSkid ? Math.min(1, s.speed / 22) : 0;
@@ -448,6 +497,7 @@ function audioModule() {
 
   return {
     unlock, toggle, setEngineMuted, setVolume, update, silence, playGearShift,
+    setGearToneVolume,
     playInterior, stopInterior, preloadInterior, setInteriorVolume, interiorPlaying,
     bands: FREQS,
     _debug() {
@@ -457,6 +507,13 @@ function audioModule() {
         engVol: engGain.gain.value,
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
+        gearTone: toneGain ? +toneGain.gain.value.toFixed(4) : null,
+        gearToneVolume,
+        gearToneWave: toneOsc ? toneOsc.type : null,
+        gearToneFreq: toneOsc ? +toneOsc.frequency.value.toFixed(1) : null,
+        gearToneLpf: toneFilt ? +toneFilt.frequency.value.toFixed(0) : null,
+        gearToneModRate: toneModOsc ? +toneModOsc.frequency.value.toFixed(1) : null,
+        gearToneModDepth: toneModGain ? +toneModGain.gain.value.toFixed(0) : null,
         gearShiftSounds,
         gearSoundReady: !!gearBuffer,
       } : null;
