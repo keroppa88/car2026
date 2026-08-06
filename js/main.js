@@ -94,6 +94,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let car2RoadMeshes = roadMeshes; // 既存の首都高路外判定との互換参照
   let car2DrivableMeshes = [];     // 路面+白線(走行可能とみなす面)
   const car2VisualWraps = [];      // ループ地点の先に見せる前後1周分（表示専用）
+  let car2VisualLoopSpanZ = 0;     // その前後コピーを置いたZ間隔（0ならループ無し）
   const sequenceLoopPreviewSurfaceMeshes = []; // ループ継ぎ目生成時だけ参照する表示面
 
   let BOUND_X_MIN = -290;          // playable area (m); extends east into the forest
@@ -3266,6 +3267,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return best;
   }
 
+  // 縦ループの地図は前後に1周ぶんのコピーを置いて継ぎ目をつないでいる。
+  // ユーザー車から見た見かけの前後差を返す。ループ地点をまたいだ相手は、
+  // 素直に引き算すると1周ぶん離れた値になり、道なりにはすぐ隣にいるのに
+  // 地図の反対端として扱われてしまう（見えない・光らない）。
+  function loopDeltaZFromPlayer(z) {
+    let dz = z - player.pos.z;
+    if (car2VisualLoopSpanZ > 0) {
+      const half = car2VisualLoopSpanZ / 2;
+      if (dz > half) dz -= car2VisualLoopSpanZ;
+      else if (dz < -half) dz += car2VisualLoopSpanZ;
+    }
+    return dz;
+  }
+
   function nearestRouteIndexTo(wps, x, z) {
     let best = 0;
     let bestD2 = Infinity;
@@ -5066,7 +5081,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       scene.add(visualCopy);
       car2VisualWraps.push(visualCopy);
     }
+    // CPU車を「一番近い地図コピー」へ描くのにも使う間隔。
+    car2VisualLoopSpanZ = spanZ;
     document.body.dataset.mapVisualLoopCopies = String(car2VisualWraps.length);
+    document.body.dataset.mapVisualLoopSpanZ = spanZ.toFixed(3);
   }
 
   function addSequenceLoopPreviews(layout) {
@@ -9387,12 +9405,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
 
       ai.group.position.copy(ai.pos);
+      ai.group.position.z = player.pos.z + loopDeltaZFromPlayer(ai.pos.z);
       ai.group.rotation.y = ai.heading;
       // 夜間のテールランプ残像(遠くからも視認できるよう320m以内で出す)。
       // 近く・並走時は長い残像が不自然なため、距離に応じて残る時間を縮める:
       // 30m以内=半分(0.375秒) 〜 120m以上=フル(0.75秒) を線形補間。
       if (nightMode) {
-        const tpx = ai.pos.x - player.pos.x, tpz = ai.pos.z - player.pos.z;
+        const tpx = ai.pos.x - player.pos.x, tpz = loopDeltaZFromPlayer(ai.pos.z);
         const distSq = tpx * tpx + tpz * tpz;
         if (distSq < 320 * 320) {
           const dist = Math.sqrt(distSq);
