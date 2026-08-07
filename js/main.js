@@ -7019,7 +7019,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   // 曲名「」のあとに書かれた演出指示を読む。書式は musiclist.txt を参照。
   //   #rrggbb / 空#rrggbb : 空色    地平線#rrggbb : 地平線色
-  //     どちらも色調(色相・彩度)だけを当て、明るさはユーザー設定のまま残す。
+  //     色相・彩度・明るさをそのまま当てる。曲が終われば元の設定へ戻る。
   //   単色      : 空のグラデーションをやめ、地平線色と上空色をベタ塗りで分ける
   //   音量±N%  : その曲の間だけ音量を上げ下げする
   //   開始N秒   : 頭からではなくN秒目から流す
@@ -7162,12 +7162,15 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       rain: weatherRain, stars: weatherStars, cloudMode: weatherCloudMode,
       flatSky: weatherFlatSky, night: nightMode,
     };
-    // 色調(色相・彩度)だけを当てる。明るさはユーザーが決めた値のまま残す。
+    // 指定色をそのまま当てる。明るさも曲の指定に従う。以前は明るさだけ
+    // 残していたが、手で暗くしたあと曲を変えるとその暗さが居座り、次の曲の
+    // 指定どおりにならなかった。明るさはパネルの明暗メーターと同じ範囲へ収める。
     const applyTone = (hex, hsl) => {
       const tone = { h: 0, s: 0, l: 0 };
       new THREE.Color(`#${hex}`).getHSL(tone);
       hsl.h = tone.h;
       hsl.s = tone.s;
+      hsl.l = clamp(tone.l, 0.1, 0.98);
     };
     // Music⇒Skyを切っている間は、見え方に関わる指示を一切当てない。
     // 音量だけは切っていても常に効かせる。
@@ -7542,6 +7545,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherStarButton?.renderToggle(weatherStars);
     weatherMusicSkyButton?.renderToggle(musicSkyEnabled);
     document.body.dataset.weatherMusicSky = String(musicSkyEnabled);
+    // 明暗の確認用。パネルのメーターと同じ%（上空/地平線）。
+    document.body.dataset.weatherTopBrightness =
+      String(Math.round(clamp((weatherTopHsl.l - 0.1) / 0.88, 0, 1) * 100));
+    document.body.dataset.weatherHorizonBrightness =
+      String(Math.round(clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1) * 100));
     weatherCloudButton?.renderCloud(weatherCloudMode);
     document.body.dataset.weatherRain = String(weatherRain);
     document.body.dataset.weatherStars = String(weatherStars);
