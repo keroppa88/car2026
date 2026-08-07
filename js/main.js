@@ -7140,12 +7140,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     weatherFlatSky = saved.flatSky;
     musicTrackVolumeScale = 1;
     applyMusicVolume();
-    if (nightMode !== saved.night) {
-      nightMode = saved.night;
-      applyNight();
-    } else {
-      applyWeatherSky();
-    }
+    nightMode = saved.night;
+    // 空だけでなく地表の明るさもやり直す。applyWeatherSky だけだと空が明るく
+    // 戻っても道路や車が暗いままになる（明暗に応じた照明は applyNight が持つ）。
+    applyNight();
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = '';
     document.body.dataset.weatherFlatSky = String(weatherFlatSky);
@@ -7187,13 +7185,12 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       musicTrackVolumeScale = clamp(1 + effects.volumePercent / 100, 0, 2);
     }
     applyMusicVolume();
-    // 夜指定の曲は夜間モードへ。地表の明るさまで変わるのでapplyNightを通す。
-    if (musicSkyEnabled && effects.night && !nightMode) {
-      nightMode = true;
-      applyNight();
-    } else {
-      applyWeatherSky();
-    }
+    // 夜指定の曲は夜間モードへ。
+    if (musicSkyEnabled && effects.night) nightMode = true;
+    // 夜指定でなくても applyNight を通す。曲の指定で明暗が下がったときに
+    // 地表の照明もそれに追随させるため（applyWeatherSky だけだと空しか変わらず、
+    // 明暗10%の曲でも道路や車が昼のまま明るく残ってしまう）。
+    applyNight();
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = JSON.stringify(effects);
     document.body.dataset.weatherFlatSky = String(weatherFlatSky);
