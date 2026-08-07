@@ -1019,14 +1019,27 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const DUSK_HEMI_SKY = new THREE.Color(0x4a5468);
   const DUSK_HEMI_GROUND = new THREE.Color(0x2a2c32);
   const DUSK_SUN = new THREE.Color(0xa8b4cc);
+  // パネルの明暗メーターの%と、地表の暗さ(0=昼 1=夜間モードと同じ)の対応。
+  // 明るい順に並べ、間は直線で補間する。40%から暗くなり始め、25%で半分、
+  // 0%で夜と同じ。25%より下は一定の傾き(5%ごとに0.1)。
+  const DUSK_BY_METER = [
+    [0.40, 0], [0.35, 0.1], [0.30, 0.3], [0.25, 0.5], [0, 1],
+  ];
   function weatherDuskLevel() {
     if (nightMode) return 1;
     // パネルの「明暗」メーターの表示値(0〜1)で判定する。HSLのlは0.10〜0.98へ
     // 割り当てられているので、生のlで比べるとメーターの%とずれる。
     const meter = clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1);
-    if (meter >= 0.5) return 0;      // 50%以上は通常どおり
-    if (meter <= 0.1) return 1;      // 10%以下は夜間モードと同じ暗さ
-    return (0.5 - meter) / 0.4;      // 50%→10%は%に連動して暗くなる
+    if (meter >= DUSK_BY_METER[0][0]) return 0;
+    for (let i = 1; i < DUSK_BY_METER.length; i++) {
+      const [highMeter, highDusk] = DUSK_BY_METER[i - 1];
+      const [lowMeter, lowDusk] = DUSK_BY_METER[i];
+      if (meter >= lowMeter) {
+        const t = (highMeter - meter) / (highMeter - lowMeter);
+        return highDusk + (lowDusk - highDusk) * t;
+      }
+    }
+    return 1;
   }
 
   function applyNight() {
