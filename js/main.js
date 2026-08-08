@@ -2490,7 +2490,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
 
   const TOKYO_LOOP_CENTER_X = -128.55;
   const TOKYO_LOOP_EDGE_Z = 1652.25;
-  const TOKYO_LOOP_ENTRY_Z = 1644;
+  // 「1周ぶん」の距離。CPU車の走行ラインの端から端(z=+1644〜-1644)と同じ値にする。
+  // 地図コピーの間隔・自車のループ周期・CPU車の巻き戻し量をすべてこれに揃える。
+  // 揃っていないと、継ぎ目でCPU車が跳ねたり、コピーの道路から外れた場所
+  // (壁の中や空中)に描かれたりする。CPU車は走行ラインから2.8m以上離れると
+  // 引き戻されるので、巻き戻し量はライン長を超えられない＝この値が上限。
+  const TOKYO_LOOP_PERIOD_Z = 3288;
+  const TOKYO_LOOP_ENTRY_Z = TOKYO_LOOP_PERIOD_Z - TOKYO_LOOP_EDGE_Z;   // 1635.75
   const car2LastRoadPos = new THREE.Vector3();
 
   function setupMapLoopPortal() {
@@ -5084,10 +5090,20 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     document.body.dataset.mapWhiteGlowMeshes = String(mapWhiteGlowMeshes.length);
   }
 
+  // 縦ループで「1周ぶん」として扱う距離。ユーザー車がループ地点で飛ぶ量そのもの。
+  // 地図のコピーもこの間隔で置く。バウンディングボックスの奥行きで置くと、
+  // 自車が飛ぶ量と食い違って、ループのたびに道路に対して数十mずれてしまう。
+  // setupMapLoopPortal が作る値と一致させること。
+  function verticalLoopPeriodZ(bounds) {
+    if (CAR2_MODE) return TOKYO_LOOP_EDGE_Z + TOKYO_LOOP_ENTRY_Z;
+    const inset = Math.max(0.5, Math.min(2, (bounds.max.z - bounds.min.z) * 0.002));
+    return bounds.max.z - inset - bounds.min.z;
+  }
+
   function addVerticalMapLoopCopies(root, bounds) {
     document.body.dataset.mapVisualLoopCopies = '0';
     if (MAP_CONFIG.loopMode !== 'vertical') return;
-    const spanZ = bounds.max.z - bounds.min.z;
+    const spanZ = verticalLoopPeriodZ(bounds);
     if (!(spanZ > 0)) return;
     for (const direction of [-1, 1]) {
       const visualCopy = root.clone(true);
@@ -8926,6 +8942,25 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
           // 周回コース(インディ)はルートが輪。位置も向きもそのままに
           // 目標だけ先頭へ戻す。座標を書き換えると周回のたびに車が跳ぶ。
           ai.idx = 0;
+        } else if (passed && ai.idx >= ai.wps.length - 1
+          && !ai.overtakeTraffic && car2VisualLoopSpanZ > 0) {
+          // 縦ループの地図では、ルート端を過ぎた車は「先頭の座標へ移す」のでは
+          // なく「1周ぶんだけZを動かす」。地図のコピーも同じ間隔で置いてあるので、
+          // こうすると画面上の位置が連続したまま巻き戻る（跳ねない）。
+          // Xは動かさない。ループ地点の前後は直線なのでレーンずれも保てる。
+          // 手前で切り上げる reached では巻き戻さない。ラインの端より外へ出ると
+          // 走行ラインへの引き戻しが働いて、その分だけ跳ねてしまうため。
+          const last = ai.wps[ai.wps.length - 1];
+          const shift = ai.wps[0].z > last.z ? car2VisualLoopSpanZ : -car2VisualLoopSpanZ;
+          const z = ai.pos.z + shift;
+          ai.pos.set(ai.pos.x, groundHeightAt(ai.pos.x, 6, z), z);
+          ai.idx = 0;
+          ai.travelFromX = ai.pos.x;
+          ai.travelFromZ = ai.pos.z;
+          ai.stepPrevX = undefined;   // ルート端の巻き戻しはワープ検出に数えない
+        } else if ((passed || reached) && ai.idx >= ai.wps.length - 1
+          && !ai.overtakeTraffic && car2VisualLoopSpanZ > 0) {
+          // 端に近づいただけ（reached）ではまだ巻き戻さず、通り過ぎるのを待つ。
         } else if ((passed || reached) && ai.idx >= ai.wps.length - 1) {
           // 追越し用交通はループ先頭へ一斉に出現させず、その時点の
           // プレイヤー前方へ各車固有の車間で再配置する。
