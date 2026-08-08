@@ -3283,43 +3283,21 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   // 縦ループの地図は前後に1周ぶんのコピーを置いて継ぎ目をつないでいる。
-  // 継ぎ目ではユーザー車もCPU車も座標が1周ぶん飛ぶが、飛ぶ量は三者三様で、
-  // 走行ラインの端から端(約3277m)・ユーザー車のループ周期(3296.25m)・
-  // 地図コピーの間隔(約3320m)が一致していない。決め打ちの周期で引くと
-  // その差がそのまま画面上の跳ねになる。
-  // そこで「飛んだ量そのもの」を車ごとの補正値に足し込んで打ち消し、
-  // 見かけの前後位置を連続に保つ。補正値は出現時にゼロへ戻す。
-  const LOOP_JUMP_MIN_Z = 500;     // これ以上動いたらループの飛びとみなす(m)
-  let drawLoopPrevPlayerZ = null;  // 前フレームのユーザー車Z(飛びの検出用)
-
-  // このフレームでユーザー車がループで飛んだ量。飛んでいなければ 0。
-  function playerLoopJumpZ() {
-    const prev = drawLoopPrevPlayerZ;
-    drawLoopPrevPlayerZ = player.pos.z;
-    if (prev === null) return 0;
-    const jump = player.pos.z - prev;
-    return Math.abs(jump) > LOOP_JUMP_MIN_Z ? jump : 0;
-  }
-
-  // CPU車1台の描画Zを決める。見かけの前後位置(ai.drawRelZ)も残す。
-  function updateLoopDrawZ(ai, playerJump) {
-    const prev = ai.drawPrevZ;
-    const aiJump = prev !== undefined && Math.abs(ai.pos.z - prev) > LOOP_JUMP_MIN_Z
-      ? ai.pos.z - prev
-      : 0;
-    ai.drawPrevZ = ai.pos.z;
-    // 見かけの差 = (実Z + 補正) - ユーザー車Z。両者の飛びを補正で相殺する。
-    ai.drawZOffset = (ai.drawZOffset ?? 0) + playerJump - aiJump;
-    let rel = ai.pos.z + ai.drawZOffset - player.pos.z;
-    // 補正が溜まって描いてある地図の外へ出ないよう、半周を超えたら畳む。
-    // ここに掛かるのは画面に映らない距離の車だけ。
-    if (car2VisualLoopSpanZ > 0) {
-      const half = car2VisualLoopSpanZ / 2;
-      while (rel > half) { rel -= car2VisualLoopSpanZ; ai.drawZOffset -= car2VisualLoopSpanZ; }
-      while (rel < -half) { rel += car2VisualLoopSpanZ; ai.drawZOffset += car2VisualLoopSpanZ; }
+  // ループ地点をまたいだCPU車は、ユーザー車から見て一番近いコピーの位置へ描く。
+  // ずらす量は必ずコピー間隔の整数倍にすること。半端にずらすとコピーの道路から
+  // 横へ外れ、壁を突き抜けたり空中を走ったりする。
+  // 継ぎ目では車の描画位置が数十m跳ねるが、これは地図側の都合で、走行ラインの
+  // 端から端(約3277m)とコピーの間隔(約3320m)が一致していないため。
+  // 跳ねを消そうと整数倍でないずらし方をすると、上の「道路から外れる」を招く。
+  function updateLoopDrawZ(ai) {
+    if (!(car2VisualLoopSpanZ > 0)) {
+      ai.drawRelZ = ai.pos.z - player.pos.z;
+      return ai.pos.z;
     }
-    ai.drawRelZ = rel;
-    return player.pos.z + rel;
+    const copies = Math.round((player.pos.z - ai.pos.z) / car2VisualLoopSpanZ);
+    const z = ai.pos.z + copies * car2VisualLoopSpanZ;
+    ai.drawRelZ = z - player.pos.z;
+    return z;
   }
 
   function nearestRouteIndexTo(wps, x, z) {
@@ -4172,9 +4150,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     ai.travelFromX = undefined;
     ai.travelFromZ = undefined;
     ai.stepPrevX = undefined;   // 出現の瞬間移動はワープ検出に数えない
-    // 出現位置はユーザー車を基準に取り直すので、ループの補正は捨てる。
-    ai.drawZOffset = 0;
-    ai.drawPrevZ = undefined;
     ai.active = true;
     ai.group.visible = true;
     car2CpuAppearTotal++;
@@ -8916,8 +8891,6 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     let indyCpuMaxSlipNow = 0;
     // 出現タイマーと、離れすぎた車の引き上げ。
     if (CAR2_MODE) updateCar2CpuTraffic(dt);
-    // ユーザー車がこのフレームでループの継ぎ目を飛んだ量（描画位置の補正に使う）。
-    const loopJumpThisFrame = playerLoopJumpZ();
     for (const ai of aiCars) {
       // 出番待ちの車は動かさない（描画もしない）。
       if (ai.appearManaged && !ai.active) continue;
@@ -9456,7 +9429,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
 
       ai.group.position.copy(ai.pos);
-      ai.group.position.z = updateLoopDrawZ(ai, loopJumpThisFrame);
+      ai.group.position.z = updateLoopDrawZ(ai);
       ai.group.rotation.y = ai.heading;
       // 夜間のテールランプ残像(遠くからも視認できるよう320m以内で出す)。
       // 近く・並走時は長い残像が不自然なため、距離に応じて残る時間を縮める:
