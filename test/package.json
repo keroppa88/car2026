@@ -1,0 +1,15 @@
+{
+  "name": "car2026-test",
+  "private": true,
+  "type": "module",
+  "description": "コース別の検証プレイ。node run.mjs で全コース、node tokyo.mjs で1コース。",
+  "scripts": {
+    "test": "node run.mjs",
+    "tokyo": "node tokyo.mjs",
+    "sea": "node sea.mjs",
+    "indy": "node indy.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
