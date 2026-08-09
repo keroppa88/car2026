@@ -550,8 +550,11 @@ function audioModule() {
     engGain.gain.setTargetAtTime(engineMuted ? 0 : Math.max(0, vol * pulse), t, 0.03);
 
     // 燃焼ノイズ(全ギア。踏むと増え、回転で明るくなる)。エンジン音と同じく20%減。
+    // 自動運転中は鳴らさない。エンジン音は上のオシレータ(最初の層)だけにする。
     const engineNoise = (0.006 + rpmSmooth * 0.02 + (s.throttle ? 0.018 : 0.004)) * 0.8;
-    engNoiseGain.gain.setTargetAtTime(engineMuted ? 0 : engineNoise, t, 0.035);
+    engNoiseGain.gain.setTargetAtTime(
+      engineMuted || s.autoDrive ? 0 : engineNoise, t, 0.035
+    );
     engNoiseFilter.frequency.setTargetAtTime(200 + roughFreq * 2, t, 0.05);
 
     // ギアごとの重ね音。設定のあるギアでだけ鳴らし、音量は別建てで持つ。
@@ -605,6 +608,7 @@ function audioModule() {
         state: ctx.state,
         freq: osc1.frequency.value,
         engVol: engGain.gain.value,
+        engNoiseVol: engNoiseGain.gain.value,
         screech: screechGain.gain.value,
         interior: interiorPlaying(),
         gearTone: toneGain ? +toneGain.gain.value.toFixed(4) : null,
