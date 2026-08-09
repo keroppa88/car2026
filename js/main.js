@@ -8881,6 +8881,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       drifting: player.drifting,
       brakeSkid: brake && Math.abs(vF) > 6,
       speed: Math.abs(vF),
+      // 自動運転中は重ね音(アクセルON/OFFで変わるほう)を止める。
+      // 自分で操作していないのに音だけ賑やかになってうるさいため。
+      autoDrive: autoDrive || demoActive,
     });
 
     updateInteriorSound(player.vel.length() * 3.6);
@@ -10008,7 +10011,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
       if (musicMode || pauseMode) {
         // 音楽選択・一時停止中は運転(シミュレーション)を停止。音はアイドルへ。
-        AUDIO.update(dt, { gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false, speed: 0 });
+        AUDIO.update(dt, {
+          gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false,
+          speed: 0, autoDrive: autoDrive || demoActive,
+        });
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);

@@ -559,9 +559,11 @@ function audioModule() {
     // 踏んでいる間は鳴らしっぱなし、離した瞬間に脈打つ余韻へ切り替える。
     // 余韻を叩き直すのはアクセルを離した瞬間だけ。止まって N の音に変わる
     // ときにも音程は切り替わるが、そこで余韻を鳴らし直すと不自然になる。
+    // 自動運転中は重ね音を鳴らさない。自分で操作していないのに音だけ賑やかに
+    // なってうるさいため。エンジン音そのものは従来どおり鳴らす。
     const wasThrottle = gearToneThrottle;
     gearToneThrottle = !!s.throttle;
-    const tone = GEAR_TONES[gear];
+    const tone = s.autoDrive ? undefined : GEAR_TONES[gear];
     const toneKey = tone ? `${gear}/${s.throttle ? 'on' : 'off'}` : null;
     if (tone && gearToneNow !== toneKey) {
       gearToneNow = toneKey;
