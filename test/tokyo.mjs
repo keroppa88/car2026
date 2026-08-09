@@ -28,6 +28,10 @@ const ok = await runCourse('tokyo', async ({ page, errors, checker, args }) => {
 
   const p = await readProbe(page);
   const audio = await readAudio(page);
+  const accel = await readDataset(page, [
+    'tokyoCpuMaxAccel', 'playerMaxAccelLimit', 'tokyoCpuActiveRanks',
+    'tokyoCpuCurrentSpeedsKmh',
+  ]);
 
   // ---- 不変条件（破れたら不合格） ----
   checker.check('コンソールエラーが無い', errors.length === 0,
@@ -48,6 +52,11 @@ const ok = await runCourse('tokyo', async ({ page, errors, checker, args }) => {
     `1フレームの最大移動 ${p.cpuMaxDrawPop.toFixed(2)}m`
     + (p.cpuDrawPops.length ? ` 例: ${JSON.stringify(p.cpuDrawPops.slice(0, 3))}` : ''));
   checker.check('自車が路外へ落ちない', p.fellOutsideRoad === 0, `${p.fellOutsideRoad}フレーム`);
+  // CPU車の加速はユーザー車の加速カーブが上限。とくにSは最高速162km/hと
+  // コーナー上限(100〜150km/h)の差が大きいので、立ち上がりでここを超えやすい。
+  checker.check('CPU車の加速がユーザー車を超えない',
+    Number(accel.tokyoCpuMaxAccel) <= Number(accel.playerMaxAccelLimit) + 0.1,
+    `CPUの最大 ${accel.tokyoCpuMaxAccel} / ユーザー車の上限 ${accel.playerMaxAccelLimit} m/s2`);
   checker.check('自動運転では音が1層だけ',
     audio && audio.エンジン音 > 0.001 && audio.燃焼ノイズ === 0 && audio.重ね音 === 0,
     JSON.stringify(audio));
@@ -58,6 +67,8 @@ const ok = await runCourse('tokyo', async ({ page, errors, checker, args }) => {
     + '（自動運転は遅いので0でも構わない。検査の本命はCPU車の巻き戻し）');
   checker.note('CPU車を見た延べ回数', `${p.cpuSamples} (プール ${info.tokyoCpuPoolSize}台)`);
   checker.note('自車の最高速', `${p.maxKmh.toFixed(0)}km/h`);
+  checker.note('最後に見たCPU車', `ランク=${accel.tokyoCpuActiveRanks || '-'} `
+    + `速度=${accel.tokyoCpuCurrentSpeedsKmh || '-'}km/h`);
   checker.note('自車の高さ', `${p.playerMinY.toFixed(1)}〜${p.playerMaxY.toFixed(1)}m`);
 
   return checker.finish();

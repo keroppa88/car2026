@@ -78,8 +78,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   let car2PlayerAvgSpeedKmh = 130;
   // ワープ検出: CPUが1フレームで進める距離を大きく超えて動いた最大値。
   let cpuWorstJumpMeters = 0;
-  // インディCPUで観測された最大加速度(m/s^2)。ユーザー車上限の監視用。
+  // CPUで観測された最大加速度(m/s^2)。ユーザー車上限の監視用。
   let indyCpuMaxAccelNow = 0;
+  let tokyoCpuMaxAccelNow = 0;
   let car2RoadWidthMeasured = false;
   let car2CpuRoute = null;
   let car2RouteDistances = null;
@@ -9183,14 +9184,21 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         // ドリフト車はブレーキを使わず、横滑りの削り（下のスクラブ処理）に任せる。
         if (ai.indyBanked && ai.cornerDrift === false && target < ai.v) rate = 4;
         let deltaV = (target - ai.v) * Math.min(1, dt * rate);
-        if (ai.indyBanked && deltaV > 0) {
+        if ((ai.indyBanked || ai.driftOnSharpCurve) && deltaV > 0) {
           // 加速性能はユーザー車と同じ。速度差に比例した従来式のままだと
           // ドリフト明けに37m/s^2まで出てユーザー車(最大21m/s^2)を超えていた。
+          // 首都高も同じ。とくにSは最高速162km/hとコーナー上限(100〜150km/h)の
+          // 差が大きく、立ち上がりで130km/h時に13m/s^2＝ユーザー車の3倍まで出て
+          // いた。ドリフトで減速したユーザー車が追いつけない原因はここ。
           deltaV = Math.min(deltaV, playerLikeMaxAccel(ai.v) * dt);
         }
         ai.v += deltaV;
-        if (ai.indyBanked && dt > 0) {
-          indyCpuMaxAccelNow = Math.max(indyCpuMaxAccelNow, deltaV / dt);
+        if (dt > 0) {
+          if (ai.indyBanked) {
+            indyCpuMaxAccelNow = Math.max(indyCpuMaxAccelNow, deltaV / dt);
+          } else if (ai.driftOnSharpCurve) {
+            tokyoCpuMaxAccelNow = Math.max(tokyoCpuMaxAccelNow, deltaV / dt);
+          }
         }
         if (ai.cornerCapNow) {
           // グリップ走行のコーナー上限(205km/h)は絶対値で強制する。
@@ -9655,6 +9663,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       if (Number.isFinite(tokyoCpuMinSpeedNow)) {
         document.body.dataset.tokyoCpuMinSpeedKmh = (tokyoCpuMinSpeedNow * 3.6).toFixed(1);
       }
+      // 観測された最大加速度。ユーザー車の加速カーブを超えたら違反。
+      document.body.dataset.tokyoCpuMaxAccel = tokyoCpuMaxAccelNow.toFixed(1);
+      document.body.dataset.playerMaxAccelLimit = playerLikeMaxAccel(0).toFixed(1);
       if (tokyoCpus.length) {
         document.body.dataset.tokyoCpuTravelMeters = tokyoCpus
           .map((ai) => (ai.travelMeters || 0).toFixed(0)).join(',');
