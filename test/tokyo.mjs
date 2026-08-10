@@ -30,7 +30,7 @@ const ok = await runCourse('tokyo', async ({ page, errors, checker, args }) => {
   const audio = await readAudio(page);
   const accel = await readDataset(page, [
     'tokyoCpuMaxAccel', 'playerMaxAccelLimit', 'tokyoCpuActiveRanks',
-    'tokyoCpuCurrentSpeedsKmh',
+    'tokyoCpuCurrentSpeedsKmh', 'tokyoCpuLinePullbacks', 'tokyoCpuMaxPullbackDropKmh',
   ]);
 
   // ---- 不変条件（破れたら不合格） ----
@@ -57,6 +57,13 @@ const ok = await runCourse('tokyo', async ({ page, errors, checker, args }) => {
   checker.check('CPU車の加速がユーザー車を超えない',
     Number(accel.tokyoCpuMaxAccel) <= Number(accel.playerMaxAccelLimit) + 0.1,
     `CPUの最大 ${accel.tokyoCpuMaxAccel} / ユーザー車の上限 ${accel.playerMaxAccelLimit} m/s2`);
+  // 走行ラインへの引き戻しで速度が一気に消えないこと。ゲームの1フレームは
+  // 最大0.05秒、減速はユーザー車のブレーキと同じ11m/s^2なので、
+  // 1フレームで落ちるのは 11×0.05×3.6 = 1.98km/h まで。
+  checker.check('引き戻しで急失速しない',
+    Number(accel.tokyoCpuMaxPullbackDropKmh || 0) <= 2.1,
+    `1フレームの最大落ち幅 ${accel.tokyoCpuMaxPullbackDropKmh}km/h `
+    + `(引き戻し ${accel.tokyoCpuLinePullbacks}回)`);
   checker.check('自動運転では音が1層だけ',
     audio && audio.エンジン音 > 0.001 && audio.燃焼ノイズ === 0 && audio.重ね音 === 0,
     JSON.stringify(audio));
