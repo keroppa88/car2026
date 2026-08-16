@@ -731,6 +731,14 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     return nightMode || manualLampMode || weatherDimVehicleLights;
   }
 
+  // 首都高速では、空の暗さで車両灯火が自動点灯した場合も街灯を連動させる。
+  // 他コースは従来どおり、夜間モードまたは手動点灯時だけ街灯を点ける。
+  function streetLightsShouldBeVisible() {
+    return nightMode
+      || manualLampMode
+      || (COURSE_KEY === 'tokyo' && weatherDimVehicleLights);
+  }
+
   function refreshVehicleLightsVisibility() {
     const visible = vehicleLightsShouldBeVisible();
     for (const lights of vehicleLampGroups) lights.visible = visible;
@@ -745,7 +753,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   }
 
   function refreshLampVisibility() {
-    const allLampsVisible = nightMode || manualLampMode;
+    const allLampsVisible = streetLightsShouldBeVisible();
     for (const lights of nightLampGroups) lights.visible = allLampsVisible;
     refreshVehicleLightsVisibility();
     if (streetLampHeads) {
@@ -769,7 +777,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     );
     weatherDimVehicleLights =
       Math.max(topBrightness, horizonBrightness) <= 0.4;
-    refreshVehicleLightsVisibility();
+    refreshLampVisibility();
   }
 
   // 夜仕様の自車メッシュを作る。ライト部分の面だけを照明の影響を受けない
@@ -2808,7 +2816,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       poleMerged, new THREE.MeshLambertMaterial({ color: 0x3f444a }), total);
     streetLampHeads = new THREE.InstancedMesh(
       headGeo,
-      (nightMode || manualLampMode) ? streetLampHeadNightMat : streetLampHeadDayMat,
+      streetLightsShouldBeVisible() ? streetLampHeadNightMat : streetLampHeadDayMat,
       total
     );
     const matrix = new THREE.Matrix4();
@@ -2835,7 +2843,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     // 夜のハロ(光球)と地表の光だまりはメイン地図分だけ。
     // nightLampGroups 経由で夜だけ表示する。
     const halos = new THREE.Group();
-    halos.visible = nightMode || manualLampMode;
+    halos.visible = streetLightsShouldBeVisible();
     const streetPoolGeo = new THREE.PlaneGeometry(33, 33);   // 照射範囲3倍
     for (const s of spots) {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -2981,7 +2989,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     );
     streetLampHeads = new THREE.InstancedMesh(
       headGeo,
-      (nightMode || manualLampMode) ? streetLampHeadNightMat : streetLampHeadDayMat,
+      streetLightsShouldBeVisible() ? streetLampHeadNightMat : streetLampHeadDayMat,
       spots.length
     );
     const matrix = new THREE.Matrix4();
@@ -3000,7 +3008,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     scene.add(streetLampHeads);
 
     const halos = new THREE.Group();
-    halos.visible = nightMode || manualLampMode;
+    halos.visible = streetLightsShouldBeVisible();
     const streetPoolGeo = new THREE.PlaneGeometry(33, 33);
     for (const spot of spots) {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
