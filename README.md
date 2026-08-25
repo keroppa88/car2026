@@ -1,4 +1,6 @@
 # car2026
+<img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/5e6f880b-6d17-496e-a0bd-47ad4561521c" />
+<img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/cdf9dc30-fae4-4c3c-bce6-22ff77a1821d" />
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/77a16eee-9d8e-4000-b8b4-9d81c8b69fc2" />
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/510e6b44-1510-48fd-bc5f-8f88d162f327" />
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/8ea8d0af-bf5b-4481-884f-729e6c40832f" />
