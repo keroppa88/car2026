@@ -1,10 +1,10 @@
 # car2026
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/77a16eee-9d8e-4000-b8b4-9d81c8b69fc2" />
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/510e6b44-1510-48fd-bc5f-8f88d162f327" />
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/8ea8d0af-bf5b-4481-884f-729e6c40832f" />
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/3e432495-3ebe-4e89-9fd8-a5603bee4be1" />
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/927820db-a586-4104-b646-04e3de2df2ca" />
-<img width="200" height="400" alt="image" src="https://github.com/user-attachments/assets/ac094cdb-189c-4736-95ae-87a3411d1376" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/77a16eee-9d8e-4000-b8b4-9d81c8b69fc2" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/510e6b44-1510-48fd-bc5f-8f88d162f327" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/8ea8d0af-bf5b-4481-884f-729e6c40832f" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/3e432495-3ebe-4e89-9fd8-a5603bee4be1" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/927820db-a586-4104-b646-04e3de2df2ca" />
+<img width="200" height="100" alt="image" src="https://github.com/user-attachments/assets/ac094cdb-189c-4736-95ae-87a3411d1376" />
 
 ## ドライブしながら音楽を聴く。
 * 音楽を聴くという行為が難しくなった時代。youtubeなど動画でいくらでも目当ての曲を探して聴けるようにはなったが、目移りして落ち着いて聴くことはないのが現実。
