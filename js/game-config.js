@@ -306,7 +306,7 @@ export const MAP_CONFIGS = {
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
-    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaForestFloor', 'GunmaCenterLine', 'GunmaEdgeLine'],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaForestFloor', 'GunmaCenterLine', 'GunmaEdgeLine', 'GunmaGuardrail'],
     drivableMaterialAliases: [],
     supportSurfaceMode: 'drivable',
     blockOutsideDrivableSurface: true,

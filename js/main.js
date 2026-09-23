@@ -2586,6 +2586,38 @@ import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
       }
       seaSurfaceBridge = null;
     }
+    if (COURSE_KEY === 'gunma' && gunmaCourse?.route.length) {
+      // The car body reaches the white guardrail before its centre leaves the road.
+      // Slide along the rail while retaining longitudinal speed.
+      const route = gunmaCourse.route;
+      let closest = 0, best = Infinity;
+      for (let i = 0; i < route.length; i++) {
+        const distance2 = (player.pos.x - route[i].x) ** 2
+          + (player.pos.z - route[i].z) ** 2;
+        if (distance2 < best) { best = distance2; closest = i; }
+      }
+      const point = route[closest], normal = gunmaCourse.tangents[closest];
+      const lateral = (player.pos.x - point.x) * normal.x
+        + (player.pos.z - point.z) * normal.z;
+      const limit = 3.15;
+      if (Math.abs(lateral) > limit) {
+        const side = Math.sign(lateral);
+        const correction = lateral - side * limit;
+        player.pos.x -= normal.x * correction;
+        player.pos.z -= normal.z * correction;
+        const outwardSpeed = (player.vel.x * normal.x + player.vel.z * normal.z) * side;
+        if (outwardSpeed > 0) {
+          const speed = Math.hypot(player.vel.x, player.vel.z);
+          const tangentX = -normal.z, tangentZ = normal.x;
+          const direction = Math.sign(player.vel.x * tangentX + player.vel.z * tangentZ) || 1;
+          player.vel.x = tangentX * speed * direction;
+          player.vel.z = tangentZ * speed * direction;
+        }
+        document.body.dataset.gunmaGuardrailContacts = String(
+          Number(document.body.dataset.gunmaGuardrailContacts || 0) + 1
+        );
+      }
+    }
     const surface = getMapSurfaceAt(player.pos.x, player.pos.z, player.pos.y);
     if (surface) {
       seaSurfaceBridge = null;
