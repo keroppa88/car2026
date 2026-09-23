@@ -300,38 +300,30 @@ export const MAP_CONFIGS = {
   },
   gunma: {
     ...commonMap,
-    label: 'ぐんまー',
-    file: 'map/map_gunma.glb',
-    preview: 'picture/gunma.png',
-    scale: 1.381889764,
-    assetRevision: '20260728-gunma-m07-f08-4',
-    spawnSearchRadius: 50,
-    // M07だけが道路。M00は道路に付随するガードレールとして必ず衝突させる。
-    roadMaterial: '[Color M07]',
-    roadMaterialAliases: ['M07', 'M07_Charcoal_Gleam', 'FF3A3A3A'],
-    wallMaterialAliases: ['[Color M00]', 'M00', 'FFFFFFFF'],
-    // 道路の外側にある面を支持面として拾わず、車体を重力落下させる。
-    fallOutsideRoad: true,
-    // 道路メッシュ同士に限り、短い急坂で前輪が先に拾う約1.8mの高さ差を許可。
-    // 建物・擁壁・緑地は roadMeshes ではないため従来の車高1/4制限を維持する。
-    roadSeamAssistRatio: 1.25,
-    // 180km/h・低FPSでも短い坂面を飛び越えないよう、路面追跡を細分化する。
-    roadMotionStep: 0.25,
-    ignoreRoadTriangleWalls: true,
-    // 4台分右へ移した従来の開始座標を固定し、向き変更で位置が再計算されないようにする。
+    label: '群馬',
+    file: 'procedural:gunma',
+    preview: 'picture/gunma.svg',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaForestFloor', 'GunmaCenterLine', 'GunmaEdgeLine'],
+    drivableMaterialAliases: [],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: true,
+    loopMode: 'none',
+    roadMotionStep: 0.15,
     spawnReference: 'fixed',
-    spawnReferenceX: -0.6649,
-    spawnReferenceZ: 0.2899,
-    spawnExactReference: true,
-    spawnOffsetX: 0,
-    // 開始位置は維持し、従来向きから180度反転した向きを明示指定する。
+    spawnReferenceX: 0,
+    spawnReferenceZ: 0,
+    spawnExactReference: false,
     spawnDirectionMode: 'configured',
-    spawnHeading: Math.PI,
-    spawnSurfaceMode: 'mapSurface',
-    // 2種類の緑のうち、面積が小さい鮮やかな緑だけに植樹する。
-    treeSurfaceMaterial: '[Color F08]',
-    treeSurfaceMaterialAliases: ['F08', 'FF006633'],
-    treePlacement: { ...commonTrees, enabled: true, seed: 20260702 },
+    spawnHeading: Math.PI / 2,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20260923 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
   },
   monaco: {
     ...commonMap,
@@ -415,4 +407,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
