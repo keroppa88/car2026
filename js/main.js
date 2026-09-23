@@ -13,6 +13,7 @@ import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260730-ascii-asset-paths-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
+import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
 
 (function () {
   'use strict';
@@ -44,6 +45,10 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
   const carParam = (pageQuery.get('car') || 'toyota86').toLowerCase();
   const PLAYER_CAR_KEY = Object.hasOwn(CAR_CONFIGS, carParam) ? carParam : 'toyota86';
   const MAP_GLTF = MAP_CONFIG.file;
+  const GUNMA_SEED = Number.isFinite(Number(pageQuery.get('seed')))
+    ? (Number(pageQuery.get('seed')) >>> 0 || Math.floor(Math.random() * 0xffffffff))
+    : Math.floor(Math.random() * 0xffffffff);
+  let gunmaCourse = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
   const SUZUKA_MODE = false;
   const NIHONBASHI_MODE = false;
@@ -5209,7 +5214,13 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     let originalBox;
     let sequenceLayout = null;
     try {
-      if (sourceUrls.length === 1) {
+      if (COURSE_KEY === 'gunma') {
+        gunmaCourse = buildGunmaMap(GUNMA_SEED);
+        map = gunmaCourse.group;
+        originalBox = new THREE.Box3().setFromObject(map);
+        document.body.dataset.gunmaSeed = String(GUNMA_SEED);
+        document.body.dataset.mapConnectionAxis = 'procedural-closed-loop';
+      } else if (sourceUrls.length === 1) {
         const revision = MAP_CONFIG.assetRevision;
         const separator = url.includes('?') ? '&' : '?';
         const loadUrl = revision ? `${url}${separator}v=${revision}` : url;
@@ -5939,7 +5950,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
     // 森林地帯はCPU車なし。ファイル探索・VOX読込自体も省いて初期表示を軽くする。
-    const discoveredCpuVox = COURSE_KEY === 'forest'
+    const discoveredCpuVox = COURSE_KEY === 'forest' || COURSE_KEY === 'gunma'
       ? []
       : await discoverCpuCarVox();
     // 首都高速と海岸線は速度が車種ランク基準なので、cpu_car_list.txt の車種を
@@ -5947,7 +5958,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
     const cpuVoxLimit = (CAR2_MODE || COURSE_KEY === 'sea' || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT
       : 4;
-    const cpuCars = COURSE_KEY === 'forest'
+    const cpuCars = COURSE_KEY === 'forest' || COURSE_KEY === 'gunma'
       ? []
       : await loadCpuCars(discoveredCpuVox.slice(0, cpuVoxLimit));
     const cpuMeshes = cpuCars.map((car) => car.mesh);
@@ -6232,6 +6243,11 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       }
       addMapDebugVisuals(mapSpawn);
       placeTreesOnSurface(tree1, MAP_CONFIG.treePlacement, mulberry32(MAP_CONFIG.treePlacement.seed));
+      if (COURSE_KEY === 'gunma') {
+        mapDebugStats.treesPlaced = placeGunmaTrees(scene, [tree1, tree2], gunmaCourse, GUNMA_SEED);
+        document.body.dataset.gunmaRoadWidth = '7.2';
+        document.body.dataset.gunmaRoutePoints = String(gunmaCourse.route.length);
+      }
       document.body.dataset.course = COURSE_KEY;
       document.body.dataset.mapFile = MAP_CONFIG.segmentFiles?.length
         ? MAP_CONFIG.segmentFiles.join(',')
@@ -6301,6 +6317,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         car2AutoRoute = buildSequenceRoadCenterline(2);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
+      } else if (COURSE_KEY === 'gunma') {
+        car2AutoRoute = gunmaCourse.route.map((point) => ({ x: point.x, y: point.y, z: point.z, width: 7.2 }));
+        document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
         // デモ／自動運転では先に自車を実際のバンクルートへ合わせる。
         // その位置を基準にCPUを前方配置し、画面切替直後の重なりを防ぐ。
@@ -6318,7 +6337,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         document.body.dataset.indyCpuLane = 'bank-center';
         document.body.dataset.indyCpuLaneSpacingMeters = String(INDY_LANE_SPACING);
       }
-      if (COURSE_KEY === 'forest') {
+      if (COURSE_KEY === 'forest' || COURSE_KEY === 'gunma') {
         document.body.dataset.forestCpuCars = '0';
       }
       document.body.dataset.autoDriveAvailable =
@@ -8152,7 +8171,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       while (a < -Math.PI) a += Math.PI * 2;
       return a;
     };
-    if (autoMode === 'forestCruise130Drift') {
+    if (autoMode === 'forestCruise130Drift' || autoMode === 'gunmaTouge') {
       // ドリフトで外へ膨らんでも樹木側へ逸走し続けないよう、道路幅を越えた時だけ
       // 最寄りのWood_Chips路面中心へ滑らかに戻す。道路内では位置補正しない。
       let nearest = 0;
@@ -8233,7 +8252,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       };
     }
 
-    if (autoMode === 'forestCruise130Drift') {
+    if (autoMode === 'forestCruise130Drift' || autoMode === 'gunmaTouge') {
       // 2m間隔の森林道路ルートを約12m・24m先まで読み、
       // 緩いカーブは130km/h巡航、急カーブだけサイドブレーキで旋回する。
       const diffNearCurve = angleTo(wps[(autoIdx + 6) % n]);
@@ -8248,7 +8267,9 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
       const bend = curveAmount > 0.22;
       // 通常道路と緩いカーブは130km/hを維持。急カーブだけ
       // ドリフト旋回に必要な105km/hまで落とす。
-      const targetKmh = sharp ? 105 : 130;
+      const targetKmh = autoMode === 'gunmaTouge'
+        ? sharp ? 48 : bend ? 78 : 105
+        : sharp ? 105 : 130;
       const target = targetKmh / 3.6;
       // 遠方の急カーブを見つけた時点では減速だけ行い、サイドブレーキは
       // 実際の曲がり口へ来てから使う。長時間のロックによる失速を防ぐ。
@@ -8256,7 +8277,7 @@ import { CAR2_CPU_ROUTE } from './car2-route.js';
         && (Math.abs(diff) > 0.24 || Math.abs(diffFar) > 0.32);
       document.body.dataset.autoDriveTargetKmh = String(targetKmh);
       document.body.dataset.autoDrivePhase = driftNow
-        ? 'forest-drift'
+        ? (autoMode === 'gunmaTouge' ? 'gunma-hairpin' : 'forest-drift')
         : bend
           ? 'forest-bend'
           : 'forest-cruise';
