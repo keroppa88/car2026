@@ -6132,14 +6132,14 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
         applyWeatherSky();
         gunmaCanopy = createCanopyShade();
-        const shadedBands = new Set(['GunmaRoad', 'GunmaShoulder', 'GunmaCenterLine', 'GunmaEdgeLine']);
+        const shadedBands = new Set(['GunmaRoad', 'GunmaCenterLine', 'GunmaEdgeLine']);
         gunmaCourse.group.traverse((mesh) => {
           if (mesh.isMesh && shadedBands.has(mesh.material?.name)) {
             mesh.material = gunmaCanopy.material(mesh.material);
           }
         });
         const valleyFloor = Math.min(...gunmaCourse.route.map((p) => p.y));
-        gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor + gunmaCourse.climb * 0.22);
+        gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor + gunmaCourse.climb * 0.22, gunmaCourse.route);
         document.body.dataset.mapFog = 'gunma-layered-mist';
         document.body.dataset.gunmaCloudLayers = '3';
         document.body.dataset.gunmaCanopyShadows = 'texture';

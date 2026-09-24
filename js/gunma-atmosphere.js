@@ -55,13 +55,122 @@ export function createCanopyShade() {
 
 // Three shallow, world-anchored cloud layers: no extra textures or postprocessing.
 // Fixed valley elevation: the road climbs through and above the sea of clouds.
-export function createMountainAtmosphere(scene, elevation) {
+export function createMountainAtmosphere(scene, elevation, route) {
   const group = new THREE.Group();
   group.name = 'gunma-valley-clouds';
   const uniforms = {
     time: { value: 0 },
     tint: { value: new THREE.Color() },
   };
+  // Three overlapping ridgelines share one mesh (576 triangles), with no trees,
+  // collision surfaces or shadow maps. Fixed world positions preserve parallax.
+  const bounds = new THREE.Box3().setFromPoints(route);
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const radius = Math.hypot(size.x, size.z) * 0.5 + 110;
+  const ridgeVertices = [], ridgeShades = [], ridgeHeights = [], ridgeIndices = [];
+  const segments = 96;
+  for (let layer = 0; layer < 3; layer++) {
+    for (let i = 0; i <= segments; i++) {
+      const angle = i / segments * Math.PI * 2;
+      const r = radius + layer * 85;
+      const profile = 0.5 + 0.23*Math.sin(angle*5+layer*1.7)
+        + 0.16*Math.sin(angle*11-layer) + 0.11*Math.sin(angle*19+layer);
+      const top = bounds.max.y + 15 + layer*45 + profile*115;
+      const x = center.x + Math.cos(angle)*r, z = center.z + Math.sin(angle)*r;
+      ridgeVertices.push(x, elevation-140, z, x, top, z);
+      ridgeShades.push(0.44+layer*0.16, 0.44+layer*0.16);
+      ridgeHeights.push(0, 1);
+      if (i < segments) {
+        const a = layer*(segments+1)*2 + i*2;
+        ridgeIndices.push(a,a+1,a+2,a+1,a+3,a+2);
+      }
+    }
+  }
+  const ridgeGeometry = new THREE.BufferGeometry();
+  ridgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(ridgeVertices,3));
+  ridgeGeometry.setAttribute('ridgeShade', new THREE.Float32BufferAttribute(ridgeShades,1));
+  ridgeGeometry.setAttribute('ridgeHeight', new THREE.Float32BufferAttribute(ridgeHeights,1));
+  ridgeGeometry.setIndex(ridgeIndices);
+  const ridges = new THREE.Mesh(ridgeGeometry, new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+      attribute float ridgeShade, ridgeHeight;
+      varying float shade, height;
+      void main() {
+        shade = ridgeShade; height = ridgeHeight;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 tint;
+      varying float shade, height;
+      void main() {
+        float haze = 1.0-smoothstep(0.18,0.92,height);
+        vec3 mountain = tint * vec3(0.83,0.95,1.0) * shade;
+        gl_FragColor = vec4(mix(mountain,tint,haze*0.88),1.0);
+      }`,
+    side: THREE.DoubleSide,
+  }));
+  ridges.name = 'gunma-distant-ridges';
+  scene.add(ridges);
+  // Wisps sit above both verges. All 128 soft billboards use one draw call and
+  // one 64px mask, rather than a large particle system or individual tree meshes.
+  const mistCanvas = document.createElement('canvas');
+  mistCanvas.width = mistCanvas.height = 64;
+  const mistCtx = mistCanvas.getContext('2d');
+  for (let i = 0; i < 12; i++) {
+    const x = 16 + (Math.sin(i*12.37)*0.5+0.5)*32;
+    const y = 20 + (Math.cos(i*7.19)*0.5+0.5)*24;
+    const gradient = mistCtx.createRadialGradient(x,y,0,x,y,15);
+    gradient.addColorStop(0,'rgba(255,255,255,0.3)');
+    gradient.addColorStop(1,'rgba(255,255,255,0)');
+    mistCtx.fillStyle = gradient;
+    mistCtx.fillRect(0,0,64,64);
+  }
+  const mistMask = new THREE.CanvasTexture(mistCanvas);
+  const wisps = new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1), new THREE.ShaderMaterial({
+    uniforms: { ...uniforms, mistMask: { value: mistMask } },
+    vertexShader: `
+      uniform float time;
+      varying vec2 mistUv;
+      varying float mistRange;
+      void main() {
+        vec4 center = modelMatrix * instanceMatrix * vec4(0,0,0,1);
+        center.x += sin(time*0.09+center.z*0.013)*2.0;
+        center.z += cos(time*0.07+center.x*0.015)*1.5;
+        mistRange = distance(center.xyz,cameraPosition);
+        vec4 view = viewMatrix * center;
+        view.xy += position.xy * vec2(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz));
+        mistUv = uv;
+        gl_Position = projectionMatrix * view;
+      }`,
+    fragmentShader: `
+      uniform sampler2D mistMask;
+      uniform vec3 tint;
+      varying vec2 mistUv;
+      varying float mistRange;
+      void main() {
+        float fade = smoothstep(6.0,22.0,mistRange)*(1.0-smoothstep(110.0,190.0,mistRange));
+        gl_FragColor = vec4(tint,texture2D(mistMask,mistUv).a*0.28*fade);
+      }`,
+    transparent: true, depthWrite: false,
+  }),128);
+  const transform = new THREE.Matrix4();
+  for (let i = 0; i < 64; i++) {
+    const index = Math.floor(i*route.length/64);
+    const p = route[index], next = route[(index+1)%route.length];
+    const dx = next.x-p.x, dz = next.z-p.z, length = Math.hypot(dx,dz);
+    for (let side = 0; side < 2; side++) {
+      const offset = (side ? 1 : -1)*(12+(i%4)*2);
+      transform.makeScale(32+(i%5)*4,7+(i%3)*2,1);
+      transform.setPosition(p.x+dz/length*offset,p.y+2.5,p.z-dx/length*offset);
+      wisps.setMatrixAt(i*2+side,transform);
+    }
+  }
+  wisps.name = 'gunma-roadside-wisps';
+  // Billboard rotation and wind are shader-driven, outside the CPU bounds.
+  wisps.frustumCulled = false;
+  scene.add(wisps);
   const geometry = new THREE.PlaneGeometry(1500, 1500);
   for (let i = 0; i < 3; i++) {
     const material = new THREE.ShaderMaterial({
@@ -108,6 +217,8 @@ export function createMountainAtmosphere(scene, elevation) {
       uniforms.time.value += dt;
       uniforms.tint.value.copy(color);
       group.visible = !hidden;
+      ridges.visible = !hidden;
+      wisps.visible = !hidden;
       // Shader noise stays in world coordinates, even as the coverage follows X/Z.
       group.position.x = camera.position.x;
       group.position.z = camera.position.z;
