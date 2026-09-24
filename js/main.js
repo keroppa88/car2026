@@ -475,9 +475,14 @@ import { buildGunmaMap } from './gunma-map.js';
       top.multiplyScalar(0.075);
       horizon.multiplyScalar(0.12);
     }
+    const gunmaHaze = new THREE.Color(0x667b70);
+    if (nightMode) gunmaHaze.multiplyScalar(0.12);
+    gunmaHaze.lerp(horizon, 0.22);
     weatherSkyUniforms.topColor.value.copy(top);
     weatherSkyUniforms.horizonColor.value.copy(horizon);
-    weatherSkyUniforms.horizonBandColor.value.copy(horizon);
+    weatherSkyUniforms.horizonBandColor.value.copy(
+      COURSE_KEY === 'gunma' ? gunmaHaze : horizon
+    );
     weatherSkyUniforms.flatSky.value = weatherFlatSky ? 1 : 0;
     // 選んでいる側(空/地平線)の色をそのまま16進で見せる。夜の減光は反映しない。
     const pickedColor = weatherColorTarget === 'horizon'
@@ -488,7 +493,7 @@ import { buildGunmaMap } from './gunma-map.js';
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    if (fog) fog.color.copy(horizon);
+    if (fog) fog.color.copy(COURSE_KEY === 'gunma' ? gunmaHaze : horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
@@ -5548,6 +5553,11 @@ import { buildGunmaMap } from './gunma-map.js';
     const out = { spawn: null, loops: {} };
     wrap.traverse((object) => {
       if (object.isMesh) {
+        if (object.userData.visualOnly) {
+          object.castShadow = false;
+          object.receiveShadow = false;
+          return;
+        }
         object.castShadow = MAP_CONFIG.renderShadows !== false;
         object.receiveShadow = MAP_CONFIG.renderShadows !== false;
         mapSurfaceMeshes.push(object);
@@ -6063,6 +6073,12 @@ import { buildGunmaMap } from './gunma-map.js';
       // 読み込み式の4マップでは無効化し、遠景までマテリアル本来の色を保つ。
       scene.fog = null;
       document.body.dataset.mapFog = 'none';
+      if (COURSE_KEY === 'gunma') {
+        // 道路手前は明瞭に、遠い山肌と森の影だけ霧へ沈める。
+        scene.fog = new THREE.Fog(0x667b70, 35, 170);
+        applyWeatherSky();
+        document.body.dataset.mapFog = 'gunma-forest-haze';
+      }
       mapSpawn = findMapSpawn();
       if (DEBUG_MAP) {
         topView = true;
