@@ -6419,7 +6419,9 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
       } else if (COURSE_KEY === 'gunma') {
-        car2AutoRoute = gunmaCourse.route.map((point) => ({ x: point.x, y: point.y, z: point.z, width: 8.64 }));
+        // 右車輪(車体中心から約0.78m)がセンターライン付近を通る位置。
+        car2AutoRoute = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents, 0.9)
+          .same.points.map((point) => ({ ...point, width: 8.64 }));
         spawnGunmaTrafficCpuCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
@@ -8285,17 +8287,39 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
           nearest = i;
         }
       }
-      const nearestPoint = wps[nearest];
+      let nearestPoint = wps[nearest];
+      if (autoMode === 'gunmaTouge') {
+        // 3m間隔の点までの距離では、車線上でも中間点で約1.5mずれる。
+        // 道路区間へ射影し、車線からの横ずれだけを補正する。
+        for (const index of [(nearest - 1 + n) % n, nearest]) {
+          const a = wps[index], b = wps[(index + 1) % n];
+          const dx = b.x - a.x, dz = b.z - a.z;
+          const t = clamp(((player.pos.x - a.x) * dx + (player.pos.z - a.z) * dz)
+            / (dx * dx + dz * dz || 1), 0, 1);
+          const x = a.x + dx * t, z = a.z + dz * t;
+          const distance2 = (player.pos.x - x) ** 2 + (player.pos.z - z) ** 2;
+          if (distance2 < nearestD2) {
+            nearestD2 = distance2;
+            nearestPoint = { x, z, width: a.width };
+            nearest = index;
+          }
+        }
+      }
       const routeDistance = Math.sqrt(nearestD2);
-      const allowedDistance = clamp((nearestPoint.width ?? 7) * 0.42, 2.6, 4.8);
+      const allowedDistance = autoMode === 'gunmaTouge'
+        ? 0.85
+        : clamp((nearestPoint.width ?? 7) * 0.42, 2.6, 4.8);
       document.body.dataset.autoDriveRoadDistance = routeDistance.toFixed(2);
       if (routeDistance > allowedDistance) {
-        const correction = routeDistance > allowedDistance * 1.8 ? 0.16 : 0.07;
+        const correction = autoMode === 'gunmaTouge'
+          ? 0.1
+          : routeDistance > allowedDistance * 1.8 ? 0.16 : 0.07;
         player.pos.x = THREE.MathUtils.lerp(player.pos.x, nearestPoint.x, correction);
         player.pos.z = THREE.MathUtils.lerp(player.pos.z, nearestPoint.z, correction);
         autoIdx = (nearest + 1) % n;
         car2LastRoadPos.copy(player.pos);
-        document.body.dataset.autoDriveLaneAssist = 'forest-road-center';
+        document.body.dataset.autoDriveLaneAssist = autoMode === 'gunmaTouge'
+          ? 'gunma-left-lane' : 'forest-road-center';
       } else {
         document.body.dataset.autoDriveLaneAssist = 'inside-road';
       }

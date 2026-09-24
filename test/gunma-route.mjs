@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { buildGunmaMap } from '../js/gunma-map.js';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from '../js/gunma-traffic.js';
+import { MAP_CONFIGS } from '../js/game-config.js';
+
+assert.equal(MAP_CONFIGS.gunma.spawnOffsetRight, -0.9);
 
 for (const seed of [1, 20260923, 4294967295]) {
   const { route, tangents } = buildGunmaMap(seed);
   const { same, oncoming } = buildGunmaTrafficPaths(route, tangents);
+  const auto = buildGunmaTrafficPaths(route, tangents, 0.9).same;
   assert.equal(same.points.length, route.length);
   assert.equal(oncoming.points.length, route.length);
   for (let i = 0; i < route.length; i += 37) {
@@ -16,6 +20,12 @@ for (const seed of [1, 20260923, 4294967295]) {
       + (right.z - center.z) * normal.z - 2.05) < 1e-5);
     assert.equal(left.y, center.y);
     assert.equal(right.y, center.y);
+    const autoCar = auto.points[i];
+    const autoOffset = (autoCar.x - center.x) * normal.x
+      + (autoCar.z - center.z) * normal.z;
+    assert.ok(Math.abs(autoOffset + 0.9) < 1e-5);
+    // Right wheel, 0.78 m from the car center, remains just left of the centerline.
+    assert.ok(autoOffset + 0.78 <= 0 && autoOffset + 0.78 > -0.3);
     const nextLeft = same.points[(i + 1) % route.length];
     const reverseIndex = route.length - 1 - i;
     const nextRight = oncoming.points[(reverseIndex + 1) % route.length];
