@@ -475,9 +475,12 @@ import { buildGunmaMap } from './gunma-map.js';
       top.multiplyScalar(0.075);
       horizon.multiplyScalar(0.12);
     }
-    const gunmaHaze = new THREE.Color(0x667b70);
+    const gunmaHaze = new THREE.Color(0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
-    gunmaHaze.lerp(horizon, 0.22);
+    gunmaHaze.lerp(horizon, 0.18);
+    if (COURSE_KEY === 'gunma' && gunmaCourse?.mistColor) {
+      gunmaCourse.mistColor.copy(gunmaHaze);
+    }
     weatherSkyUniforms.topColor.value.copy(top);
     weatherSkyUniforms.horizonColor.value.copy(horizon);
     weatherSkyUniforms.horizonBandColor.value.copy(
@@ -5553,11 +5556,6 @@ import { buildGunmaMap } from './gunma-map.js';
     const out = { spawn: null, loops: {} };
     wrap.traverse((object) => {
       if (object.isMesh) {
-        if (object.userData.visualOnly) {
-          object.castShadow = false;
-          object.receiveShadow = false;
-          return;
-        }
         object.castShadow = MAP_CONFIG.renderShadows !== false;
         object.receiveShadow = MAP_CONFIG.renderShadows !== false;
         mapSurfaceMeshes.push(object);
@@ -6074,10 +6072,9 @@ import { buildGunmaMap } from './gunma-map.js';
       scene.fog = null;
       document.body.dataset.mapFog = 'none';
       if (COURSE_KEY === 'gunma') {
-        // 道路手前は明瞭に、遠い山肌と森の影だけ霧へ沈める。
-        scene.fog = new THREE.Fog(0x667b70, 35, 170);
+        // 地表の両側だけにモヤを描き、道路の先は通常の視界を保つ。
         applyWeatherSky();
-        document.body.dataset.mapFog = 'gunma-forest-haze';
+        document.body.dataset.mapFog = 'gunma-side-mist';
       }
       mapSpawn = findMapSpawn();
       if (DEBUG_MAP) {
