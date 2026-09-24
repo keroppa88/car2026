@@ -5,6 +5,8 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
   const random = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
   const group = new THREE.Group();
   group.name = 'gunma-roadside-forest';
+  // Same unconverted RGB values used by the former dark-green tree shader.
+  const treeGreen = [0.16, 0.30, 0.21];
   const ridgePositions = [], ridgeColors = [], ridgeIndices = [];
   const terrainBounds = new THREE.Box3().setFromPoints(route);
   const withinTerrain = (x, z) => x > terrainBounds.min.x - 120 && x < terrainBounds.max.x + 120
@@ -33,9 +35,9 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
         + 1.9 * Math.sin(i * 0.63 - side) + random() * 2.1;
       const a = ridgePositions.length / 3;
       ridgePositions.push(x, ground - 0.7, z, x, top, z);
-      const shade = 0.78 + random() * 0.20;
+      const shade = 0.74 + random() * 0.24;
       for (let vertex = 0; vertex < 2; vertex++) {
-        ridgeColors.push(0.14 * shade, 0.30 * shade, 0.20 * shade);
+        ridgeColors.push(...treeGreen.map((channel) => channel * shade));
       }
       if (previous !== null) {
         ridgeIndices.push(previous, a, previous + 1, previous + 1, a, a + 1);
@@ -64,7 +66,7 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
     const a = ridgePositions.length / 3;
     ridgePositions.push(x, terrainBounds.min.y - 180, z, x, top, z);
     for (let vertex = 0; vertex < 2; vertex++) {
-      ridgeColors.push(0.12, 0.26, 0.18);
+      ridgeColors.push(...treeGreen.map((channel) => channel * 0.86));
     }
     if (previous !== null) {
       ridgeIndices.push(previous, a, previous + 1, previous + 1, a, a + 1);
@@ -75,9 +77,18 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(ridgePositions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(ridgeColors, 3));
   geometry.setIndex(ridgeIndices);
-  geometry.computeVertexNormals();
-  const ridge = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, fog: false,
+  const ridge = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
+    vertexShader: `
+      attribute vec3 color;
+      varying vec3 forestColor;
+      void main() {
+        forestColor = color;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 forestColor;
+      void main() { gl_FragColor = vec4(forestColor, 1.0); }`,
+    side: THREE.DoubleSide,
   }));
   ridge.name = 'GunmaForestSilhouette';
   group.add(ridge);
