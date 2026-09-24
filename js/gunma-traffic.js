@@ -1,10 +1,11 @@
-// Road normals point to the driver's right. Both directions use the left lane.
+// With +Y up, (dz, -dx) points to the driver's left along the route.
+// Reverse the offset for oncoming traffic, whose driving direction is reversed.
 export function buildGunmaTrafficPaths(route, tangents, laneOffset = 2.05) {
   const makePath = (oncoming) => {
     const points = route.map((_, i) => {
       const index = oncoming ? route.length - 1 - i : i;
       const point = route[index], normal = tangents[index];
-      const side = oncoming ? 1 : -1;
+      const side = oncoming ? -1 : 1;
       return {
         x: point.x + side * normal.x * laneOffset,
         y: point.y,

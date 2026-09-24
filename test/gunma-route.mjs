@@ -3,7 +3,11 @@ import { buildGunmaMap } from '../js/gunma-map.js';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from '../js/gunma-traffic.js';
 import { MAP_CONFIGS } from '../js/game-config.js';
 
-assert.equal(MAP_CONFIGS.gunma.spawnOffsetRight, -0.9);
+assert.equal(MAP_CONFIGS.gunma.spawnOffsetRight, 0.9);
+// The spawn heading points east: screen-left / driver's left is negative Z.
+const spawnHeading = MAP_CONFIGS.gunma.spawnHeading;
+const spawnLeftZ = -Math.sin(spawnHeading) * MAP_CONFIGS.gunma.spawnOffsetRight;
+assert.ok(spawnLeftZ < 0);
 
 for (const seed of [1, 20260923, 4294967295]) {
   const { route, tangents } = buildGunmaMap(seed);
@@ -14,18 +18,26 @@ for (const seed of [1, 20260923, 4294967295]) {
   for (let i = 0; i < route.length; i += 37) {
     const center = route[i], normal = tangents[i];
     const left = same.points[i], right = oncoming.points[route.length - 1 - i];
+    const before = route[(i - 1 + route.length) % route.length];
+    const after = route[(i + 1) % route.length];
+    const forwardX = after.x - before.x, forwardZ = after.z - before.z;
+    // World-space forward cross up points right, so the left lane has
+    // a positive up cross forward component in X/Z coordinates.
+    const laneSide = forwardZ * (left.x - center.x)
+      - forwardX * (left.z - center.z);
+    assert.ok(laneSide > 0);
     assert.ok(Math.abs((left.x - center.x) * normal.x
-      + (left.z - center.z) * normal.z + 2.05) < 1e-5);
+      + (left.z - center.z) * normal.z - 2.05) < 1e-5);
     assert.ok(Math.abs((right.x - center.x) * normal.x
-      + (right.z - center.z) * normal.z - 2.05) < 1e-5);
+      + (right.z - center.z) * normal.z + 2.05) < 1e-5);
     assert.equal(left.y, center.y);
     assert.equal(right.y, center.y);
     const autoCar = auto.points[i];
     const autoOffset = (autoCar.x - center.x) * normal.x
       + (autoCar.z - center.z) * normal.z;
-    assert.ok(Math.abs(autoOffset + 0.9) < 1e-5);
+    assert.ok(Math.abs(autoOffset - 0.9) < 1e-5);
     // Right wheel, 0.78 m from the car center, remains just left of the centerline.
-    assert.ok(autoOffset + 0.78 <= 0 && autoOffset + 0.78 > -0.3);
+    assert.ok(autoOffset - 0.78 >= 0 && autoOffset - 0.78 < 0.3);
     const nextLeft = same.points[(i + 1) % route.length];
     const reverseIndex = route.length - 1 - i;
     const nextRight = oncoming.points[(reverseIndex + 1) % route.length];
