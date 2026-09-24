@@ -6109,12 +6109,12 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     }
 
     // 左右2灯を車体前端より前に置き、路面とガードレールを照らす。
-    // ぐんまーは元の光量10倍・到達距離4倍・同距離での照射幅3倍。
+    // ぐんまーは元の光量10倍・到達距離8倍・同距離での照射幅3倍。
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
     const gunmaHeadlights = COURSE_KEY === 'gunma';
     for (const side of [-1, 1]) {
       const intensity = gunmaHeadlights ? 4.2 : 0.42;
-      const distance = gunmaHeadlights ? 28 : 7;
+      const distance = gunmaHeadlights ? 56 : 7;
       const angle = gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
       const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, 0.6, decay);
