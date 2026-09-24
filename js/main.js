@@ -6115,7 +6115,9 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     // 8m先ではやや内側を向けて、前方で二つの光が重なるようにする。
     // 明るさは1灯あたりを下げ、重なった中央が以前の1灯とほぼ同じになるようにする。
     for (const side of [-1, 1]) {
-      const light = new THREE.SpotLight(0xffeecb, 0.42, 7, 0.65, 0.6, 1.5);
+      // ぐんまーは街灯のない山道なので、路面を照らす光量を5倍にする。
+      const intensity = COURSE_KEY === 'gunma' ? 2.1 : 0.42;
+      const light = new THREE.SpotLight(0xffeecb, intensity, 7, 0.65, 0.6, 1.5);
       light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
       light.visible = vehicleLightsShouldBeVisible();
       light.target.position.set(side * HEADLIGHT_AIM_X, 0, 8);
