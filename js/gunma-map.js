@@ -1,5 +1,43 @@
 import * as THREE from '../lib/three.module.js';
 
+function mistPatchAt(x, z) {
+  const wisps = Math.sin(x * 0.12 + Math.sin(z * 0.09) * 1.3)
+    * Math.sin(z * 0.10 - x * 0.05) + 0.15 * Math.sin(x * 0.28 + z * 0.17);
+  return THREE.MathUtils.smoothstep(wisps, -0.5, 0.7);
+}
+
+// Haze is applied only to grass. Asphalt and guardrails keep their full contrast.
+function addSideMist(material, mistColor) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.gunmaMistColor = { value: mistColor };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float mistDistance;
+        attribute float mistPatch;
+        varying float vMistDistance;
+        varying float vMistPatch;
+        varying vec3 vMistWorld;`)
+      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vMistDistance = mistDistance;
+        vMistPatch = mistPatch;
+        vMistWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform vec3 gunmaMistColor;
+        varying float vMistDistance;
+        varying float vMistPatch;
+        varying vec3 vMistWorld;`)
+      .replace('#include <output_fragment>', `
+        float roadside = smoothstep(7.0, 26.0, vMistDistance);
+        float farField = smoothstep(55.0, 240.0, distance(cameraPosition, vMistWorld));
+        float haze = roadside * (0.68 + 0.32 * farField) * (0.68 + 0.32 * vMistPatch);
+        outgoingLight = mix(outgoingLight, gunmaMistColor, haze);
+        #include <output_fragment>`);
+  };
+  material.customProgramCacheKey = () => 'gunma-side-mist-v2';
+  return material;
+}
+
 // A closed mountain circuit: nine winding traverses and a grassy return road.
 // One lap rises for roughly half its length, then descends back to the start.
 export function buildGunmaMap(seed) {
@@ -71,6 +109,7 @@ export function buildGunmaMap(seed) {
   });
   const group = new THREE.Group();
   group.name = 'gunma_procedural';
+  const mistColor = new THREE.Color(0xaebdb4);
   const bands = [
     { name: 'GunmaRoad', from: -4.32, to: 4.32, y: 0, color: 0x44484b },
     { name: 'GunmaShoulder', from: -8.22, to: -4.32, y: -0.11, color: 0x75b757 },
@@ -85,14 +124,18 @@ export function buildGunmaMap(seed) {
   const addRoadsideBands = () => {
     for (const band of bands) {
       const vertices = new Float32Array(count * 2 * 3);
+      const mistDistances = band.name === 'GunmaGrass' ? new Float32Array(count * 2) : null;
+      const mistPatches = mistDistances ? new Float32Array(count * 2) : null;
       const indices = [];
       for (let i = 0; i < count; i++) {
         const point = route[i], normal = tangents[i];
         for (let side = 0; side < 2; side++) {
           const offset = side ? band.to : band.from;
           const o = (i * 2 + side) * 3;
+          if (mistDistances) mistDistances[i * 2 + side] = Math.abs(offset);
           vertices[o] = point.x + normal.x * offset;
           vertices[o + 2] = point.z + normal.z * offset;
+          if (mistPatches) mistPatches[i * 2 + side] = mistPatchAt(vertices[o], vertices[o + 2]);
           vertices[o + 1] = band.name === 'GunmaGrass'
             ? Math.abs(offset) > 20
               ? grassOuterHeightAt(vertices[o], vertices[o + 2])
@@ -106,11 +149,15 @@ export function buildGunmaMap(seed) {
       }
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      if (mistDistances) geometry.setAttribute('mistDistance', new THREE.BufferAttribute(mistDistances, 1));
+      if (mistPatches) geometry.setAttribute('mistPatch', new THREE.BufferAttribute(mistPatches, 1));
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
-      const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+      const material = new THREE.MeshLambertMaterial({
         name: band.name, color: band.color, side: THREE.DoubleSide,
-      }));
+      });
+      const mesh = new THREE.Mesh(geometry,
+        mistDistances ? addSideMist(material, mistColor) : material);
       mesh.name = band.name;
       group.add(mesh);
     }
@@ -133,6 +180,8 @@ export function buildGunmaMap(seed) {
   const lines = Math.ceil((maxZ - minZ) / 12);
   const terrainVertices = new Float32Array((columns + 1) * (lines + 1) * 3);
   const terrainColors = new Float32Array(terrainVertices.length);
+  const terrainMistDistances = new Float32Array((columns + 1) * (lines + 1));
+  const terrainMistPatches = new Float32Array(terrainMistDistances.length);
   const terrainIndices = [];
   for (let iz = 0; iz <= lines; iz++) {
     for (let ix = 0; ix <= columns; ix++) {
@@ -141,6 +190,8 @@ export function buildGunmaMap(seed) {
       const index = (iz * (columns + 1) + ix) * 3;
       terrainVertices[index] = x;
       const sample = terrainSampleAt(x, z);
+      terrainMistDistances[iz * (columns + 1) + ix] = sample.distance;
+      terrainMistPatches[iz * (columns + 1) + ix] = mistPatchAt(x, z);
       terrainVertices[index + 1] = sample.height;
       terrainVertices[index + 2] = z;
       const shade = 0.81 + 0.19 * Math.sin(ix * 1.71 + iz * 2.13);
@@ -159,11 +210,13 @@ export function buildGunmaMap(seed) {
   const terrainGeometry = new THREE.BufferGeometry();
   terrainGeometry.setAttribute('position', new THREE.BufferAttribute(terrainVertices, 3));
   terrainGeometry.setAttribute('color', new THREE.BufferAttribute(terrainColors, 3));
+  terrainGeometry.setAttribute('mistDistance', new THREE.BufferAttribute(terrainMistDistances, 1));
+  terrainGeometry.setAttribute('mistPatch', new THREE.BufferAttribute(terrainMistPatches, 1));
   terrainGeometry.setIndex(terrainIndices);
   terrainGeometry.computeVertexNormals();
-  const terrain = new THREE.Mesh(terrainGeometry, new THREE.MeshLambertMaterial({
+  const terrain = new THREE.Mesh(terrainGeometry, addSideMist(new THREE.MeshLambertMaterial({
     name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide,
-  }));
+  }), mistColor));
   terrain.name = 'GunmaGrass';
   group.add(terrain);
   // Sample the very same triangles used by the large ground mesh at the
@@ -183,41 +236,6 @@ export function buildGunmaMap(seed) {
       : right * (1 - tz) + down * (1 - tx) + diagonal * (tx + tz - 1);
   };
   addRoadsideBands();
-
-  // One continuous low-poly canopy ridge per side suggests dense forest.
-  // Its roots use the ground mesh's interpolated height, avoiding cliff gaps.
-  const canopyVertices = [];
-  const canopyIndices = [];
-  for (const side of [-1, 1]) {
-    const samples = Math.ceil(count / 4);
-    const first = canopyVertices.length / 3;
-    for (let j = 0; j < samples; j++) {
-      const i = Math.floor(j * count / samples);
-      const point = route[i], normal = tangents[i];
-      const offset = side * (35 + 3 * Math.sin(j * 0.67));
-      const x = point.x + normal.x * offset;
-      const z = point.z + normal.z * offset;
-      const base = grassOuterHeightAt(x, z) - 0.6;
-      const crown = 4.5 + 3.5 * random();
-      canopyVertices.push(x, base, z, x, base + crown, z);
-      if (j) {
-        const a = first + (j - 1) * 2, b = first + j * 2;
-        canopyIndices.push(a, b, a + 1, a + 1, b, b + 1);
-      }
-    }
-    const last = first + (samples - 1) * 2;
-    canopyIndices.push(last, first, last + 1, last + 1, first, first + 1);
-  }
-  const canopyGeometry = new THREE.BufferGeometry();
-  canopyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(canopyVertices, 3));
-  canopyGeometry.setIndex(canopyIndices);
-  canopyGeometry.computeVertexNormals();
-  const canopy = new THREE.Mesh(canopyGeometry, new THREE.MeshBasicMaterial({
-    name: 'GunmaForestShadow', color: 0x20392f, side: THREE.DoubleSide,
-  }));
-  canopy.name = 'GunmaForestShadow';
-  canopy.userData.visualOnly = true;
-  group.add(canopy);
 
   // White twin rails and regularly spaced posts follow both road edges.
   const railMaterial = new THREE.MeshLambertMaterial({
@@ -261,5 +279,5 @@ export function buildGunmaMap(seed) {
     posts.computeBoundingSphere();
     group.add(posts);
   }
-  return { group, route, tangents, climb };
+  return { group, route, tangents, climb, mistColor };
 }
