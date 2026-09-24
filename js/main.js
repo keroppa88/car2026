@@ -11,10 +11,10 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260924-gunmaa-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260924-atmosphere-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260924-atmosphere-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-puffs-1';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260924-forest-4';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
@@ -6145,7 +6145,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         gunmaRoadsideForest = createGunmaRoadsideForest(scene, gunmaCourse.route,
           gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED);
         document.body.dataset.mapFog = 'gunma-layered-mist';
-        document.body.dataset.gunmaCloudLayers = '3';
+        document.body.dataset.gunmaCloudPuffs = '288';
         document.body.dataset.gunmaCanopyShadows = 'texture';
       }
       mapSpawn = findMapSpawn();
@@ -6437,8 +6437,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
       } else if (COURSE_KEY === 'gunma') {
-        // 右車輪(車体中心から約0.78m)がセンターライン付近を通る位置。
-        car2AutoRoute = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents, 0.9)
+        // 従来位置から車幅の半分(0.78m)左へ。右車輪は従来の車体中心を通る。
+        car2AutoRoute = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents, MAP_CONFIG.spawnOffsetRight)
           .same.points.map((point) => ({ ...point, width: 8.64 }));
         spawnGunmaTrafficCpuCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
