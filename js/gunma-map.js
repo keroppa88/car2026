@@ -1,6 +1,6 @@
 import * as THREE from '../lib/three.module.js';
 
-// A closed mountain circuit: nine winding traverses and a forest return road.
+// A closed mountain circuit: nine winding traverses and a grassy return road.
 // One lap rises for roughly half its length, then descends back to the start.
 export function buildGunmaMap(seed) {
   let state = seed >>> 0;
@@ -56,7 +56,8 @@ export function buildGunmaMap(seed) {
   path.arcLengthDivisions = count * 4;
   path.updateArcLengths();
   const route = Array.from({ length: count }, (_, i) => path.getPointAt(i / count));
-  const climb = 85 + random() * 20;
+  // 1.65x the previous 85–105 m climb; the same profile supplies the descent.
+  const climb = (85 + random() * 20) * 1.65;
   route.forEach((point, i) => {
     // Uniformly spaced samples make each half lap one continuous climb/descent.
     point.y = 4 + climb * (1 - Math.cos(2 * Math.PI * i / count)) / 2;
@@ -71,14 +72,14 @@ export function buildGunmaMap(seed) {
   const group = new THREE.Group();
   group.name = 'gunma_procedural';
   const bands = [
-    { name: 'GunmaRoad', from: -3.6, to: 3.6, y: 0, color: 0x44484b },
-    { name: 'GunmaShoulder', from: -7.5, to: -3.6, y: -0.11, color: 0x686750 },
-    { name: 'GunmaShoulder', from: 3.6, to: 7.5, y: -0.11, color: 0x686750 },
-    { name: 'GunmaForestFloor', from: -32, to: -7.5, y: -0.38, color: 0x486441 },
-    { name: 'GunmaForestFloor', from: 7.5, to: 32, y: -0.38, color: 0x486441 },
+    { name: 'GunmaRoad', from: -4.32, to: 4.32, y: 0, color: 0x44484b },
+    { name: 'GunmaShoulder', from: -8.22, to: -4.32, y: -0.11, color: 0x75b757 },
+    { name: 'GunmaShoulder', from: 4.32, to: 8.22, y: -0.11, color: 0x75b757 },
+    { name: 'GunmaGrass', from: -32, to: -8.22, y: -0.38, color: 0x68ad50 },
+    { name: 'GunmaGrass', from: 8.22, to: 32, y: -0.38, color: 0x68ad50 },
     { name: 'GunmaCenterLine', from: -0.055, to: 0.055, y: 0.018, color: 0xcac9ae },
-    { name: 'GunmaEdgeLine', from: -3.43, to: -3.37, y: 0.018, color: 0xd8d8d0 },
-    { name: 'GunmaEdgeLine', from: 3.37, to: 3.43, y: 0.018, color: 0xd8d8d0 },
+    { name: 'GunmaEdgeLine', from: -4.15, to: -4.09, y: 0.018, color: 0xd8d8d0 },
+    { name: 'GunmaEdgeLine', from: 4.09, to: 4.15, y: 0.018, color: 0xd8d8d0 },
   ];
   for (const band of bands) {
     const vertices = new Float32Array(count * 2 * 3);
@@ -105,7 +106,7 @@ export function buildGunmaMap(seed) {
     mesh.name = band.name;
     group.add(mesh);
   }
-  // Dense continuous forest floor beneath the road and beyond the first trees.
+  // Continuous grassy hillside beyond the roadside.
   // Its height follows the closest road section and stays below the asphalt.
   const terrainHeightAt = (x, z) => {
     let nearest = null, best = Infinity;
@@ -132,9 +133,9 @@ export function buildGunmaMap(seed) {
       terrainVertices[index + 1] = terrainHeightAt(x, z);
       terrainVertices[index + 2] = z;
       const shade = 0.85 + 0.14 * Math.sin(ix * 1.71 + iz * 2.13);
-      terrainColors[index] = 0.25 * shade;
-      terrainColors[index + 1] = 0.39 * shade;
-      terrainColors[index + 2] = 0.23 * shade;
+      terrainColors[index] = 0.42 * shade;
+      terrainColors[index + 1] = 0.68 * shade;
+      terrainColors[index + 2] = 0.32 * shade;
       if (ix < columns && iz < lines) {
         const a = iz * (columns + 1) + ix, b = a + columns + 1;
         terrainIndices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -147,9 +148,9 @@ export function buildGunmaMap(seed) {
   terrainGeometry.setIndex(terrainIndices);
   terrainGeometry.computeVertexNormals();
   const terrain = new THREE.Mesh(terrainGeometry, new THREE.MeshLambertMaterial({
-    name: 'GunmaForestFloor', vertexColors: true, side: THREE.DoubleSide,
+    name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide,
   }));
-  terrain.name = 'GunmaForestFloor';
+  terrain.name = 'GunmaGrass';
   group.add(terrain);
 
   // White twin rails and regularly spaced posts follow both road edges.
@@ -162,7 +163,7 @@ export function buildGunmaMap(seed) {
       const indices = [];
       for (let i = 0; i < count; i++) {
         const point = route[i], normal = tangents[i];
-        const offset = side * 4.55;
+        const offset = side * 5.27;
         const o = i * 6;
         vertices[o] = vertices[o + 3] = point.x + normal.x * offset;
         vertices[o + 1] = point.y + bottom;
@@ -186,71 +187,13 @@ export function buildGunmaMap(seed) {
     let post = 0;
     for (let i = 0; i < count; i += 3) {
       const p = route[i], n = tangents[i];
-      matrix.makeTranslation(p.x + side * n.x * 4.55, p.y + 0.54,
-        p.z + side * n.z * 4.55);
+      matrix.makeTranslation(p.x + side * n.x * 5.27, p.y + 0.54,
+        p.z + side * n.z * 5.27);
       posts.setMatrixAt(post++, matrix);
     }
     posts.name = 'GunmaGuardrail';
     posts.computeBoundingSphere();
     group.add(posts);
   }
-  return { group, route, tangents, terrainHeightAt, climb, random };
-}
-
-export function placeGunmaTrees(scene, treeMeshes, course, seed) {
-  let state = (seed ^ 0xa531b937) >>> 0;
-  const random = () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-  const lists = treeMeshes.map(() => []);
-  const { route, tangents } = course;
-  for (let i = 0; i < route.length; i += 2) {
-    for (const side of [-1, 1]) {
-      if (random() < 0.15) continue;
-      const point = route[i], normal = tangents[i];
-      const distance = 10 + random() * 21;
-      const x = point.x + side * normal.x * distance;
-      const z = point.z + side * normal.z * distance;
-      // Avoid placing a tree on another leg of the switchback.
-      if (route.some((other, j) => j % 4 === 0 && Math.hypot(x - other.x, z - other.z) < 7.5)) continue;
-      if (Math.hypot(x - route[0].x, z - route[0].z) < 18) continue;
-      lists[Math.floor(random() * lists.length)].push({
-        x, z, y: point.y - 0.38, angle: random() * Math.PI * 2,
-        size: 1.2 + random() * 0.65,
-      });
-      // A deeper layer of trees keeps the forest visible beyond the roadside.
-      for (let layer = 0; layer < 2; layer++) {
-        const far = 36 + random() * 80;
-        const fx = point.x + side * normal.x * far;
-        const fz = point.z + side * normal.z * far;
-        if (route.some((other, j) => j % 5 === 0 && Math.hypot(fx - other.x, fz - other.z) < 8)) continue;
-        lists[Math.floor(random() * lists.length)].push({
-          x: fx, z: fz, y: course.terrainHeightAt(fx, fz),
-          angle: random() * Math.PI * 2, size: 1.25 + random() * 0.9,
-        });
-      }
-    }
-  }
-  const matrix = new THREE.Matrix4();
-  const quaternion = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  let total = 0;
-  lists.forEach((items, index) => {
-    if (!items.length) return;
-    const tree = treeMeshes[index];
-    const instances = new THREE.InstancedMesh(tree.geometry, tree.material, items.length);
-    items.forEach((item, i) => {
-      quaternion.setFromAxisAngle(up, item.angle);
-      matrix.compose(new THREE.Vector3(item.x, item.y, item.z), quaternion,
-        new THREE.Vector3(item.size, item.size, item.size));
-      instances.setMatrixAt(i, matrix);
-    });
-    instances.computeBoundingSphere();
-    // Decorative foliage must never become a road or collision surface.
-    instances.raycast = () => {};
-    scene.add(instances);
-    total += items.length;
-  });
-  return total;
+  return { group, route, tangents, climb };
 }

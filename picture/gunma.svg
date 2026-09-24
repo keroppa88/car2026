@@ -1,15 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
   <defs>
     <linearGradient id="hill" x2="0" y2="1">
-      <stop stop-color="#a3c1ab"/>
-      <stop offset="1" stop-color="#385543"/>
+      <stop stop-color="#a3d878"/>
+      <stop offset="1" stop-color="#62a84c"/>
     </linearGradient>
-    <pattern id="trees" width="38" height="38" patternUnits="userSpaceOnUse">
-      <path d="M11 5 2 29h18ZM34 13 25 35h18Z" fill="#264b38" opacity=".6"/>
-    </pattern>
   </defs>
   <rect width="640" height="360" fill="url(#hill)"/>
-  <rect width="640" height="360" fill="url(#trees)"/>
   <path d="M-25 40H510C600 40 600 110 510 110H125C30 110 30 180 125 180H510C600 180 600 250 510 250H100" fill="none" stroke="#bcc5a5" stroke-width="42" stroke-linecap="round"/>
   <path d="M-25 40H510C600 40 600 110 510 110H125C30 110 30 180 125 180H510C600 180 600 250 510 250H100" fill="none" stroke="#41474a" stroke-width="29" stroke-linecap="round"/>
   <path d="M-25 40H510C600 40 600 110 510 110H125C30 110 30 180 125 180H510C600 180 600 250 510 250H100" fill="none" stroke="#d1ca9b" stroke-width="2" stroke-dasharray="15 17"/>

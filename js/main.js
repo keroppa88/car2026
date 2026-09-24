@@ -13,7 +13,7 @@ import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260730-ascii-asset-paths-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
-import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
+import { buildGunmaMap } from './gunma-map.js';
 
 (function () {
   'use strict';
@@ -2599,7 +2599,7 @@ import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
       const point = route[closest], normal = gunmaCourse.tangents[closest];
       const lateral = (player.pos.x - point.x) * normal.x
         + (player.pos.z - point.z) * normal.z;
-      const limit = 3.15;
+      const limit = 3.87;
       if (Math.abs(lateral) > limit) {
         const side = Math.sign(lateral);
         const correction = lateral - side * limit;
@@ -5978,8 +5978,8 @@ import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
   async function init() {
     const [playerCarMesh, tree1, tree2] = await Promise.all([
       VOX.load(PLAYER_CAR_VOX, { scale: VOXEL_SCALE }),
-      VOX.load('vox/object/tree01.vox', { scale: TREE_SCALE }),
-      VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
+      COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree01.vox', { scale: TREE_SCALE }),
+      COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
     // 森林地帯はCPU車なし。ファイル探索・VOX読込自体も省いて初期表示を軽くする。
     const discoveredCpuVox = COURSE_KEY === 'forest' || COURSE_KEY === 'gunma'
@@ -6274,10 +6274,11 @@ import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       }
       addMapDebugVisuals(mapSpawn);
-      placeTreesOnSurface(tree1, MAP_CONFIG.treePlacement, mulberry32(MAP_CONFIG.treePlacement.seed));
+      if (COURSE_KEY !== 'gunma') {
+        placeTreesOnSurface(tree1, MAP_CONFIG.treePlacement, mulberry32(MAP_CONFIG.treePlacement.seed));
+      }
       if (COURSE_KEY === 'gunma') {
-        mapDebugStats.treesPlaced = placeGunmaTrees(scene, [tree1, tree2], gunmaCourse, GUNMA_SEED);
-        document.body.dataset.gunmaRoadWidth = '7.2';
+        document.body.dataset.gunmaRoadWidth = '8.64';
         document.body.dataset.gunmaRoutePoints = String(gunmaCourse.route.length);
       }
       document.body.dataset.course = COURSE_KEY;
@@ -6350,7 +6351,7 @@ import { buildGunmaMap, placeGunmaTrees } from './gunma-map.js';
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
       } else if (COURSE_KEY === 'gunma') {
-        car2AutoRoute = gunmaCourse.route.map((point) => ({ x: point.x, y: point.y, z: point.z, width: 7.2 }));
+        car2AutoRoute = gunmaCourse.route.map((point) => ({ x: point.x, y: point.y, z: point.z, width: 8.64 }));
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
         // デモ／自動運転では先に自車を実際のバンクルートへ合わせる。
