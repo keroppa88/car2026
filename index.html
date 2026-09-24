@@ -555,7 +555,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260730-ascii-asset-paths-1';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260924-gunmaa-1';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -869,7 +869,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20260924-gunma-traffic-1');
+    import('./js/main.js?v=20260924-gunmaa-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
