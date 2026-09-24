@@ -13,7 +13,8 @@ import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260924-gunmaa-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
-import { buildGunmaMap } from './gunma-map.js';
+import { buildGunmaMap } from './gunma-map.js?v=20260924-atmosphere-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260924-atmosphere-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
 (function () {
@@ -50,6 +51,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     ? (Number(pageQuery.get('seed')) >>> 0 || Math.floor(Math.random() * 0xffffffff))
     : Math.floor(Math.random() * 0xffffffff);
   let gunmaCourse = null;
+  let gunmaAtmosphere = null;
+  let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
   const SUZUKA_MODE = false;
   const NIHONBASHI_MODE = false;
@@ -366,7 +369,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   document.body.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const SKY = 0x8ecbef;
+  const SKY = COURSE_KEY === 'gunma' ? 0x839ba7 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.Fog(SKY, 130, 480);
 
@@ -6126,9 +6129,20 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       scene.fog = null;
       document.body.dataset.mapFog = 'none';
       if (COURSE_KEY === 'gunma') {
-        // 地表の両側だけにモヤを描き、道路の先は通常の視界を保つ。
+        // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
         applyWeatherSky();
-        document.body.dataset.mapFog = 'gunma-side-mist';
+        gunmaCanopy = createCanopyShade();
+        const shadedBands = new Set(['GunmaRoad', 'GunmaShoulder', 'GunmaCenterLine', 'GunmaEdgeLine']);
+        gunmaCourse.group.traverse((mesh) => {
+          if (mesh.isMesh && shadedBands.has(mesh.material?.name)) {
+            mesh.material = gunmaCanopy.material(mesh.material);
+          }
+        });
+        const valleyFloor = Math.min(...gunmaCourse.route.map((p) => p.y));
+        gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor + gunmaCourse.climb * 0.22);
+        document.body.dataset.mapFog = 'gunma-layered-mist';
+        document.body.dataset.gunmaCloudLayers = '3';
+        document.body.dataset.gunmaCanopyShadows = 'texture';
       }
       mapSpawn = findMapSpawn();
       if (DEBUG_MAP) {
@@ -10242,6 +10256,11 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       updateTailTrails(dt);
       updateCamera(dt);
       updateWeatherEffects(dt);
+      if (gunmaAtmosphere) {
+        gunmaCourse.mistTime.value += dt;
+        gunmaCanopy.update(dt, weatherDuskLevel());
+        gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
+      }
       renderer.render(scene, camera);
       renderMirror();
     } catch (err) {
