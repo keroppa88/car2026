@@ -6108,19 +6108,19 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       }
     }
 
-    // 夜間: 自車の前方約5mの路面・オブジェクトだけをほんのり照らす実光源。
-    // ボンネットが光って見えないよう、光源は車体前端より前に置いて前方だけへ
-    // 向ける(発光スプライトや光だまりは使わない)。
-    // 実車と同じく左右2灯。車体幅2.1mの左から20%と80%の位置に置き、
-    // 8m先ではやや内側を向けて、前方で二つの光が重なるようにする。
-    // 明るさは1灯あたりを下げ、重なった中央が以前の1灯とほぼ同じになるようにする。
+    // 左右2灯を車体前端より前に置き、路面とガードレールを照らす。
+    // ぐんまーは元の光量10倍・到達距離4倍・同距離での照射幅3倍。
+    // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
+    const gunmaHeadlights = COURSE_KEY === 'gunma';
     for (const side of [-1, 1]) {
-      // ぐんまーは街灯のない山道なので、路面を照らす光量を5倍にする。
-      const intensity = COURSE_KEY === 'gunma' ? 2.1 : 0.42;
-      const light = new THREE.SpotLight(0xffeecb, intensity, 7, 0.65, 0.6, 1.5);
+      const intensity = gunmaHeadlights ? 4.2 : 0.42;
+      const distance = gunmaHeadlights ? 28 : 7;
+      const angle = gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
+      const decay = gunmaHeadlights ? 0.5 : 1.5;
+      const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, 0.6, decay);
       light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
       light.visible = vehicleLightsShouldBeVisible();
-      light.target.position.set(side * HEADLIGHT_AIM_X, 0, 8);
+      light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
       player.tilt.add(light);
       player.tilt.add(light.target);
       playerHeadlights.push(light);
