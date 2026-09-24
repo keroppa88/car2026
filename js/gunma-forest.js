@@ -63,14 +63,14 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
     }
     return nearest2 >= clearance * clearance;
   };
-  // A tree stands roughly one road width beyond the asphalt edge (4.32 + 8.64 m).
+  // Tree trunks sit just outside the guardrail (5.27 m from the centerline).
   for (let i = 0; i < route.length; i += 6) {
     for (const side of [-1, 1]) {
       if (random() < 0.14) continue;
       const point = route[i], normal = tangents[i];
-      const offset = side * (12.9 + random() * 3.1);
+      const offset = side * (7.1 + random() * 0.8);
       const x = point.x + normal.x * offset, z = point.z + normal.z * offset;
-      if (!withinTerrain(x, z) || !clearOfRoad(x, z, 10.5)) continue;
+      if (!withinTerrain(x, z) || !clearOfRoad(x, z, 6.1)) continue;
       const height = 7.0 + random() * 5.5;
       instances.push({ x, y: groundHeightAt(x, z) + height * 0.47, z,
         width: 5.2 + random() * 2.8, height, kind: random() < 0.68 ? 0 : 1,
@@ -126,15 +126,15 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
   trees.name = 'GunmaFlatTrees';
   group.add(trees);
 
-  // A continuous jagged canopy edge beyond the separate trees, below the mountains.
+  // The jagged forest edge sits roughly 3 m behind the roadside tree trunks.
   for (const side of [-1, 1]) {
     let previous = null;
     for (let i = 0; i <= route.length; i += 2) {
       const index = i % route.length;
       const point = route[index], normal = tangents[index];
-      const offset = side * (27 + 2.5 * Math.sin(i * 0.11 + side));
+      const offset = side * (10.4 + 0.4 * Math.sin(i * 0.11 + side));
       const x = point.x + normal.x * offset, z = point.z + normal.z * offset;
-      const valid = withinTerrain(x, z) && clearOfRoad(x, z, 12);
+      const valid = withinTerrain(x, z) && clearOfRoad(x, z, 9);
       if (!valid) { previous = null; continue; }
       const ground = groundHeightAt(x, z);
       const top = ground + 7.5 + 2.7 * Math.sin(i * 0.19 + side)
@@ -143,7 +143,7 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
       ridgePositions.push(x, ground - 0.7, z, x, top, z);
       const shade = 0.78 + random() * 0.20;
       for (let vertex = 0; vertex < 2; vertex++) {
-        ridgeColors.push(0.13 * shade, 0.25 * shade, 0.18 * shade);
+        ridgeColors.push(0.28 * shade, 0.42 * shade, 0.33 * shade);
       }
       if (previous !== null) {
         ridgeIndices.push(previous, a, previous + 1, previous + 1, a, a + 1);
