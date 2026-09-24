@@ -81,41 +81,50 @@ export function buildGunmaMap(seed) {
     { name: 'GunmaEdgeLine', from: -4.15, to: -4.09, y: 0.018, color: 0xd8d8d0 },
     { name: 'GunmaEdgeLine', from: 4.09, to: 4.15, y: 0.018, color: 0xd8d8d0 },
   ];
-  for (const band of bands) {
-    const vertices = new Float32Array(count * 2 * 3);
-    const indices = [];
-    for (let i = 0; i < count; i++) {
-      const point = route[i], normal = tangents[i];
-      for (let side = 0; side < 2; side++) {
-        const offset = side ? band.to : band.from;
-        const o = (i * 2 + side) * 3;
-        vertices[o] = point.x + normal.x * offset;
-        vertices[o + 1] = point.y + band.y;
-        vertices[o + 2] = point.z + normal.z * offset;
+  let grassOuterHeightAt = null;
+  const addRoadsideBands = () => {
+    for (const band of bands) {
+      const vertices = new Float32Array(count * 2 * 3);
+      const indices = [];
+      for (let i = 0; i < count; i++) {
+        const point = route[i], normal = tangents[i];
+        for (let side = 0; side < 2; side++) {
+          const offset = side ? band.to : band.from;
+          const o = (i * 2 + side) * 3;
+          vertices[o] = point.x + normal.x * offset;
+          vertices[o + 2] = point.z + normal.z * offset;
+          vertices[o + 1] = band.name === 'GunmaGrass'
+            ? Math.abs(offset) > 20
+              ? grassOuterHeightAt(vertices[o], vertices[o + 2])
+              : point.y - 0.11
+            : band.name === 'GunmaShoulder'
+              ? point.y - (Math.abs(offset) > 4.33 ? 0.11 : 0)
+              : point.y + band.y;
+        }
+        const next = (i + 1) % count;
+        indices.push(i * 2, next * 2, i * 2 + 1, i * 2 + 1, next * 2, next * 2 + 1);
       }
-      const next = (i + 1) % count;
-      indices.push(i * 2, next * 2, i * 2 + 1, i * 2 + 1, next * 2, next * 2 + 1);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+        name: band.name, color: band.color, side: THREE.DoubleSide,
+      }));
+      mesh.name = band.name;
+      group.add(mesh);
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
-      name: band.name, color: band.color, side: THREE.DoubleSide,
-    }));
-    mesh.name = band.name;
-    group.add(mesh);
-  }
-  // Continuous grassy hillside beyond the roadside.
-  // Its height follows the closest road section and stays below the asphalt.
+  };
+  // A lower envelope of gradual slopes remains continuous where the nearest
+  // road changes. Nearest-road elevation alone created abrupt vertical cliffs.
   const terrainHeightAt = (x, z) => {
-    let nearest = null, best = Infinity;
+    let height = Infinity;
     for (let i = 0; i < count; i += 4) {
       const p = route[i];
-      const distance2 = (x - p.x) ** 2 + (z - p.z) ** 2;
-      if (distance2 < best) { best = distance2; nearest = p; }
+      const distance = Math.hypot(x - p.x, z - p.z);
+      height = Math.min(height, p.y - 3 + distance * 0.28);
     }
-    return nearest.y - 3 - Math.min(28, Math.sqrt(best) * 0.12);
+    return height;
   };
   const minX = -halfLength - 180, maxX = halfLength + 300;
   const minZ = -(rows - 1) * rowSpacing - 165, maxZ = 250;
@@ -152,6 +161,23 @@ export function buildGunmaMap(seed) {
   }));
   terrain.name = 'GunmaGrass';
   group.add(terrain);
+  // Sample the very same triangles used by the large ground mesh at the
+  // roadside edge. The grassy bank and the ground then share one seam height.
+  grassOuterHeightAt = (x, z) => {
+    const fx = THREE.MathUtils.clamp((x - minX) * columns / (maxX - minX), 0, columns - 1e-6);
+    const fz = THREE.MathUtils.clamp((z - minZ) * lines / (maxZ - minZ), 0, lines - 1e-6);
+    const ix = Math.floor(fx), iz = Math.floor(fz);
+    const tx = fx - ix, tz = fz - iz;
+    const index = (iz * (columns + 1) + ix) * 3 + 1;
+    const a = terrainVertices[index];
+    const right = terrainVertices[index + 3];
+    const down = terrainVertices[index + (columns + 1) * 3];
+    const diagonal = terrainVertices[index + (columns + 2) * 3];
+    return tx + tz <= 1
+      ? a * (1 - tx - tz) + right * tx + down * tz
+      : right * (1 - tz) + down * (1 - tx) + diagonal * (tx + tz - 1);
+  };
+  addRoadsideBands();
 
   // White twin rails and regularly spaced posts follow both road edges.
   const railMaterial = new THREE.MeshLambertMaterial({
