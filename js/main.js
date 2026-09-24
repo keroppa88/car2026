@@ -15,6 +15,7 @@ import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260924-gunmaa-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260924-atmosphere-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260924-atmosphere-1';
+import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260924-forest-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
 (function () {
@@ -52,6 +53,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     : Math.floor(Math.random() * 0xffffffff);
   let gunmaCourse = null;
   let gunmaAtmosphere = null;
+  let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
   const SUZUKA_MODE = false;
@@ -6140,6 +6142,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         });
         const valleyFloor = Math.min(...gunmaCourse.route.map((p) => p.y));
         gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor + gunmaCourse.climb * 0.22, gunmaCourse.route);
+        gunmaRoadsideForest = createGunmaRoadsideForest(scene, gunmaCourse.route,
+          gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED);
         document.body.dataset.mapFog = 'gunma-layered-mist';
         document.body.dataset.gunmaCloudLayers = '3';
         document.body.dataset.gunmaCanopyShadows = 'texture';
@@ -10260,6 +10264,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         gunmaCourse.mistTime.value += dt;
         gunmaCanopy.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
+        gunmaRoadsideForest.visible = !topView;
       }
       renderer.render(scene, camera);
       renderMirror();
