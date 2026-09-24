@@ -302,7 +302,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '群馬',
     file: 'procedural:gunma',
-    preview: 'picture/gunma.svg',
+    preview: 'picture/gunma-pixel.png',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
