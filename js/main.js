@@ -14,6 +14,7 @@ import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260730-ascii-asset-paths-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js';
+import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
 (function () {
   'use strict';
@@ -355,7 +356,7 @@ import { buildGunmaMap } from './gunma-map.js';
   document.body.dataset.mapFallOutsideRoad = String(Boolean(MAP_CONFIG.fallOutsideRoad));
   document.body.dataset.playerFallingOutsideRoad = 'false';
   document.body.dataset.cpuPlayerCollision =
-    COURSE_KEY === 'sea' ? 'disabled' : 'enabled';
+    COURSE_KEY === 'sea' || COURSE_KEY === 'gunma' ? 'disabled' : 'enabled';
   document.body.dataset.mapWallCollisions =
     MAP_CONFIG.ignoreMapWallCollisions ? 'disabled' : 'enabled';
   document.body.dataset.mapDrivableSeamAssistRatio =
@@ -3881,6 +3882,55 @@ import { buildGunmaMap } from './gunma-map.js';
   const SEA_TRAFFIC_TOTAL = 20;
   const SEA_ONCOMING_RATIO = 0.7;
   const SEA_ONCOMING_SPEED_SCALE = 0.5;
+  const GUNMA_CPU_SAME = 6;
+  const GUNMA_CPU_ONCOMING = 6;
+
+  function spawnGunmaTrafficCpuCars(vehicles) {
+    if (!gunmaCourse?.route.length || !vehicles.length) return;
+    const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents);
+    const anchor = nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z);
+    const starts = {
+      same: paths.same.distances[anchor] + 95,
+      oncoming: paths.oncoming.distances[paths.oncoming.points.length - 1 - anchor] - 90,
+    };
+    let created = 0;
+    for (const [direction, count, speeds] of [
+      ['same', GUNMA_CPU_SAME, [65, 75, 85]],
+      ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
+    ]) {
+      const path = paths[direction];
+      for (let i = 0; i < count; i++) {
+        const distance = starts[direction] + i * path.length / count;
+        const at = sampleGunmaTrafficPath(path, distance);
+        const ahead = sampleGunmaTrafficPath(path, distance + 4);
+        const vehicle = vehicles[created % vehicles.length];
+        const car = makeCarGroup(vehicle.mesh.clone(), false, false);
+        const speedKmh = speeds[i % speeds.length];
+        const ai = {
+          group: car.group,
+          tilt: car.tilt,
+          pos: new THREE.Vector3(at.x, at.y, at.z),
+          heading: Math.atan2(ahead.x - at.x, ahead.z - at.z),
+          v: speedKmh / 3.6,
+          base: speedKmh / 3.6,
+          radius: carRadiusFor(false, car.group),
+          gunmaTraffic: direction,
+          gunmaPath: path,
+          gunmaDistance: ((distance % path.length) + path.length) % path.length,
+          speedKmh,
+        };
+        ai.group.position.copy(ai.pos);
+        ai.group.rotation.y = ai.heading;
+        aiCars.push(ai);
+        created++;
+      }
+    }
+    document.body.dataset.gunmaCpuSameDirection = String(GUNMA_CPU_SAME);
+    document.body.dataset.gunmaCpuOncoming = String(GUNMA_CPU_ONCOMING);
+    document.body.dataset.gunmaCpuLaneOffsetMeters = '2.05';
+    document.body.dataset.gunmaCpuRouteLengthMeters = paths.same.length.toFixed(0);
+  }
+
   function spawnSequenceTrafficCpuCars(centerRoute, vehicles) {
     if (centerRoute.length < 2 || !vehicles.length) return;
     const carVehicles = vehicles.filter((vehicle) => !isKabuVoxUrl(vehicle.url));
@@ -5989,8 +6039,8 @@ import { buildGunmaMap } from './gunma-map.js';
       COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree01.vox', { scale: TREE_SCALE }),
       COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
-    // 森林地帯はCPU車なし。ファイル探索・VOX読込自体も省いて初期表示を軽くする。
-    const discoveredCpuVox = COURSE_KEY === 'forest' || COURSE_KEY === 'gunma'
+    // 森林地帯はCPU車なし。群馬は少数の車種だけを読み込んで複製する。
+    const discoveredCpuVox = COURSE_KEY === 'forest'
       ? []
       : await discoverCpuCarVox();
     // 首都高速と海岸線は速度が車種ランク基準なので、cpu_car_list.txt の車種を
@@ -5998,9 +6048,13 @@ import { buildGunmaMap } from './gunma-map.js';
     const cpuVoxLimit = (CAR2_MODE || COURSE_KEY === 'sea' || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT
       : 4;
-    const cpuCars = COURSE_KEY === 'forest' || COURSE_KEY === 'gunma'
+    const gunmaCarVox = COURSE_KEY === 'gunma'
+      ? pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 2, 6, 0)
+      : [];
+    const cpuCars = COURSE_KEY === 'forest'
       ? []
-      : await loadCpuCars(discoveredCpuVox.slice(0, cpuVoxLimit));
+      : await loadCpuCars(COURSE_KEY === 'gunma'
+        ? gunmaCarVox : discoveredCpuVox.slice(0, cpuVoxLimit));
     const cpuMeshes = cpuCars.map((car) => car.mesh);
 
     playerCarMesh.updateMatrixWorld(true);
@@ -6320,7 +6374,8 @@ import { buildGunmaMap } from './gunma-map.js';
         ? Array.from({ length: 4 }, (_, i) => cpuMeshes[i % cpuMeshes.length].clone())
         : [];
       Object.keys(info.loops).slice(0, 4).forEach((name, i) => {
-        if (CAR2_MODE || COURSE_KEY === 'indy' || COURSE_KEY === 'sea' || COURSE_KEY === 'forest') return;
+        if (CAR2_MODE || COURSE_KEY === 'indy' || COURSE_KEY === 'sea'
+          || COURSE_KEY === 'forest' || COURSE_KEY === 'gunma') return;
         const wps = info.loops[name].sort((a, b) => a.i - b.i).map((waypoint) => ({
           x: waypoint.p.x,
           z: waypoint.p.z,
@@ -6365,6 +6420,7 @@ import { buildGunmaMap } from './gunma-map.js';
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
       } else if (COURSE_KEY === 'gunma') {
         car2AutoRoute = gunmaCourse.route.map((point) => ({ x: point.x, y: point.y, z: point.z, width: 8.64 }));
+        spawnGunmaTrafficCpuCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
         // デモ／自動運転では先に自車を実際のバンクルートへ合わせる。
@@ -6383,7 +6439,7 @@ import { buildGunmaMap } from './gunma-map.js';
         document.body.dataset.indyCpuLane = 'bank-center';
         document.body.dataset.indyCpuLaneSpacingMeters = String(INDY_LANE_SPACING);
       }
-      if (COURSE_KEY === 'forest' || COURSE_KEY === 'gunma') {
+      if (COURSE_KEY === 'forest') {
         document.body.dataset.forestCpuCars = '0';
       }
       document.body.dataset.autoDriveAvailable =
@@ -8644,7 +8700,8 @@ import { buildGunmaMap } from './gunma-map.js';
     // 効かせると押し合いになって両方その場で止まってしまう。
     // ユーザーが操作している間は従来どおり当たり判定あり（ぶつかれば避ける）。
     // 海岸線は交通量を優先し、操作中も相互にすり抜ける。
-    const cpuCollisionOff = COURSE_KEY === 'sea' || demoActive || autoDrive;
+    const cpuCollisionOff = COURSE_KEY === 'sea' || COURSE_KEY === 'gunma'
+      || demoActive || autoDrive;
     document.body.dataset.playerCpuCollisionMode = cpuCollisionOff ? 'pass' : 'solid';
     if (!cpuCollisionOff) {
       for (const ai of aiCars) {
@@ -8982,6 +9039,19 @@ import { buildGunmaMap } from './gunma-map.js';
     rpmEl.classList.toggle('red', rpm > 0.93);
   }
 
+  function updateGunmaTrafficCar(ai, dt) {
+    const path = ai.gunmaPath;
+    ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
+    const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
+    const ahead = sampleGunmaTrafficPath(path, ai.gunmaDistance + 4);
+    const behind = sampleGunmaTrafficPath(path, ai.gunmaDistance - 4);
+    ai.pos.set(at.x, at.y, at.z);
+    ai.heading = Math.atan2(ahead.x - at.x, ahead.z - at.z);
+    ai.group.position.copy(ai.pos);
+    ai.group.rotation.y = ai.heading;
+    ai.tilt.rotation.x = -Math.atan2(ahead.y - behind.y, 8);
+  }
+
   function updateAI(dt, sigStates) {
     let cpuOvertakingNow = 0;
     let tokyoCpuDriftingNow = 0;
@@ -8996,6 +9066,10 @@ import { buildGunmaMap } from './gunma-map.js';
     for (const ai of aiCars) {
       // 出番待ちの車は動かさない（描画もしない）。
       if (ai.appearManaged && !ai.active) continue;
+      if (ai.gunmaTraffic) {
+        updateGunmaTrafficCar(ai, dt);
+        continue;
+      }
       if (ai.car2Loop) {
         // ワープ検出。前フレームの速度から進めるはずの距離を大きく超えたら記録。
         if (ai.stepPrevX !== undefined) {
