@@ -106,16 +106,16 @@ export function buildGunmaMap(seed) {
     mesh.name = band.name;
     group.add(mesh);
   }
-  // Continuous grassy hillside beyond the roadside.
-  // Its height follows the closest road section and stays below the asphalt.
-  const terrainHeightAt = (x, z) => {
+  // Continuous hillside: grass near the asphalt fades into shaded forest.
+  const terrainSampleAt = (x, z) => {
     let nearest = null, best = Infinity;
     for (let i = 0; i < count; i += 4) {
       const p = route[i];
       const distance2 = (x - p.x) ** 2 + (z - p.z) ** 2;
       if (distance2 < best) { best = distance2; nearest = p; }
     }
-    return nearest.y - 3 - Math.min(28, Math.sqrt(best) * 0.12);
+    const distance = Math.sqrt(best);
+    return { height: nearest.y - 3 - Math.min(28, distance * 0.12), distance };
   };
   const minX = -halfLength - 180, maxX = halfLength + 300;
   const minZ = -(rows - 1) * rowSpacing - 165, maxZ = 250;
@@ -130,12 +130,16 @@ export function buildGunmaMap(seed) {
       const z = minZ + (maxZ - minZ) * iz / lines;
       const index = (iz * (columns + 1) + ix) * 3;
       terrainVertices[index] = x;
-      terrainVertices[index + 1] = terrainHeightAt(x, z);
+      const sample = terrainSampleAt(x, z);
+      terrainVertices[index + 1] = sample.height;
       terrainVertices[index + 2] = z;
-      const shade = 0.85 + 0.14 * Math.sin(ix * 1.71 + iz * 2.13);
-      terrainColors[index] = 0.42 * shade;
-      terrainColors[index + 1] = 0.68 * shade;
-      terrainColors[index + 2] = 0.32 * shade;
+      const shade = 0.81 + 0.19 * Math.sin(ix * 1.71 + iz * 2.13);
+      const forest = THREE.MathUtils.smoothstep(sample.distance, 12, 33);
+      const shadow = 0.14 * (0.5 + 0.5 * Math.sin(x * 0.11 + z * 0.08))
+        * (0.5 + 0.5 * Math.sin(x * 0.23 - z * 0.17));
+      terrainColors[index] = THREE.MathUtils.lerp(0.42 * shade, 0.08 + shadow, forest);
+      terrainColors[index + 1] = THREE.MathUtils.lerp(0.68 * shade, 0.19 + shadow, forest);
+      terrainColors[index + 2] = THREE.MathUtils.lerp(0.32 * shade, 0.13 + shadow * 0.7, forest);
       if (ix < columns && iz < lines) {
         const a = iz * (columns + 1) + ix, b = a + columns + 1;
         terrainIndices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -152,6 +156,42 @@ export function buildGunmaMap(seed) {
   }));
   terrain.name = 'GunmaGrass';
   group.add(terrain);
+
+  // A single low-poly canopy ridge on each side suggests trees in silhouette.
+  // No individual trees, textures, or shadows are needed at runtime.
+  const canopyVertices = [];
+  const canopyIndices = [];
+  for (const side of [-1, 1]) {
+    const step = 4;
+    const samples = Math.ceil(count / step);
+    const first = canopyVertices.length / 3;
+    for (let j = 0; j < samples; j++) {
+      const i = Math.floor(j * count / samples);
+      const point = route[i], normal = tangents[i];
+      const offset = side * (22 + 2 * Math.sin(j * 0.67));
+      const x = point.x + normal.x * offset;
+      const z = point.z + normal.z * offset;
+      const base = terrainSampleAt(x, z).height - 0.6;
+      const crown = 4.5 + 3.5 * random();
+      canopyVertices.push(x, base, z, x, base + crown, z);
+      if (j) {
+        const a = first + (j - 1) * 2, b = first + j * 2;
+        canopyIndices.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+    const last = first + (samples - 1) * 2;
+    canopyIndices.push(last, first, last + 1, last + 1, first, first + 1);
+  }
+  const canopyGeometry = new THREE.BufferGeometry();
+  canopyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(canopyVertices, 3));
+  canopyGeometry.setIndex(canopyIndices);
+  canopyGeometry.computeVertexNormals();
+  const canopy = new THREE.Mesh(canopyGeometry, new THREE.MeshBasicMaterial({
+    name: 'GunmaForestShadow', color: 0x20392f, side: THREE.DoubleSide,
+  }));
+  canopy.name = 'GunmaForestShadow';
+  canopy.userData.visualOnly = true;
+  group.add(canopy);
 
   // White twin rails and regularly spaced posts follow both road edges.
   const railMaterial = new THREE.MeshLambertMaterial({
