@@ -976,6 +976,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     const lights = new THREE.Group();
     lights.visible = vehicleLightsShouldBeVisible();
     const seaCpuBoost = lightProfile === 'seaCpuBoost';
+    const gunmaCpuBoost = lightProfile === 'gunmaCpuBoost';
     lights.userData.lightProfile = lightProfile;
     lights.userData.headSprites = [];   // ヘッド側の光球(車種によっては非表示にする)
     const lamp = (tex, color, x, y, z, s, opacity) => {
@@ -983,6 +984,11 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         map: tex, color, blending: THREE.AdditiveBlending,
         transparent: true, depthWrite: false, opacity,
       }));
+      // 加算発光の色を4倍にし、CPUの前照灯・尾灯を強く見せる。
+      if (gunmaCpuBoost) {
+        sprite.material.color.multiplyScalar(4);
+        sprite.material.toneMapped = false;
+      }
       sprite.position.set(x, y, z);
       sprite.scale.setScalar(s);
       sprite.renderOrder = 3;
@@ -3909,7 +3915,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         const at = sampleGunmaTrafficPath(path, distance);
         const ahead = sampleGunmaTrafficPath(path, distance + 4);
         const vehicle = vehicles[created % vehicles.length];
-        const car = makeCarGroup(vehicle.mesh.clone(), false, false);
+        const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
         const speedKmh = speeds[i % speeds.length];
         const ai = {
           group: car.group,
