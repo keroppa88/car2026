@@ -171,46 +171,50 @@ export function createMountainAtmosphere(scene, elevation, route) {
   // Billboard rotation and wind are shader-driven, outside the CPU bounds.
   wisps.frustumCulled = false;
   scene.add(wisps);
-  const geometry = new THREE.PlaneGeometry(1500, 1500);
-  for (let i = 0; i < 3; i++) {
-    const material = new THREE.ShaderMaterial({
-      uniforms: { ...uniforms, layer: { value: i } },
-      vertexShader: `
-        varying vec3 world;
-        void main() {
-          vec4 p = modelMatrix * vec4(position, 1.0);
-          world = p.xyz;
-          gl_Position = projectionMatrix * viewMatrix * p;
-        }`,
-      fragmentShader: `
-        uniform float time, layer;
-        uniform vec3 tint;
-        varying vec3 world;
-        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-        float noise(vec2 p) {
-          vec2 i = floor(p), f = fract(p);
-          f = f*f*(3.0-2.0*f);
-          return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
-                     mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
-        }
-        void main() {
-          vec2 p = world.xz * 0.012 + vec2(time*0.008, time*0.003) + layer*7.3;
-          float n = noise(p)*0.58 + noise(p*2.1)*0.28 + noise(p*4.3)*0.14;
-          float distanceXZ = length(world.xz-cameraPosition.xz);
-          float edge = 1.0-smoothstep(420.0,680.0,distanceXZ);
-          // Fade near the eye and at grazing angles to avoid visible sheet edges.
-          float nearFade = smoothstep(18.0,65.0,length(world-cameraPosition));
-          float heightFade = smoothstep(0.0,12.0,cameraPosition.y-world.y);
-          float alpha = smoothstep(0.25,0.78,n)*0.42*edge*nearFade*heightFade;
-          gl_FragColor = vec4(tint*(0.87+n*0.17), alpha);
-        }`,
-      transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = elevation + i * 5;
-    group.add(mesh);
+  // Soft billboards distributed through a volume replace the flat cloud sheets.
+  const puffMaterial = new THREE.ShaderMaterial({
+    uniforms: wisps.material.uniforms,
+    vertexShader: wisps.material.vertexShader,
+    fragmentShader: `
+      uniform sampler2D mistMask;
+      uniform vec3 tint;
+      uniform float time;
+      varying vec2 mistUv;
+      varying float mistRange;
+      float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float noise(vec2 p) {
+        vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
+          mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+      }
+      void main() {
+        vec2 p=mistUv*2.0-1.0;
+        float feather=1.0-smoothstep(0.28,0.98,length(p));
+        vec2 flow=mistUv*4.0+vec2(time*0.025,-time*0.012);
+        float n=noise(flow)*0.65+noise(flow*2.7)*0.35;
+        float fade=smoothstep(22.0,65.0,mistRange)*(1.0-smoothstep(800.0,1150.0,mistRange));
+        float alpha=texture2D(mistMask,mistUv).a*feather*(0.35+n*0.65)*0.44*fade;
+        if(alpha<0.002) discard;
+        gl_FragColor=vec4(tint*(0.90+n*0.14),alpha);
+      }`,
+    transparent: true, depthWrite: false,
+  });
+  const puffs=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),puffMaterial,288);
+  let puffSeed=20260925;
+  const cloudRandom=()=>((puffSeed=(Math.imul(puffSeed,1664525)+1013904223)>>>0)/4294967296);
+  for(let i=0;i<288;i++) {
+    const x=bounds.min.x-200+cloudRandom()*(size.x+400);
+    const z=bounds.min.z-200+cloudRandom()*(size.z+400);
+    const width=65+cloudRandom()*85, height=22+cloudRandom()*30;
+    const y=elevation-14+cloudRandom()*35;
+    transform.makeScale(width,height,1);
+    transform.setPosition(x,y,z);
+    puffs.setMatrixAt(i,transform);
   }
+  puffs.instanceMatrix.needsUpdate=true;
+  puffs.frustumCulled=false;
+  puffs.name='gunma-cloud-puffs';
+  group.add(puffs);
   scene.add(group);
   return {
     update(dt, camera, color, hidden) {
@@ -219,9 +223,7 @@ export function createMountainAtmosphere(scene, elevation, route) {
       group.visible = !hidden;
       ridges.visible = !hidden;
       wisps.visible = !hidden;
-      // Shader noise stays in world coordinates, even as the coverage follows X/Z.
-      group.position.x = camera.position.x;
-      group.position.z = camera.position.z;
+      // Puff centers stay anchored in the valley as the car moves.
     },
   };
 }

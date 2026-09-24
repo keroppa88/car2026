@@ -319,7 +319,7 @@ export const MAP_CONFIGS = {
     spawnExactReference: false,
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI / 2,
-    spawnOffsetRight: 0.9,
+    spawnOffsetRight: 1.68,
     spawnSurfaceMode: 'roadSurface',
     autoDriveMode: 'gunmaTouge',
     treePlacement: { ...commonTrees, enabled: false, seed: 20260923 },

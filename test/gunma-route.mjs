@@ -3,7 +3,7 @@ import { buildGunmaMap } from '../js/gunma-map.js';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from '../js/gunma-traffic.js';
 import { MAP_CONFIGS } from '../js/game-config.js';
 
-assert.equal(MAP_CONFIGS.gunma.spawnOffsetRight, 0.9);
+assert.equal(MAP_CONFIGS.gunma.spawnOffsetRight, 1.68);
 // The spawn heading points east: screen-left / driver's left is negative Z.
 const spawnHeading = MAP_CONFIGS.gunma.spawnHeading;
 const spawnLeftZ = -Math.sin(spawnHeading) * MAP_CONFIGS.gunma.spawnOffsetRight;
@@ -12,7 +12,7 @@ assert.ok(spawnLeftZ < 0);
 for (const seed of [1, 20260923, 4294967295]) {
   const { route, tangents } = buildGunmaMap(seed);
   const { same, oncoming } = buildGunmaTrafficPaths(route, tangents);
-  const auto = buildGunmaTrafficPaths(route, tangents, 0.9).same;
+  const auto = buildGunmaTrafficPaths(route, tangents, MAP_CONFIGS.gunma.spawnOffsetRight).same;
   assert.equal(same.points.length, route.length);
   assert.equal(oncoming.points.length, route.length);
   for (let i = 0; i < route.length; i += 37) {
@@ -35,9 +35,9 @@ for (const seed of [1, 20260923, 4294967295]) {
     const autoCar = auto.points[i];
     const autoOffset = (autoCar.x - center.x) * normal.x
       + (autoCar.z - center.z) * normal.z;
-    assert.ok(Math.abs(autoOffset - 0.9) < 1e-5);
-    // Right wheel, 0.78 m from the car center, remains just left of the centerline.
-    assert.ok(autoOffset - 0.78 >= 0 && autoOffset - 0.78 < 0.3);
+    assert.ok(Math.abs(autoOffset - 1.68) < 1e-5);
+    // Right wheel follows the previous car center, 0.9 m left of centerline.
+    assert.ok(Math.abs(autoOffset - 0.78 - 0.9) < 1e-5);
     const nextLeft = same.points[(i + 1) % route.length];
     const reverseIndex = route.length - 1 - i;
     const nextRight = oncoming.points[(reverseIndex + 1) % route.length];
