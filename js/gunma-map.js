@@ -294,5 +294,6 @@ export function buildGunmaMap(seed) {
     posts.computeBoundingSphere();
     group.add(posts);
   }
-  return { group, route, tangents, climb, mistColor, mistTime };
+  return { group, route, tangents, climb, mistColor, mistTime,
+    groundHeightAt: grassOuterHeightAt };
 }
