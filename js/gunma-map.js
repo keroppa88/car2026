@@ -117,14 +117,15 @@ export function buildGunmaMap(seed) {
   };
   // A lower envelope of gradual slopes remains continuous where the nearest
   // road changes. Nearest-road elevation alone created abrupt vertical cliffs.
-  const terrainHeightAt = (x, z) => {
-    let height = Infinity;
+  const terrainSampleAt = (x, z) => {
+    let height = Infinity, nearest = Infinity;
     for (let i = 0; i < count; i += 4) {
       const p = route[i];
       const distance = Math.hypot(x - p.x, z - p.z);
       height = Math.min(height, p.y - 3 + distance * 0.28);
+      nearest = Math.min(nearest, distance);
     }
-    return height;
+    return { height, distance: nearest };
   };
   const minX = -halfLength - 180, maxX = halfLength + 300;
   const minZ = -(rows - 1) * rowSpacing - 165, maxZ = 250;
@@ -139,12 +140,16 @@ export function buildGunmaMap(seed) {
       const z = minZ + (maxZ - minZ) * iz / lines;
       const index = (iz * (columns + 1) + ix) * 3;
       terrainVertices[index] = x;
-      terrainVertices[index + 1] = terrainHeightAt(x, z);
+      const sample = terrainSampleAt(x, z);
+      terrainVertices[index + 1] = sample.height;
       terrainVertices[index + 2] = z;
-      const shade = 0.85 + 0.14 * Math.sin(ix * 1.71 + iz * 2.13);
-      terrainColors[index] = 0.42 * shade;
-      terrainColors[index + 1] = 0.68 * shade;
-      terrainColors[index + 2] = 0.32 * shade;
+      const shade = 0.81 + 0.19 * Math.sin(ix * 1.71 + iz * 2.13);
+      const forest = THREE.MathUtils.smoothstep(sample.distance, 32, 65);
+      const shadow = 0.14 * (0.5 + 0.5 * Math.sin(x * 0.11 + z * 0.08))
+        * (0.5 + 0.5 * Math.sin(x * 0.23 - z * 0.17));
+      terrainColors[index] = THREE.MathUtils.lerp(0.42 * shade, 0.08 + shadow, forest);
+      terrainColors[index + 1] = THREE.MathUtils.lerp(0.68 * shade, 0.19 + shadow, forest);
+      terrainColors[index + 2] = THREE.MathUtils.lerp(0.32 * shade, 0.13 + shadow * 0.7, forest);
       if (ix < columns && iz < lines) {
         const a = iz * (columns + 1) + ix, b = a + columns + 1;
         terrainIndices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -178,6 +183,41 @@ export function buildGunmaMap(seed) {
       : right * (1 - tz) + down * (1 - tx) + diagonal * (tx + tz - 1);
   };
   addRoadsideBands();
+
+  // One continuous low-poly canopy ridge per side suggests dense forest.
+  // Its roots use the ground mesh's interpolated height, avoiding cliff gaps.
+  const canopyVertices = [];
+  const canopyIndices = [];
+  for (const side of [-1, 1]) {
+    const samples = Math.ceil(count / 4);
+    const first = canopyVertices.length / 3;
+    for (let j = 0; j < samples; j++) {
+      const i = Math.floor(j * count / samples);
+      const point = route[i], normal = tangents[i];
+      const offset = side * (35 + 3 * Math.sin(j * 0.67));
+      const x = point.x + normal.x * offset;
+      const z = point.z + normal.z * offset;
+      const base = grassOuterHeightAt(x, z) - 0.6;
+      const crown = 4.5 + 3.5 * random();
+      canopyVertices.push(x, base, z, x, base + crown, z);
+      if (j) {
+        const a = first + (j - 1) * 2, b = first + j * 2;
+        canopyIndices.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+    const last = first + (samples - 1) * 2;
+    canopyIndices.push(last, first, last + 1, last + 1, first, first + 1);
+  }
+  const canopyGeometry = new THREE.BufferGeometry();
+  canopyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(canopyVertices, 3));
+  canopyGeometry.setIndex(canopyIndices);
+  canopyGeometry.computeVertexNormals();
+  const canopy = new THREE.Mesh(canopyGeometry, new THREE.MeshBasicMaterial({
+    name: 'GunmaForestShadow', color: 0x20392f, side: THREE.DoubleSide,
+  }));
+  canopy.name = 'GunmaForestShadow';
+  canopy.userData.visualOnly = true;
+  group.add(canopy);
 
   // White twin rails and regularly spaced posts follow both road edges.
   const railMaterial = new THREE.MeshLambertMaterial({
