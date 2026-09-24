@@ -67,7 +67,7 @@ export function createMountainAtmosphere(scene, elevation, route) {
   const bounds = new THREE.Box3().setFromPoints(route);
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
-  const radius = Math.hypot(size.x, size.z) * 0.5 + 110;
+  const radius = Math.hypot(size.x, size.z) * 0.5 + 450;
   const ridgeVertices = [], ridgeShades = [], ridgeHeights = [], ridgeIndices = [];
   const segments = 96;
   for (let layer = 0; layer < 3; layer++) {
@@ -76,7 +76,7 @@ export function createMountainAtmosphere(scene, elevation, route) {
       const r = radius + layer * 85;
       const profile = 0.5 + 0.23*Math.sin(angle*5+layer*1.7)
         + 0.16*Math.sin(angle*11-layer) + 0.11*Math.sin(angle*19+layer);
-      const top = bounds.max.y + 15 + layer*45 + profile*115;
+      const top = bounds.max.y - 30 + layer*35 + profile*95;
       const x = center.x + Math.cos(angle)*r, z = center.z + Math.sin(angle)*r;
       ridgeVertices.push(x, elevation-140, z, x, top, z);
       ridgeShades.push(0.44+layer*0.16, 0.44+layer*0.16);

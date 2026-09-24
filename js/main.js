@@ -374,7 +374,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   scene.fog = new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, COURSE_KEY === 'gunma' ? 2200 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -10141,7 +10141,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   }
 
   // F: 画面上部のバックミラー。メイン描画の後に後方視点を小窓へ描く。
-  const mirrorCam = new THREE.PerspectiveCamera(55, 3.4, 0.5, 1200);
+  const mirrorCam = new THREE.PerspectiveCamera(55, 3.4, 0.5, COURSE_KEY === 'gunma' ? 2200 : 1200);
   function renderMirror() {
     if (!mirrorView || topView) return;
     const W = window.innerWidth, H = window.innerHeight;
