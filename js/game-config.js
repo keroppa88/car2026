@@ -300,7 +300,7 @@ export const MAP_CONFIGS = {
   },
   gunma: {
     ...commonMap,
-    label: '群馬',
+    label: 'ぐんまー',
     file: 'procedural:gunma',
     preview: 'picture/gunma-pixel.png',
     scale: 1,
