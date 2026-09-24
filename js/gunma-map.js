@@ -7,9 +7,10 @@ function mistPatchAt(x, z) {
 }
 
 // Haze is applied only to grass. Asphalt and guardrails keep their full contrast.
-function addSideMist(material, mistColor) {
+function addSideMist(material, mistColor, mistTime) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.gunmaMistColor = { value: mistColor };
+    shader.uniforms.gunmaMistTime = mistTime;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         attribute float mistDistance;
@@ -24,17 +25,30 @@ function addSideMist(material, mistColor) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform vec3 gunmaMistColor;
+        uniform float gunmaMistTime;
         varying float vMistDistance;
         varying float vMistPatch;
-        varying vec3 vMistWorld;`)
+        varying vec3 vMistWorld;
+        float mistHash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+        float mistNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          f = f*f*(3.0-2.0*f);
+          return mix(mix(mistHash(i),mistHash(i+vec2(1,0)),f.x),
+            mix(mistHash(i+vec2(0,1)),mistHash(i+vec2(1,1)),f.x),f.y);
+        }`)
       .replace('#include <output_fragment>', `
-        float roadside = smoothstep(7.0, 26.0, vMistDistance);
-        float farField = smoothstep(55.0, 240.0, distance(cameraPosition, vMistWorld));
-        float haze = roadside * (0.68 + 0.32 * farField) * (0.68 + 0.32 * vMistPatch);
-        outgoingLight = mix(outgoingLight, gunmaMistColor, haze);
+        float roadside = smoothstep(4.5, 19.0, vMistDistance);
+        float farField = smoothstep(65.0, 310.0, distance(cameraPosition, vMistWorld));
+        vec2 flow = vMistWorld.xz * vec2(0.045,0.07) + vec2(gunmaMistTime*0.017,-gunmaMistTime*0.009);
+        float mistDensity = mistNoise(flow)*0.65 + mistNoise(flow*2.7+4.3)*0.35;
+        float wisps = smoothstep(0.22,0.76,mistDensity);
+        float haze = roadside * mix(0.12+0.64*wisps, 0.50+0.40*wisps, farField);
+        // Fine detail is evaluated per pixel, not interpolated across broad terrain triangles.
+        outgoingLight *= 0.86 + 0.20*mistDensity + 0.04*vMistPatch;
+        outgoingLight = mix(outgoingLight, gunmaMistColor*(0.90+0.10*wisps), haze);
         #include <output_fragment>`);
   };
-  material.customProgramCacheKey = () => 'gunma-side-mist-v2';
+  material.customProgramCacheKey = () => 'gunma-side-mist-v4';
   return material;
 }
 
@@ -110,12 +124,13 @@ export function buildGunmaMap(seed) {
   const group = new THREE.Group();
   group.name = 'gunma_procedural';
   const mistColor = new THREE.Color(0xaebdb4);
+  const mistTime = { value: 0 };
   const bands = [
     { name: 'GunmaRoad', from: -4.32, to: 4.32, y: 0, color: 0x44484b },
-    { name: 'GunmaShoulder', from: -8.22, to: -4.32, y: -0.11, color: 0x75b757 },
-    { name: 'GunmaShoulder', from: 4.32, to: 8.22, y: -0.11, color: 0x75b757 },
-    { name: 'GunmaGrass', from: -32, to: -8.22, y: -0.38, color: 0x68ad50 },
-    { name: 'GunmaGrass', from: 8.22, to: 32, y: -0.38, color: 0x68ad50 },
+    { name: 'GunmaShoulder', from: -8.22, to: -4.32, y: -0.11, color: 0x63805a },
+    { name: 'GunmaShoulder', from: 4.32, to: 8.22, y: -0.11, color: 0x63805a },
+    { name: 'GunmaGrass', from: -32, to: -8.22, y: -0.38, color: 0x506d4a },
+    { name: 'GunmaGrass', from: 8.22, to: 32, y: -0.38, color: 0x506d4a },
     { name: 'GunmaCenterLine', from: -0.055, to: 0.055, y: 0.018, color: 0xcac9ae },
     { name: 'GunmaEdgeLine', from: -4.15, to: -4.09, y: 0.018, color: 0xd8d8d0 },
     { name: 'GunmaEdgeLine', from: 4.09, to: 4.15, y: 0.018, color: 0xd8d8d0 },
@@ -124,7 +139,7 @@ export function buildGunmaMap(seed) {
   const addRoadsideBands = () => {
     for (const band of bands) {
       const vertices = new Float32Array(count * 2 * 3);
-      const mistDistances = band.name === 'GunmaGrass' ? new Float32Array(count * 2) : null;
+      const mistDistances = (band.name === 'GunmaGrass' || band.name === 'GunmaShoulder') ? new Float32Array(count * 2) : null;
       const mistPatches = mistDistances ? new Float32Array(count * 2) : null;
       const indices = [];
       for (let i = 0; i < count; i++) {
@@ -157,7 +172,7 @@ export function buildGunmaMap(seed) {
         name: band.name, color: band.color, side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geometry,
-        mistDistances ? addSideMist(material, mistColor) : material);
+        mistDistances ? addSideMist(material, mistColor, mistTime) : material);
       mesh.name = band.name;
       group.add(mesh);
     }
@@ -198,9 +213,9 @@ export function buildGunmaMap(seed) {
       const forest = THREE.MathUtils.smoothstep(sample.distance, 32, 65);
       const shadow = 0.14 * (0.5 + 0.5 * Math.sin(x * 0.11 + z * 0.08))
         * (0.5 + 0.5 * Math.sin(x * 0.23 - z * 0.17));
-      terrainColors[index] = THREE.MathUtils.lerp(0.42 * shade, 0.08 + shadow, forest);
-      terrainColors[index + 1] = THREE.MathUtils.lerp(0.68 * shade, 0.19 + shadow, forest);
-      terrainColors[index + 2] = THREE.MathUtils.lerp(0.32 * shade, 0.13 + shadow * 0.7, forest);
+      terrainColors[index] = THREE.MathUtils.lerp(0.30 * shade, 0.08 + shadow, forest);
+      terrainColors[index + 1] = THREE.MathUtils.lerp(0.47 * shade, 0.19 + shadow, forest);
+      terrainColors[index + 2] = THREE.MathUtils.lerp(0.28 * shade, 0.13 + shadow * 0.7, forest);
       if (ix < columns && iz < lines) {
         const a = iz * (columns + 1) + ix, b = a + columns + 1;
         terrainIndices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -216,7 +231,7 @@ export function buildGunmaMap(seed) {
   terrainGeometry.computeVertexNormals();
   const terrain = new THREE.Mesh(terrainGeometry, addSideMist(new THREE.MeshLambertMaterial({
     name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide,
-  }), mistColor));
+  }), mistColor, mistTime));
   terrain.name = 'GunmaGrass';
   group.add(terrain);
   // Sample the very same triangles used by the large ground mesh at the
@@ -279,5 +294,5 @@ export function buildGunmaMap(seed) {
     posts.computeBoundingSphere();
     group.add(posts);
   }
-  return { group, route, tangents, climb, mistColor };
+  return { group, route, tangents, climb, mistColor, mistTime };
 }
