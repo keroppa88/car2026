@@ -189,10 +189,14 @@ export function buildGunmaMap(seed) {
       height = Math.min(height, p.y - 3 + distance * 0.28);
       nearest = Math.min(nearest, distance);
     }
-    return { height, distance: nearest };
+    // Far from every road the mountain sinks below the cloud sea. The slope
+    // follows the road's curves, so the outline is rounded, and the square
+    // edge of this mesh stays hidden under the clouds.
+    const sink = THREE.MathUtils.smoothstep(nearest, 80, 230);
+    return { height: THREE.MathUtils.lerp(height, -40, sink), distance: nearest };
   };
-  const minX = -halfLength - 180, maxX = halfLength + 300;
-  const minZ = -(rows - 1) * rowSpacing - 165, maxZ = 250;
+  const minX = -halfLength - 290, maxX = halfLength + 400;
+  const minZ = -(rows - 1) * rowSpacing - 280, maxZ = 360;
   const columns = Math.ceil((maxX - minX) / 12);
   const lines = Math.ceil((maxZ - minZ) / 12);
   const terrainVertices = new Float32Array((columns + 1) * (lines + 1) * 3);
@@ -301,5 +305,5 @@ export function buildGunmaMap(seed) {
     group.add(posts);
   }
   return { group, route, tangents, climb, mistColor, mistTime,
-    groundHeightAt: grassOuterHeightAt, terrainHeightAt };
+    groundHeightAt: grassOuterHeightAt, terrainHeightAt, gridBounds: { minX, maxX, minZ, maxZ } };
 }
