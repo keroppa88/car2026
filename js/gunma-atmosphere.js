@@ -208,6 +208,9 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
   const sheetTexture = new THREE.CanvasTexture(sheetCanvas);
   // Horizontal sheets seen edge-on would show as hard lines; fade them out
   // as the view grazes the surface.
+  const cloudUniformsGlsl = `
+    uniform sampler2D clearanceMap;
+    uniform vec4 clearanceArea;`;
   const flatVertex = `
     varying vec3 cloudWorld;
     varying vec2 cloudUv;
@@ -221,12 +224,41 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     vec3 toCamera = cameraPosition - cloudWorld;
     float range = length(toCamera);
     float facing = smoothstep(0.02, 0.22, abs(toCamera.y) / range);
-    float fade = facing * smoothstep(20.0, 60.0, range) * (1.0 - smoothstep(900.0, 1300.0, range));`;
+    float fade = facing * smoothstep(20.0, 60.0, range) * (1.0 - smoothstep(900.0, 1300.0, range));
+    // Ground height here, decoded from the clearance map (+-10 m .. 40 m).
+    vec2 clearanceUv = (cloudWorld.xz - clearanceArea.xy) / clearanceArea.z;
+    float ground = clearanceArea.w - (texture2D(clearanceMap, clearanceUv).r * 50.0 - 10.0);
+    fade *= smoothstep(2.0, 14.0, cloudWorld.y - ground);`;
   const floorRadius = Math.hypot(size.x, size.z) * 0.5 + 350;
+  const floorY = elevation - 6;
+  // Height of the cloud base above the ground, baked once into a 64px map.
+  // Clouds thin out where the slopes rise into them, so there is no hard
+  // line where the layer meets the terrain (no depth texture needed).
+  const clearanceSize = 64;
+  const clearanceData = new Uint8Array(clearanceSize * clearanceSize * 4);
+  const mapMin = new THREE.Vector2(center.x - floorRadius, center.z - floorRadius);
+  const mapSpan = floorRadius * 2;
+  for (let iz = 0; iz < clearanceSize; iz++) {
+    for (let ix = 0; ix < clearanceSize; ix++) {
+      const x = mapMin.x + (ix + 0.5) / clearanceSize * mapSpan;
+      const z = mapMin.y + (iz + 0.5) / clearanceSize * mapSpan;
+      const clearance = groundHeightAt ? floorY - groundHeightAt(x, z) : 40;
+      clearanceData[(iz * clearanceSize + ix) * 4] =
+        THREE.MathUtils.clamp(Math.round((clearance + 10) / 50 * 255), 0, 255);
+    }
+  }
+  const clearanceMap = new THREE.DataTexture(clearanceData, clearanceSize, clearanceSize);
+  clearanceMap.magFilter = clearanceMap.minFilter = THREE.LinearFilter;
+  clearanceMap.needsUpdate = true;
+  Object.assign(uniforms, {
+    clearanceMap: { value: clearanceMap },
+    clearanceArea: { value: new THREE.Vector4(mapMin.x, mapMin.y, mapSpan, floorY) },
+  });
   const floor = new THREE.Mesh(new THREE.CircleGeometry(floorRadius, 48), new THREE.ShaderMaterial({
     uniforms: { ...uniforms, floorTexture: { value: floorTexture } },
     vertexShader: flatVertex.replace('INSTANCE', ''),
     fragmentShader: `
+      ${cloudUniformsGlsl}
       uniform sampler2D floorTexture;
       uniform vec3 tint;
       uniform float time;
@@ -247,7 +279,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
   }));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(center.x, elevation - 6, center.z);
+  floor.position.set(center.x, floorY, center.z);
   floor.name = 'gunma-cloud-floor';
   group.add(floor);
   const sheetGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -256,6 +288,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     uniforms: { ...uniforms, sheetTexture: { value: sheetTexture } },
     vertexShader: flatVertex.replace('INSTANCE', 'instanceMatrix *'),
     fragmentShader: `
+      ${cloudUniformsGlsl}
       uniform sampler2D sheetTexture;
       uniform vec3 tint;
       varying vec3 cloudWorld;
