@@ -13,10 +13,10 @@ import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
-import { buildGunmaMap } from './gunma-map.js?v=20260925-round-terrain-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-cloudsea-4';
-import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-two-rows-1';
-import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
+import { buildGunmaMap } from './gunma-map.js?v=20260925-endless-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-endless-1';
+import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
+import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 
 (function () {
   'use strict';
@@ -2607,6 +2607,15 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       seaSurfaceBridge = null;
     }
     if (COURSE_KEY === 'gunma' && gunmaCourse?.route.length) {
+      // Past either end the road is a copy of the other end: warp by one seam.
+      const seam = gunmaCourse.seam;
+      const warp = player.pos.x > seam.endX ? -1 : player.pos.x < seam.startX ? 1 : 0;
+      if (warp) {
+        player.pos.x += seam.offset.x * warp;
+        player.pos.z += seam.offset.z * warp;
+        mapLoopCount++;
+        document.body.dataset.mapLoopCount = String(mapLoopCount);
+      }
       // The car body reaches the white guardrail before its centre leaves the road.
       // Slide along the rail while retaining longitudinal speed.
       const route = gunmaCourse.route;
@@ -3898,7 +3907,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
 
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
-    const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents);
+    const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
+      2.05, gunmaCourse.seam.offset);
     const anchor = nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z);
     const starts = {
       same: paths.same.distances[anchor] + 95,
@@ -6141,7 +6151,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       if (COURSE_KEY === 'gunma') {
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
         applyWeatherSky();
-        gunmaCanopy = createCanopyShade();
+        gunmaCanopy = createCanopyShade(gunmaCourse.seam);
         const shadedBands = new Set(['GunmaRoad', 'GunmaCenterLine', 'GunmaEdgeLine']);
         gunmaCourse.group.traverse((mesh) => {
           if (mesh.isMesh && shadedBands.has(mesh.material?.name)) {
@@ -6152,7 +6162,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor, gunmaCourse.route,
           gunmaCourse.terrainHeightAt);
         gunmaRoadsideForest = createGunmaRoadsideForest(scene, gunmaCourse.route,
-          gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED);
+          gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED, gunmaCourse.seam);
         document.body.dataset.mapFog = 'gunma-layered-mist';
         document.body.dataset.gunmaCloudPuffs = 'floor-and-sheets';
         document.body.dataset.gunmaCanopyShadows = 'texture';
@@ -6447,8 +6457,14 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
       } else if (COURSE_KEY === 'gunma') {
         // 従来位置から車幅の半分(0.78m)左へ。右車輪は従来の車体中心を通る。
-        car2AutoRoute = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents, MAP_CONFIG.spawnOffsetRight)
-          .same.points.map((point) => ({ ...point, width: 8.64 }));
+        // The copy of the first 200 m after the end lets the autopilot look
+        // across the seam instead of steering back toward the start.
+        const gunmaLane = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
+          MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset).same.points;
+        const gunmaSeam = gunmaCourse.seam.offset;
+        car2AutoRoute = gunmaLane.concat(gunmaLane.slice(0, 67).map((point) => ({
+          ...point, x: point.x + gunmaSeam.x, z: point.z + gunmaSeam.z,
+        }))).map((point) => ({ ...point, width: 8.64 }));
         spawnGunmaTrafficCpuCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
@@ -9096,7 +9112,15 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
     const ahead = sampleGunmaTrafficPath(path, ai.gunmaDistance + 4);
     const behind = sampleGunmaTrafficPath(path, ai.gunmaDistance - 4);
-    ai.pos.set(at.x, at.y, at.z);
+    // Draw each car on whichever copy of the endless road is nearest the player,
+    // so traffic carries straight across the seam.
+    const seam = gunmaCourse.seam.offset;
+    let shift = 0, best = Infinity;
+    for (const k of [-1, 0, 1]) {
+      const d2 = (at.x + seam.x * k - player.pos.x) ** 2 + (at.z + seam.z * k - player.pos.z) ** 2;
+      if (d2 < best) { best = d2; shift = k; }
+    }
+    ai.pos.set(at.x + seam.x * shift, at.y, at.z + seam.z * shift);
     ai.heading = Math.atan2(ahead.x - at.x, ahead.z - at.z);
     ai.group.position.copy(ai.pos);
     ai.group.rotation.y = ai.heading;
@@ -10274,6 +10298,10 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         gunmaCanopy.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
         gunmaRoadsideForest.visible = !topView;
+        // Distant mountains move with the camera, so they do not jump at the seam.
+        gunmaRoadsideForest.userData.farRing?.position.set(
+          camera.position.x - gunmaRoadsideForest.userData.farCenter.x, 0,
+          camera.position.z - gunmaRoadsideForest.userData.farCenter.z);
       }
       renderer.render(scene, camera);
       renderMirror();
