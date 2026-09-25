@@ -53,9 +53,8 @@ export function createCanopyShade() {
   };
 }
 
-// Three shallow, world-anchored cloud layers: no extra textures or postprocessing.
 // Fixed valley elevation: the road climbs through and above the sea of clouds.
-export function createMountainAtmosphere(scene, elevation, route) {
+export function createMountainAtmosphere(scene, elevation, route, groundHeightAt) {
   const group = new THREE.Group();
   group.name = 'gunma-valley-clouds';
   const uniforms = {
@@ -171,50 +170,128 @@ export function createMountainAtmosphere(scene, elevation, route) {
   // Billboard rotation and wind are shader-driven, outside the CPU bounds.
   wisps.frustumCulled = false;
   scene.add(wisps);
-  // Soft billboards distributed through a volume replace the flat cloud sheets.
-  const puffMaterial = new THREE.ShaderMaterial({
-    uniforms: wisps.material.uniforms,
-    vertexShader: wisps.material.vertexShader,
+  // Cloud sea: one textured floor plus a few translucent mist sheets stacked
+  // above it. Two draw calls in total, and only texture reads per pixel.
+  let cloudSeed = 20260925;
+  const cloudRandom = () => ((cloudSeed = (Math.imul(cloudSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  // Seamless 256px cloud pattern: soft blobs wrapped across the tile edges,
+  // leaving gaps so the floor never reads as one solid sheet.
+  const floorCanvas = document.createElement('canvas');
+  floorCanvas.width = floorCanvas.height = 256;
+  const floorCtx = floorCanvas.getContext('2d');
+  for (let i = 0; i < 70; i++) {
+    const x = cloudRandom() * 256, y = cloudRandom() * 256, r = 14 + cloudRandom() * 34;
+    for (const dx of [-256, 0, 256]) for (const dy of [-256, 0, 256]) {
+      const g = floorCtx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+      g.addColorStop(0, `rgba(255,255,255,${0.35 + cloudRandom() * 0.3})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      floorCtx.fillStyle = g;
+      floorCtx.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+    }
+  }
+  const floorTexture = new THREE.CanvasTexture(floorCanvas);
+  floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
+  // Rounded mist sheet: overlapping circles give an organic outline with no corners.
+  const sheetCanvas = document.createElement('canvas');
+  sheetCanvas.width = sheetCanvas.height = 128;
+  const sheetCtx = sheetCanvas.getContext('2d');
+  for (let i = 0; i < 14; i++) {
+    const angle = cloudRandom() * Math.PI * 2, reach = cloudRandom() * 30;
+    const x = 64 + Math.cos(angle) * reach, y = 64 + Math.sin(angle) * reach;
+    const r = 18 + cloudRandom() * 16;
+    const g = sheetCtx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    sheetCtx.fillStyle = g;
+    sheetCtx.fillRect(0, 0, 128, 128);
+  }
+  const sheetTexture = new THREE.CanvasTexture(sheetCanvas);
+  // Horizontal sheets seen edge-on would show as hard lines; fade them out
+  // as the view grazes the surface.
+  const flatVertex = `
+    varying vec3 cloudWorld;
+    varying vec2 cloudUv;
+    void main() {
+      vec4 world = modelMatrix * INSTANCE vec4(position, 1.0);
+      cloudWorld = world.xyz;
+      cloudUv = uv;
+      gl_Position = projectionMatrix * viewMatrix * world;
+    }`;
+  const grazeFade = `
+    vec3 toCamera = cameraPosition - cloudWorld;
+    float range = length(toCamera);
+    float facing = smoothstep(0.02, 0.22, abs(toCamera.y) / range);
+    float fade = facing * smoothstep(20.0, 60.0, range) * (1.0 - smoothstep(900.0, 1300.0, range));`;
+  const floorRadius = Math.hypot(size.x, size.z) * 0.5 + 350;
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(floorRadius, 48), new THREE.ShaderMaterial({
+    uniforms: { ...uniforms, floorTexture: { value: floorTexture } },
+    vertexShader: flatVertex.replace('INSTANCE', ''),
     fragmentShader: `
-      uniform sampler2D mistMask;
+      uniform sampler2D floorTexture;
       uniform vec3 tint;
       uniform float time;
-      varying vec2 mistUv;
-      varying float mistRange;
-      float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
-      float noise(vec2 p) {
-        vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
-        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
-          mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
-      }
+      varying vec3 cloudWorld;
+      varying vec2 cloudUv;
       void main() {
-        vec2 p=mistUv*2.0-1.0;
-        float feather=1.0-smoothstep(0.28,0.98,length(p));
-        vec2 flow=mistUv*4.0+vec2(time*0.025,-time*0.012);
-        float n=noise(flow)*0.65+noise(flow*2.7)*0.35;
-        float fade=smoothstep(22.0,65.0,mistRange)*(1.0-smoothstep(800.0,1150.0,mistRange));
-        float alpha=texture2D(mistMask,mistUv).a*feather*(0.35+n*0.65)*0.44*fade;
-        if(alpha<0.002) discard;
-        gl_FragColor=vec4(tint*(0.90+n*0.14),alpha);
+        ${grazeFade}
+        float broad = texture2D(floorTexture, cloudWorld.xz / 320.0 + vec2(time * 0.0015, 0.0)).a;
+        float fine = texture2D(floorTexture, cloudWorld.xz / 110.0 - vec2(0.0, time * 0.0025)).a;
+        float density = broad * 1.2 + fine * 0.6;
+        // Round outer rim instead of a square edge.
+        float rim = 1.0 - smoothstep(0.55, 1.0, length(cloudUv * 2.0 - 1.0));
+        float alpha = smoothstep(0.18, 0.75, density) * 0.9 * rim * fade;
+        if (alpha < 0.01) discard;
+        vec3 color = mix(tint * vec3(0.78, 0.82, 0.88), min(tint * 1.15, vec3(1.0)), fine);
+        gl_FragColor = vec4(color, alpha);
       }`,
-    transparent: true, depthWrite: false,
-  });
-  const puffs=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),puffMaterial,288);
-  let puffSeed=20260925;
-  const cloudRandom=()=>((puffSeed=(Math.imul(puffSeed,1664525)+1013904223)>>>0)/4294967296);
-  for(let i=0;i<288;i++) {
-    const x=bounds.min.x-200+cloudRandom()*(size.x+400);
-    const z=bounds.min.z-200+cloudRandom()*(size.z+400);
-    const width=65+cloudRandom()*85, height=22+cloudRandom()*30;
-    const y=elevation-14+cloudRandom()*35;
-    transform.makeScale(width,height,1);
-    transform.setPosition(x,y,z);
-    puffs.setMatrixAt(i,transform);
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(center.x, elevation - 6, center.z);
+  floor.name = 'gunma-cloud-floor';
+  group.add(floor);
+  const sheetGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const sheetCount = 48;
+  const sheets = new THREE.InstancedMesh(sheetGeometry, new THREE.ShaderMaterial({
+    uniforms: { ...uniforms, sheetTexture: { value: sheetTexture } },
+    vertexShader: flatVertex.replace('INSTANCE', 'instanceMatrix *'),
+    fragmentShader: `
+      uniform sampler2D sheetTexture;
+      uniform vec3 tint;
+      varying vec3 cloudWorld;
+      varying vec2 cloudUv;
+      void main() {
+        ${grazeFade}
+        float alpha = texture2D(sheetTexture, cloudUv).a * 0.7 * fade;
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(min(tint * 1.08, vec3(1.0)), alpha);
+      }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }), sheetCount);
+  // Keep sheets off the slopes, where they would cut in with a straight edge.
+  const clearOfGround = (x, y, z, reach) => !groundHeightAt
+    || [[0, 0], [reach, 0], [-reach, 0], [0, reach], [0, -reach]]
+      .every(([dx, dz]) => groundHeightAt(x + dx, z + dz) < y);
+  const sheetRotation = new THREE.Quaternion(), sheetScale = new THREE.Vector3();
+  const sheetPosition = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  let placed = 0;
+  for (let attempt = 0; attempt < sheetCount * 15 && placed < sheetCount; attempt++) {
+    const width = 90 + cloudRandom() * 130;
+    const x = bounds.min.x - 200 + cloudRandom() * (size.x + 400);
+    const z = bounds.min.z - 200 + cloudRandom() * (size.z + 400);
+    const y = elevation - 3 + cloudRandom() * 24;
+    if (!clearOfGround(x, y, z, width * 0.3)) continue;
+    sheetRotation.setFromAxisAngle(up, cloudRandom() * Math.PI * 2);
+    sheetScale.set(width, 1, width * (0.55 + cloudRandom() * 0.35));
+    sheetPosition.set(x, y, z);
+    transform.compose(sheetPosition, sheetRotation, sheetScale);
+    sheets.setMatrixAt(placed++, transform);
   }
-  puffs.instanceMatrix.needsUpdate=true;
-  puffs.frustumCulled=false;
-  puffs.name='gunma-cloud-puffs';
-  group.add(puffs);
+  sheets.count = placed;
+  sheets.instanceMatrix.needsUpdate = true;
+  sheets.frustumCulled = false;
+  sheets.name = 'gunma-mist-sheets';
+  group.add(sheets);
   scene.add(group);
   return {
     update(dt, camera, color, hidden) {
@@ -223,7 +300,7 @@ export function createMountainAtmosphere(scene, elevation, route) {
       group.visible = !hidden;
       ridges.visible = !hidden;
       wisps.visible = !hidden;
-      // Puff centers stay anchored in the valley as the car moves.
+      // The cloud floor and sheets stay anchored in the valley as the car moves.
     },
   };
 }
