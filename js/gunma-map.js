@@ -42,13 +42,15 @@ function addSideMist(material, mistColor, mistTime) {
         vec2 flow = vMistWorld.xz * vec2(0.045,0.07) + vec2(gunmaMistTime*0.017,-gunmaMistTime*0.009);
         float mistDensity = mistNoise(flow)*0.65 + mistNoise(flow*2.7+4.3)*0.35;
         float wisps = smoothstep(0.22,0.76,mistDensity);
-        float haze = roadside * mix(0.12+0.64*wisps, 0.50+0.40*wisps, farField);
+        // Distant ground keeps its forest colour; the cloud sea supplies the white.
+        // A strong far-field haze here painted the valley as one flat pale sheet.
+        float haze = roadside * mix(0.12+0.64*wisps, 0.14+0.20*wisps, farField);
         // Fine detail is evaluated per pixel, not interpolated across broad terrain triangles.
         outgoingLight *= 0.86 + 0.20*mistDensity + 0.04*vMistPatch;
         outgoingLight = mix(outgoingLight, gunmaMistColor*(0.90+0.10*wisps), haze);
         #include <output_fragment>`);
   };
-  material.customProgramCacheKey = () => 'gunma-side-mist-v4';
+  material.customProgramCacheKey = () => 'gunma-side-mist-v5';
   return material;
 }
 
