@@ -20,29 +20,85 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
     }
     return nearest2 >= clearance * clearance;
   };
-  // Keep the low canopy beside the road without individual flat trees.
-  for (const side of [-1, 1]) {
-    let previous = null;
-    for (let i = 0; i <= route.length; i += 2) {
-      const index = i % route.length;
-      const point = route[index], normal = tangents[index];
-      const offset = side * (10.4 + 0.4 * Math.sin(i * 0.11 + side));
-      const x = point.x + normal.x * offset, z = point.z + normal.z * offset;
-      const valid = withinTerrain(x, z) && clearOfRoad(x, z, 9);
-      if (!valid) { previous = null; continue; }
-      const ground = groundHeightAt(x, z);
-      const top = ground + 7.5 + 2.7 * Math.sin(i * 0.19 + side)
-        + 1.9 * Math.sin(i * 0.63 - side) + random() * 2.1;
-      const a = ridgePositions.length / 3;
-      ridgePositions.push(x, ground - 0.7, z, x, top, z);
-      const shade = 0.74 + random() * 0.24;
-      for (let vertex = 0; vertex < 2; vertex++) {
-        ridgeColors.push(...treeGreen.map((channel) => channel * shade));
+  // Conifer outline (half tree, from the rim to the tip): branch tiers make
+  // small notches, so the edge reads as a row of firs rather than a smooth wave.
+  const profileU = [1, 0.8, 0.62, 0.45, 0.3, 0.15, 0];
+  const profileY = [0.30, 0.46, 0.43, 0.64, 0.60, 0.82, 1];
+  const treeHeightAt = (u) => {
+    const a = Math.min(Math.abs(u), 1);
+    for (let k = 1; k < profileU.length; k++) {
+      if (a >= profileU[k]) {
+        const t = (a - profileU[k]) / (profileU[k - 1] - profileU[k]);
+        return profileY[k] + (profileY[k - 1] - profileY[k]) * t;
       }
-      if (previous !== null) {
-        ridgeIndices.push(previous, a, previous + 1, previous + 1, a, a + 1);
+    }
+    return 1;
+  };
+  // Distance along the road -> position beside it.
+  const lengths = [0];
+  for (let i = 1; i <= route.length; i++) {
+    const a = route[i - 1], b = route[i % route.length];
+    lengths.push(lengths[i - 1] + Math.hypot(b.x - a.x, b.z - a.z));
+  }
+  const total = lengths[route.length];
+  let cursor = 0;
+  const besideRoad = (distance, offset) => {
+    while (lengths[cursor + 1] < distance) cursor++;
+    const t = (distance - lengths[cursor]) / (lengths[cursor + 1] - lengths[cursor]);
+    const a = route[cursor], b = route[(cursor + 1) % route.length];
+    const na = tangents[cursor], nb = tangents[(cursor + 1) % route.length];
+    return {
+      x: a.x + (b.x - a.x) * t + (na.x + (nb.x - na.x) * t) * offset,
+      z: a.z + (b.z - a.z) * t + (na.z + (nb.z - na.z) * t) * offset,
+    };
+  };
+  // Row 1: dark green firs beside the verge, broken by occasional clearings.
+  // Row 2: darker, about as tall as row 1's tallest trees, so it only shows
+  // through the clearings and above row 1's lower trees.
+  const rows = [
+    { offset: 10.4, step: 0.5, spacing: [2.2, 3.4], width: [1.5, 2.3],
+      height: [6.5, 11], green: [0.10, 0.24, 0.13], gapChance: 0.07, gap: [8, 24] },
+    { offset: 18.5, step: 0.8, spacing: [2.6, 4.0], width: [1.8, 2.8],
+      height: [9.5, 11.5], green: [0.05, 0.13, 0.08], gapChance: 0, gap: [0, 0] },
+  ];
+  const range = ([min, max]) => min + random() * (max - min);
+  for (const row of rows) {
+    for (const side of [-1, 1]) {
+      // Place trees first, then sample the upper envelope of their outlines.
+      const trees = [];
+      for (let d = 0; d < total; d += range(row.spacing)) {
+        if (random() < row.gapChance) { d += range(row.gap); continue; }
+        trees.push({ at: d, width: range(row.width), height: range(row.height),
+          shade: 0.8 + random() * 0.3 });
       }
-      previous = a;
+      cursor = 0;
+      let previous = null, first = 0;
+      for (let d = 0; d < total; d += row.step) {
+        while (first < trees.length && trees[first].at + trees[first].width < d) first++;
+        let top = 0, shade = 1;
+        for (let k = first; k < trees.length && trees[k].at - trees[k].width <= d; k++) {
+          const tree = trees[k];
+          const u = (d - tree.at) / tree.width;
+          if (Math.abs(u) > 1) continue;
+          const h = tree.height * treeHeightAt(u);
+          if (h > top) { top = h; shade = tree.shade; }
+        }
+        const { x, z } = besideRoad(d, side * row.offset);
+        if (top <= 0 || !withinTerrain(x, z) || !clearOfRoad(x, z, row.offset - 1.5)) {
+          previous = null;
+          continue;
+        }
+        const ground = groundHeightAt(x, z);
+        const a = ridgePositions.length / 3;
+        ridgePositions.push(x, ground - 0.7, z, x, ground + top, z);
+        for (let vertex = 0; vertex < 2; vertex++) {
+          ridgeColors.push(...row.green.map((channel) => channel * shade));
+        }
+        if (previous !== null) {
+          ridgeIndices.push(previous, a, previous + 1, previous + 1, a, a + 1);
+        }
+        previous = a;
+      }
     }
   }
   // Forested foothills fill the lower half of the distant mountains. Use the
