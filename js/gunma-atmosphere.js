@@ -228,13 +228,14 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     // Ground height here, decoded from the clearance map (+-10 m .. 40 m).
     vec2 clearanceUv = (cloudWorld.xz - clearanceArea.xy) / clearanceArea.z;
     float ground = clearanceArea.w - (texture2D(clearanceMap, clearanceUv).r * 50.0 - 10.0);
-    fade *= smoothstep(2.0, 14.0, cloudWorld.y - ground);`;
+    // 0 at the ground, 1 once the cloud is 25 m above it.
+    float clear = smoothstep(0.0, 25.0, cloudWorld.y - ground);`;
   const floorRadius = Math.hypot(size.x, size.z) * 0.5 + 350;
-  const floorY = elevation - 6;
-  // Height of the cloud base above the ground, baked once into a 64px map.
+  const floorY = elevation;
+  // Height of the cloud base above the ground, baked once into a 128px map.
   // Clouds thin out where the slopes rise into them, so there is no hard
   // line where the layer meets the terrain (no depth texture needed).
-  const clearanceSize = 64;
+  const clearanceSize = 128;
   const clearanceData = new Uint8Array(clearanceSize * clearanceSize * 4);
   const mapMin = new THREE.Vector2(center.x - floorRadius, center.z - floorRadius);
   const mapSpan = floorRadius * 2;
@@ -271,7 +272,10 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
         float density = broad * 1.2 + fine * 0.6;
         // Round outer rim instead of a square edge.
         float rim = 1.0 - smoothstep(0.55, 1.0, length(cloudUv * 2.0 - 1.0));
-        float alpha = smoothstep(0.18, 0.75, density) * 0.9 * rim * fade;
+        // Near the slopes only the densest blobs survive, so the layer breaks
+        // up along the cloud pattern instead of following the terrain contour.
+        float thin = (1.0 - clear) * 1.1;
+        float alpha = smoothstep(0.18 + thin, 0.75 + thin, density) * 0.9 * rim * fade;
         if (alpha < 0.01) discard;
         vec3 color = mix(tint * vec3(0.78, 0.82, 0.88), min(tint * 1.15, vec3(1.0)), fine);
         gl_FragColor = vec4(color, alpha);
@@ -295,7 +299,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
       varying vec2 cloudUv;
       void main() {
         ${grazeFade}
-        float alpha = texture2D(sheetTexture, cloudUv).a * 0.7 * fade;
+        float alpha = texture2D(sheetTexture, cloudUv).a * 0.7 * fade * clear;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(min(tint * 1.08, vec3(1.0)), alpha);
       }`,
@@ -312,7 +316,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     const width = 90 + cloudRandom() * 130;
     const x = bounds.min.x - 200 + cloudRandom() * (size.x + 400);
     const z = bounds.min.z - 200 + cloudRandom() * (size.z + 400);
-    const y = elevation - 3 + cloudRandom() * 24;
+    const y = elevation + 2 + cloudRandom() * 14;
     if (!clearOfGround(x, y, z, width * 0.3)) continue;
     sheetRotation.setFromAxisAngle(up, cloudRandom() * Math.PI * 2);
     sheetScale.set(width, 1, width * (0.55 + cloudRandom() * 0.35));
