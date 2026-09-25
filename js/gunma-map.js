@@ -253,6 +253,10 @@ export function buildGunmaMap(seed) {
       : right * (1 - tz) + down * (1 - tx) + diagonal * (tx + tz - 1);
   };
   addRoadsideBands();
+  // Beyond the ground mesh there is no ground: report it as bottomless so the
+  // cloud sea can fill the void around the mountain.
+  const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ
+    ? -Infinity : grassOuterHeightAt(x, z));
 
   // White twin rails and regularly spaced posts follow both road edges.
   const railMaterial = new THREE.MeshLambertMaterial({
@@ -297,5 +301,5 @@ export function buildGunmaMap(seed) {
     group.add(posts);
   }
   return { group, route, tangents, climb, mistColor, mistTime,
-    groundHeightAt: grassOuterHeightAt };
+    groundHeightAt: grassOuterHeightAt, terrainHeightAt };
 }
