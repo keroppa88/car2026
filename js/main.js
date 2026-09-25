@@ -15,7 +15,7 @@ import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260925-round-terrain-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-cloudsea-4';
-import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-conifer-2';
+import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-two-rows-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
 (function () {
