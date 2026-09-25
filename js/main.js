@@ -14,7 +14,7 @@ import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260924-atmosphere-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-cloudsea-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-cloudsea-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260924-forest-4';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js';
 
@@ -6154,7 +6154,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         gunmaRoadsideForest = createGunmaRoadsideForest(scene, gunmaCourse.route,
           gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED);
         document.body.dataset.mapFog = 'gunma-layered-mist';
-        document.body.dataset.gunmaCloudPuffs = 'atlas';
+        document.body.dataset.gunmaCloudPuffs = 'floor-and-sheets';
         document.body.dataset.gunmaCanopyShadows = 'texture';
       }
       mapSpawn = findMapSpawn();
