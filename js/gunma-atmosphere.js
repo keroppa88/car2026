@@ -1,7 +1,7 @@
 import * as THREE from '../lib/three.module.js';
 
 // A single small repeating canopy mask replaces actual trees and shadow passes.
-export function createCanopyShade() {
+export function createCanopyShade(seam) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
@@ -32,20 +32,25 @@ export function createCanopyShade() {
         shader.uniforms.canopyMap = { value: texture };
         shader.uniforms.canopyTime = time;
         shader.uniforms.canopyStrength = strength;
+        shader.uniforms.canopySeam = { value: new THREE.Vector4(seam.startX, seam.endX, seam.offset.x, seam.offset.z) };
         shader.vertexShader = 'varying vec3 canopyWorld;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace('#include <worldpos_vertex>',
           '#include <worldpos_vertex>\ncanopyWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-        shader.fragmentShader = 'uniform sampler2D canopyMap;\nuniform float canopyTime, canopyStrength;\nvarying vec3 canopyWorld;\n' + shader.fragmentShader;
+        shader.fragmentShader = 'uniform sampler2D canopyMap;\nuniform float canopyTime, canopyStrength;\nuniform vec4 canopySeam;\nvarying vec3 canopyWorld;\n' + shader.fragmentShader;
         shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
           #include <color_fragment>
-          vec2 shadeUV = canopyWorld.xz * 0.055;
-          shadeUV.x += sin(canopyTime*0.35+canopyWorld.z*0.08)*0.012;
+          // Road copies beyond either end repeat the shadows of the other end.
+          vec3 canopyRing = canopyWorld;
+          canopyRing.xz -= canopyWorld.x > canopySeam.y ? canopySeam.zw
+            : canopyWorld.x < canopySeam.x ? -canopySeam.zw : vec2(0.0);
+          vec2 shadeUV = canopyRing.xz * 0.055;
+          shadeUV.x += sin(canopyTime*0.35+canopyRing.z*0.08)*0.012;
           float shade = texture2D(canopyMap, shadeUV).r;
-          float grove = smoothstep(-0.4,0.65,sin(canopyWorld.x*0.035+sin(canopyWorld.z*0.048)));
+          float grove = smoothstep(-0.4,0.65,sin(canopyRing.x*0.035+sin(canopyRing.z*0.048)));
           diffuseColor.rgb *= 1.0 - (1.0-shade)*0.72*grove*canopyStrength;
         `);
       };
-      material.customProgramCacheKey = () => 'gunma-canopy-v1';
+      material.customProgramCacheKey = () => 'gunma-canopy-v2';
       materials.set(source, material);
       return material;
     },
@@ -336,6 +341,8 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
       uniforms.tint.value.copy(color);
       group.visible = !hidden;
       ridges.visible = !hidden;
+      // Distant ridges follow the camera, so they do not jump at the seam.
+      ridges.position.set(camera.position.x - center.x, 0, camera.position.z - center.z);
       wisps.visible = !hidden;
       // The cloud floor and sheets stay anchored in the valley as the car moves.
     },
