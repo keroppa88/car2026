@@ -30,7 +30,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   const COURSE_KEY = pageQuery.get('course') || 'tokyo';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
-  const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy'];
+  const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
   // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
   // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
@@ -7071,7 +7071,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     if (demoSequenceLeaving) return;
     demoSequenceLeaving = true;
     const nextStage = (DEMO_SEQUENCE_STAGE + 1) % DEMO_SEQUENCE.length;
-    // 4コースを一巡して首都高速へ戻るたび、デモ車を
+    // 5コースを一巡して首都高速へ戻るたび、デモ車を
     // Toyota 86 → Volvo 240 → Toyota 86… の順で交互にする。
     const nextCar = nextStage === 0
       ? (PLAYER_CAR_KEY === 'toyota86' ? 'volvo240' : 'toyota86')
