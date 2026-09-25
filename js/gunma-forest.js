@@ -53,12 +53,13 @@ export function createGunmaRoadsideForest(scene, route, tangents, groundHeightAt
     };
   };
   // Row 1: dark green firs beside the verge, broken by occasional clearings.
-  // Row 2: darker and taller, farther back, seen through those clearings.
+  // Row 2: darker, about as tall as row 1's tallest trees, so it only shows
+  // through the clearings and above row 1's lower trees.
   const rows = [
     { offset: 10.4, step: 0.5, spacing: [2.2, 3.4], width: [1.5, 2.3],
       height: [6.5, 11], green: [0.10, 0.24, 0.13], gapChance: 0.07, gap: [8, 24] },
     { offset: 18.5, step: 0.8, spacing: [2.6, 4.0], width: [1.8, 2.8],
-      height: [10, 16], green: [0.05, 0.13, 0.08], gapChance: 0, gap: [0, 0] },
+      height: [9.5, 11.5], green: [0.05, 0.13, 0.08], gapChance: 0, gap: [0, 0] },
   ];
   const range = ([min, max]) => min + random() * (max - min);
   for (const row of rows) {
