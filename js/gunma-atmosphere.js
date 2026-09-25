@@ -53,9 +53,8 @@ export function createCanopyShade() {
   };
 }
 
-// Three shallow, world-anchored cloud layers: no extra textures or postprocessing.
 // Fixed valley elevation: the road climbs through and above the sea of clouds.
-export function createMountainAtmosphere(scene, elevation, route) {
+export function createMountainAtmosphere(scene, elevation, route, groundHeightAt) {
   const group = new THREE.Group();
   group.name = 'gunma-valley-clouds';
   const uniforms = {
@@ -171,49 +170,113 @@ export function createMountainAtmosphere(scene, elevation, route) {
   // Billboard rotation and wind are shader-driven, outside the CPU bounds.
   wisps.frustumCulled = false;
   scene.add(wisps);
-  // Soft billboards distributed through a volume replace the flat cloud sheets.
+  // Cloud sea: four cumulus shapes are painted once into a 256px atlas, so the
+  // fragment shader is a single texture read (no per-pixel noise). Each shape
+  // has a lumpy lit top and a flat, shaded base instead of a plain ellipse.
+  const atlasCanvas = document.createElement('canvas');
+  atlasCanvas.width = atlasCanvas.height = 256;
+  const atlas = atlasCanvas.getContext('2d');
+  let puffSeed = 20260925;
+  const cloudRandom = () => ((puffSeed = (Math.imul(puffSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  for (let cell = 0; cell < 4; cell++) {
+    const ox = (cell % 2) * 128, oy = Math.floor(cell / 2) * 128;
+    atlas.save();
+    atlas.beginPath();
+    atlas.rect(ox, oy, 128, 128);
+    atlas.clip();
+    // Lobes rise toward the middle to form a dome, with a broad soft skirt.
+    for (let i = 0; i < 26; i++) {
+      const t = cloudRandom();
+      const x = ox + 14 + t * 100;
+      const dome = Math.sin(t * Math.PI);
+      const r = 10 + dome * 16 + cloudRandom() * 9;
+      const y = oy + 96 - dome * (22 + cloudRandom() * 26) + cloudRandom() * 8;
+      const g = atlas.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.75)');
+      g.addColorStop(0.55, 'rgba(255,255,255,0.45)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      atlas.fillStyle = g;
+      atlas.fillRect(ox, oy, 128, 128);
+    }
+    // Shade the underside; source-atop keeps the painted alpha.
+    atlas.globalCompositeOperation = 'source-atop';
+    const shade = atlas.createLinearGradient(0, oy + 40, 0, oy + 112);
+    shade.addColorStop(0, 'rgba(0,0,0,0)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.42)');
+    atlas.fillStyle = shade;
+    atlas.fillRect(ox, oy, 128, 128);
+    // Flatten and soften the base so it melts into the layer below.
+    atlas.globalCompositeOperation = 'destination-out';
+    const base = atlas.createLinearGradient(0, oy + 98, 0, oy + 124);
+    base.addColorStop(0, 'rgba(0,0,0,0)');
+    base.addColorStop(1, 'rgba(0,0,0,1)');
+    atlas.fillStyle = base;
+    atlas.fillRect(ox, oy, 128, 128);
+    atlas.restore();
+  }
+  const cloudAtlas = new THREE.CanvasTexture(atlasCanvas);
+  const puffGeometry = new THREE.PlaneGeometry(1, 1);
+  const puffCount = 170;
+  const puffVariant = new Float32Array(puffCount * 2);
   const puffMaterial = new THREE.ShaderMaterial({
-    uniforms: wisps.material.uniforms,
-    vertexShader: wisps.material.vertexShader,
-    fragmentShader: `
-      uniform sampler2D mistMask;
-      uniform vec3 tint;
-      uniform float time;
-      varying vec2 mistUv;
-      varying float mistRange;
-      float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
-      float noise(vec2 p) {
-        vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
-        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
-          mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
-      }
+    uniforms: { ...uniforms, cloudAtlas: { value: cloudAtlas } },
+    vertexShader: `
+      attribute vec2 variant;
+      varying vec2 cloudUv;
+      varying float cloudRange;
       void main() {
-        vec2 p=mistUv*2.0-1.0;
-        float feather=1.0-smoothstep(0.28,0.98,length(p));
-        vec2 flow=mistUv*4.0+vec2(time*0.025,-time*0.012);
-        float n=noise(flow)*0.65+noise(flow*2.7)*0.35;
-        float fade=smoothstep(22.0,65.0,mistRange)*(1.0-smoothstep(800.0,1150.0,mistRange));
-        float alpha=texture2D(mistMask,mistUv).a*feather*(0.35+n*0.65)*0.44*fade;
-        if(alpha<0.002) discard;
-        gl_FragColor=vec4(tint*(0.90+n*0.14),alpha);
+        vec4 center = modelMatrix * instanceMatrix * vec4(0,0,0,1);
+        cloudRange = distance(center.xyz, cameraPosition);
+        vec4 view = viewMatrix * center;
+        view.xy += position.xy * vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
+        vec2 local = vec2(variant.y > 0.5 ? 1.0 - uv.x : uv.x, uv.y);
+        // Canvas row 0 is the top half of the texture (flipY).
+        cloudUv = (local + vec2(mod(variant.x, 2.0), 1.0 - floor(variant.x / 2.0))) * 0.5;
+        gl_Position = projectionMatrix * view;
+      }`,
+    fragmentShader: `
+      uniform sampler2D cloudAtlas;
+      uniform vec3 tint;
+      varying vec2 cloudUv;
+      varying float cloudRange;
+      void main() {
+        vec4 c = texture2D(cloudAtlas, cloudUv);
+        float fade = smoothstep(25.0, 70.0, cloudRange) * (1.0 - smoothstep(850.0, 1150.0, cloudRange));
+        float alpha = c.a * 0.85 * fade;
+        if (alpha < 0.01) discard;
+        vec3 lit = mix(tint * vec3(0.70, 0.76, 0.84), min(tint * 1.18, vec3(1.0)), c.r);
+        gl_FragColor = vec4(lit, alpha);
       }`,
     transparent: true, depthWrite: false,
   });
-  const puffs=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),puffMaterial,288);
-  let puffSeed=20260925;
-  const cloudRandom=()=>((puffSeed=(Math.imul(puffSeed,1664525)+1013904223)>>>0)/4294967296);
-  for(let i=0;i<288;i++) {
-    const x=bounds.min.x-200+cloudRandom()*(size.x+400);
-    const z=bounds.min.z-200+cloudRandom()*(size.z+400);
-    const width=65+cloudRandom()*85, height=22+cloudRandom()*30;
-    const y=elevation-14+cloudRandom()*35;
-    transform.makeScale(width,height,1);
-    transform.setPosition(x,y,z);
-    puffs.setMatrixAt(i,transform);
+  const puffs = new THREE.InstancedMesh(puffGeometry, puffMaterial, puffCount);
+  // Keep every puff clear of the slopes: a billboard cutting into terrain
+  // leaves a hard straight edge, which read as a flat sheet.
+  const clearOfGround = (x, y, z, halfWidth) => !groundHeightAt
+    || [[0, 0], [halfWidth, 0], [-halfWidth, 0], [0, halfWidth], [0, -halfWidth]]
+      .every(([dx, dz]) => groundHeightAt(x + dx, z + dz) < y);
+  let placed = 0;
+  for (let attempt = 0; attempt < puffCount * 12 && placed < puffCount; attempt++) {
+    // Lower tier: wide, flat sheet. Upper tier: rounder domes poking out.
+    const upper = placed % 3 === 0;
+    const width = upper ? 55 + cloudRandom() * 55 : 90 + cloudRandom() * 90;
+    const height = width * (upper ? 0.55 + cloudRandom() * 0.2 : 0.32 + cloudRandom() * 0.12);
+    const x = bounds.min.x - 250 + cloudRandom() * (size.x + 500);
+    const z = bounds.min.z - 250 + cloudRandom() * (size.z + 500);
+    const y = elevation + (upper ? 4 + cloudRandom() * 20 : -12 + cloudRandom() * 12);
+    if (!clearOfGround(x, y - height * 0.4, z, width * 0.4)) continue;
+    transform.makeScale(width, height, 1);
+    transform.setPosition(x, y, z);
+    puffs.setMatrixAt(placed, transform);
+    puffVariant[placed * 2] = Math.floor(cloudRandom() * 4);
+    puffVariant[placed * 2 + 1] = cloudRandom() < 0.5 ? 0 : 1;
+    placed++;
   }
-  puffs.instanceMatrix.needsUpdate=true;
-  puffs.frustumCulled=false;
-  puffs.name='gunma-cloud-puffs';
+  puffs.count = placed;
+  puffGeometry.setAttribute('variant', new THREE.InstancedBufferAttribute(puffVariant, 2));
+  puffs.instanceMatrix.needsUpdate = true;
+  puffs.frustumCulled = false;
+  puffs.name = 'gunma-cloud-puffs';
   group.add(puffs);
   scene.add(group);
   return {
