@@ -7402,7 +7402,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   // YouTube側で埋め込み禁止になった曲は、自動的に次の曲へ送る。
   let musicAutoAdvance = false;
   let musicSkipAttempts = 0;
-  function playCurrent(isAuto) {
+  // quiet: 準備中の表示を出さない(ぐんまーのアクセル連動再生用)。
+  function playCurrent(isAuto, quiet = false) {
     const it = musicItems[musicSel];
     if (!it || !it.url) return false;
     musicAutoAdvance = !!isAuto;
@@ -7411,8 +7412,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     if (it.type === 'yt') {
       // YouTube API の初回読込みがまだ終わっていない場合はメニューを閉じない。
       // 準備完了後の次の決定操作を、音付き再生のユーザー操作として使う。
-      if (!playYouTube(it.url, it.effects?.startSeconds)) {
-        setNowPlaying(it.label + '（準備中）');
+      if (!playYouTube(it.url, it.effects?.startSeconds, quiet)) {
+        if (!quiet) setNowPlaying(it.label + '（準備中）');
         musicMenuRefresh();
         return false;
       }
@@ -7438,7 +7439,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       return;
     }
     musicSel = idx;
-    if (playCurrent()) {
+    if (playCurrent(false, true)) {
       gunmaThemeDone = true;
       document.body.dataset.gunmaThemeStarted = 'true';
     } else {
@@ -7659,7 +7660,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     }
   }
 
-  function playYouTube(url, startSeconds) {
+  function playYouTube(url, startSeconds, quiet = false) {
     const id = youtubeId(url);
     if (!id) return false;
     ytCurrentId = id;
@@ -7667,7 +7668,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     prepareYouTubePlayer();
     if (!ytPlayerReady || !ytPlayer) {
       document.body.dataset.youtubePlayer = 'preparing';
-      musicToast('♪ YouTubeプレイヤーを準備中…');
+      if (!quiet) musicToast('♪ YouTubeプレイヤーを準備中…');
       return false;
     }
 
