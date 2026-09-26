@@ -10047,11 +10047,24 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     document.body.dataset.camYaw = cam.yaw.toFixed(3);
   }
 
+  let selfHiddenInView = false;   // 視点のみモードで自車をレイヤー1へ移しているか
   let __debugFreezeCam = false;   // 一時デバッグ: trueの間はupdateCameraが視点を上書きしない
   function updateCamera(dt) {
     if (__debugFreezeCam) return;
-    // 視点のみモード(V 2回目)では自車(影・ランプ含む)を一切映さない
-    if (player.group) player.group.visible = bonnetView !== 2;
+    // 視点のみモード(V 2回目)では自車(影・ランプ含む)を一切映さない。
+    // 車体ごと非表示にするとヘッドライトも消えるので、ライト以外を
+    // カメラが描かないレイヤー1へ移す。ライトは路面を照らし続ける。
+    if (player.group) {
+      player.group.visible = true;
+      const hideSelf = bonnetView === 2;
+      if (hideSelf || selfHiddenInView) {
+        player.group.traverse((object) => {
+          if (object.isLight) return;
+          object.layers.set(hideSelf ? 1 : 0);
+        });
+        selfHiddenInView = hideSelf;
+      }
+    }
     updateBonnetCover();
     if (!crimMarker) { crimMarker = makeMapMarker(0xff2020); scene.add(crimMarker); }
     if (!selfMarker) { selfMarker = makeMapMarker(0x00d9ff); scene.add(selfMarker); }
