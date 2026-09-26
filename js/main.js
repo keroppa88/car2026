@@ -371,7 +371,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   document.body.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const SKY = COURSE_KEY === 'gunma' ? 0x839ba7 : 0x8ecbef;
+  // ぐんまーも初期の空は #8ecbef、地平線 #eaf4fb、雲1(下の weatherCloudMode)。
+  const SKY = 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.Fog(SKY, 130, 480);
 
@@ -413,7 +414,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
-  let weatherCloudMode = 0;             // 0=なし、1=雲1、2=雲2
+  let weatherCloudMode = COURSE_KEY === 'gunma' ? 1 : 0;   // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
   let weatherRainSystem = null;
   let weatherStarSystem = null;
