@@ -9142,11 +9142,14 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
     const ahead = sampleGunmaTrafficPath(path, ai.gunmaDistance + 4);
     const behind = sampleGunmaTrafficPath(path, ai.gunmaDistance - 4);
-    // Draw each car on whichever copy of the endless road is nearest the player,
-    // so traffic carries straight across the seam.
+    // Near the seam, draw each car on whichever copy of the endless road is
+    // nearest the player, so traffic carries straight across it. The copies
+    // only reach about 160 m past each end; farther out the shifted spot has
+    // no road and the car would float in the air.
     const seam = gunmaCourse.seam.offset;
+    const nearSeam = ai.gunmaDistance < 150 || ai.gunmaDistance > path.length - 150;
     let shift = 0, best = Infinity;
-    for (const k of [-1, 0, 1]) {
+    for (const k of nearSeam ? [-1, 0, 1] : [0]) {
       const d2 = (at.x + seam.x * k - player.pos.x) ** 2 + (at.z + seam.z * k - player.pos.z) ** 2;
       if (d2 < best) { best = d2; shift = k; }
     }
