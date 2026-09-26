@@ -14,7 +14,7 @@ import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260925-endless-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260925-endless-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260926-foothill-clouds-1';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 
@@ -6159,8 +6159,15 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
           }
         });
         const valleyFloor = Math.min(...gunmaCourse.route.map((p) => p.y));
+        // From mid-mountain to the peak, a second cloud sea over the foothills
+        // thickens with height. Low on the road the view is unchanged.
+        const climb = gunmaCourse.climb;
         gunmaAtmosphere = createMountainAtmosphere(scene, valleyFloor, gunmaCourse.route,
-          gunmaCourse.terrainHeightAt);
+          gunmaCourse.terrainHeightAt, {
+            y: valleyFloor + climb * 0.3,
+            fromY: valleyFloor + climb * 0.4,
+            toY: valleyFloor + climb * 0.8,
+          });
         gunmaRoadsideForest = createGunmaRoadsideForest(scene, gunmaCourse.route,
           gunmaCourse.tangents, gunmaCourse.groundHeightAt, GUNMA_SEED, gunmaCourse.seam);
         document.body.dataset.mapFog = 'gunma-layered-mist';

@@ -59,7 +59,9 @@ export function createCanopyShade(seam) {
 }
 
 // Fixed valley elevation: the road climbs through and above the sea of clouds.
-export function createMountainAtmosphere(scene, elevation, route, groundHeightAt) {
+// upper (optional): a second cloud sea over the foothills, { y, fromY, toY }.
+// It fades in as the camera climbs from fromY to toY.
+export function createMountainAtmosphere(scene, elevation, route, groundHeightAt, upper = null) {
   const group = new THREE.Group();
   group.name = 'gunma-valley-clouds';
   const uniforms = {
@@ -230,9 +232,10 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     float range = length(toCamera);
     float facing = smoothstep(0.02, 0.22, abs(toCamera.y) / range);
     float fade = facing * smoothstep(20.0, 60.0, range) * (1.0 - smoothstep(900.0, 1300.0, range));
-    // Ground height here, decoded from the clearance map (+-10 m .. 40 m).
+    // Ground height here, decoded from the clearance map (-10 m .. 150 m
+    // below the lower cloud base).
     vec2 clearanceUv = (cloudWorld.xz - clearanceArea.xy) / clearanceArea.z;
-    float ground = clearanceArea.w - (texture2D(clearanceMap, clearanceUv).r * 50.0 - 10.0);
+    float ground = clearanceArea.w - (texture2D(clearanceMap, clearanceUv).r * 160.0 - 10.0);
     // 0 at the ground, 1 once the cloud is 25 m above it.
     float clear = smoothstep(0.0, 25.0, cloudWorld.y - ground);`;
   const floorRadius = Math.hypot(size.x, size.z) * 0.5 + 350;
@@ -250,7 +253,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
       const z = mapMin.y + (iz + 0.5) / clearanceSize * mapSpan;
       const clearance = groundHeightAt ? floorY - groundHeightAt(x, z) : 40;
       clearanceData[(iz * clearanceSize + ix) * 4] =
-        THREE.MathUtils.clamp(Math.round((clearance + 10) / 50 * 255), 0, 255);
+        THREE.MathUtils.clamp(Math.round((clearance + 10) / 160 * 255), 0, 255);
     }
   }
   const clearanceMap = new THREE.DataTexture(clearanceData, clearanceSize, clearanceSize);
@@ -261,11 +264,12 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
     clearanceArea: { value: new THREE.Vector4(mapMin.x, mapMin.y, mapSpan, floorY) },
   });
   const floor = new THREE.Mesh(new THREE.CircleGeometry(floorRadius, 48), new THREE.ShaderMaterial({
-    uniforms: { ...uniforms, floorTexture: { value: floorTexture } },
+    uniforms: { ...uniforms, floorTexture: { value: floorTexture }, layerStrength: { value: 1 } },
     vertexShader: flatVertex.replace('INSTANCE', ''),
     fragmentShader: `
       ${cloudUniformsGlsl}
       uniform sampler2D floorTexture;
+      uniform float layerStrength;
       uniform vec3 tint;
       uniform float time;
       varying vec3 cloudWorld;
@@ -280,7 +284,7 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
         // Near the slopes only the densest blobs survive, so the layer breaks
         // up along the cloud pattern instead of following the terrain contour.
         float thin = (1.0 - clear) * 1.1;
-        float alpha = smoothstep(0.18 + thin, 0.75 + thin, density) * 0.9 * rim * fade;
+        float alpha = smoothstep(0.18 + thin, 0.75 + thin, density) * 0.9 * rim * fade * layerStrength;
         if (alpha < 0.01) discard;
         vec3 color = mix(tint * vec3(0.78, 0.82, 0.88), min(tint * 1.15, vec3(1.0)), fine);
         gl_FragColor = vec4(color, alpha);
@@ -291,6 +295,18 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
   floor.position.set(center.x, floorY, center.z);
   floor.name = 'gunma-cloud-floor';
   group.add(floor);
+  // Foothill cloud sea: the same floor raised over the lower slopes. Seen
+  // from mid-mountain up it thickens with height, hiding the lowlands.
+  let upperFloor = null;
+  if (upper) {
+    upperFloor = floor.clone();
+    upperFloor.material = floor.material.clone();
+    upperFloor.material.uniforms = { ...floor.material.uniforms, layerStrength: { value: 0 } };
+    upperFloor.position.y = upper.y;
+    upperFloor.visible = false;
+    upperFloor.name = 'gunma-cloud-floor-upper';
+    group.add(upperFloor);
+  }
   const sheetGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   const sheetCount = 48;
   const sheets = new THREE.InstancedMesh(sheetGeometry, new THREE.ShaderMaterial({
@@ -340,6 +356,11 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
       uniforms.time.value += dt;
       uniforms.tint.value.copy(color);
       group.visible = !hidden;
+      if (upperFloor) {
+        const strength = THREE.MathUtils.smoothstep(camera.position.y, upper.fromY, upper.toY);
+        upperFloor.material.uniforms.layerStrength.value = strength;
+        upperFloor.visible = strength > 0.01;
+      }
       ridges.visible = !hidden;
       // Distant ridges follow the camera, so they do not jump at the seam.
       ridges.position.set(camera.position.x - center.x, 0, camera.position.z - center.z);
