@@ -7425,6 +7425,26 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     musicMenuRefresh();
     return true;
   }
+  // ぐんまー: 最初にアクセルを踏んだとき、musiclist.txt のこの曲を流す。
+  // すでに別の曲を流していれば邪魔しない。YouTubeの準備中は1秒おきに再試行する。
+  const GUNMA_THEME_LABEL = 'NIKO,Night of Fire (1997)';
+  let gunmaThemeDone = false;
+  let gunmaThemeRetryAt = 0;
+  function startGunmaTheme() {
+    if (gunmaThemeDone || performance.now() < gunmaThemeRetryAt) return;
+    const idx = musicItems.findIndex((it) => it.label === GUNMA_THEME_LABEL);
+    if (idx < 0 || (nowPlayingText && !nowPlayingText.startsWith(GUNMA_THEME_LABEL))) {
+      gunmaThemeDone = true;
+      return;
+    }
+    musicSel = idx;
+    if (playCurrent()) {
+      gunmaThemeDone = true;
+      document.body.dataset.gunmaThemeStarted = 'true';
+    } else {
+      gunmaThemeRetryAt = performance.now() + 1000;
+    }
+  }
   function playNext(isAuto = true) {
     for (let step = 1; step <= musicItems.length; step++) {
       const idx = (musicSel + step) % musicItems.length;
@@ -8641,6 +8661,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       input = 0;
     } else {
       throttle = !!keys['s'] || gamepadState.throttle;   // S / RT = アクセル
+      if (throttle && COURSE_KEY === 'gunma') startGunmaTheme();
       brake = !!keys['a'] || gamepadState.brake;         // A / LT = ブレーキ
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
