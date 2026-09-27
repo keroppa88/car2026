@@ -44,7 +44,7 @@ export function createMoorFog(scene, course) {
       varying vec2 fogUv;
       varying float fogFade;
       void main() {
-        float alpha = texture2D(fogMap, fogUv).a * 0.3 * fogFade;
+        float alpha = texture2D(fogMap, fogUv).a * 0.225 * fogFade;
         if (alpha < 0.004) discard;
         gl_FragColor = vec4(tint, alpha);
       }`,
