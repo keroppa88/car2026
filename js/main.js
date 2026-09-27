@@ -19,7 +19,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
-import { createMoorFog } from './moor-fog.js?v=20260927-moor-3';
+import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 
 (function () {
   'use strict';
