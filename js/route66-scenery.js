@@ -5,6 +5,7 @@ import * as THREE from '../lib/three.module.js';
 //  - 小石: カメラ周辺だけに、世界座標に固定した格子で配置する1つの InstancedMesh。
 //  - 砂漠の延長面: GLB の地面(横幅約400m)の外側を地平線まで埋める。
 // 元ゲームの座標は 0.4 倍・中心寄せされていたので、ここでは GLB の元座標(m)に直している。
+// 地図は scale 倍に拡大して置かれるので、世界座標 ÷ scale で元座標に戻して判定する。
 
 const SEGMENT_STEP = 585;          // 区間の間隔(GLB 595.76m から 10.76m 重ねる)
 const SEGMENT_TOP_Z = 7.17;        // GLB の元座標で区間の手前端(Z 最大)
@@ -20,9 +21,9 @@ const PEBBLE_ZONES = {
   sa07: [{ maxX: -1.72, z: [-408.2, -330.7] }],
 };
 
-export function createRoute66Scenery(scene, segmentFiles, overlapMeters) {
+export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
   const names = segmentFiles.map((file) => file.replace(/^.*\//, '').replace(/\.glb$/, ''));
-  const step = 595.76 - (overlapMeters ?? 10.76) || SEGMENT_STEP;
+  const step = SEGMENT_STEP;
   const group = new THREE.Group();
   group.name = 'route66-scenery';
   scene.add(group);
@@ -109,7 +110,8 @@ export function createRoute66Scenery(scene, segmentFiles, overlapMeters) {
     const index = ((raw % names.length) + names.length) % names.length;
     return { name: names[index], localZ: z + raw * step + SEGMENT_TOP_Z };
   };
-  const blocked = (x, z) => {
+  const blocked = (worldX, worldZ) => {
+    const x = worldX / mapScale, z = worldZ / mapScale;
     if (x > ROAD_BAND[0] && x < ROAD_BAND[1]) return true;
     const { name, localZ } = segmentAt(z);
     for (const zone of PEBBLE_ZONES[name] ?? []) {

@@ -11,7 +11,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-route66-3';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-route66-6';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -20,7 +20,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2';
 
 (function () {
   'use strict';
@@ -4036,9 +4036,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1'
       const vehicle = pool[i % pool.length];
       // 速度は cpu_car_list.txt のランク(S/A/B/C)基準。対向車だけそこから50%落とす。
       const rankSpeedKmh = cpuTopSpeedKmhFor(vehicle.url);
-      const speedKmh = oncoming
+      // コースごとの全体倍率(ルート66は1/3)をさらに掛ける。
+      const speedKmh = (oncoming
         ? Math.round(rankSpeedKmh * SEA_ONCOMING_SPEED_SCALE)
-        : rankSpeedKmh;
+        : rankSpeedKmh) * (MAP_CONFIG.cpuSpeedScale ?? 1);
       const base = speedKmh / 3.6;
       const bike = isKabuVoxUrl(vehicle.url);
       const group = makeCarGroup(vehicle.mesh.clone(), false, bike, 'seaCpuBoost');
@@ -6235,7 +6236,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1'
         document.body.dataset.mapFog = 'none';
       } else {
         route66Scenery = createRoute66Scenery(scene, MAP_CONFIG.segmentFiles,
-          MAP_CONFIG.sequenceOverlapMeters);
+          MAP_CONFIG.scale);
         document.body.dataset.mapFog = 'route66-desert';
       }
       if (COURSE_KEY === 'moor') {
@@ -10176,6 +10177,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1'
 
   let selfHiddenInView = false;   // 視点のみモードで自車をレイヤー1へ移しているか
   let __debugFreezeCam = false;   // 一時デバッグ: trueの間はupdateCameraが視点を上書きしない
+  // 砂漠(砂煙の出る地表)を走ると、画面を縦に小刻みに揺らす。
+  // 元ゲームと同じ1秒に9回の上下。速いほど大きく揺れる。
+  let desertShakePhase = 0;
+  let desertShakeAmount = 0;
+  function applyDesertShake(dt) {
+    if (!MAP_CONFIG.desertShake || topView) return;
+    const kmh = player.vel.length() * 3.6;
+    const target = playerOnSand ? THREE.MathUtils.clamp((kmh - 5) / 75, 0, 1) : 0;
+    desertShakeAmount += (target - desertShakeAmount) * Math.min(1, dt * 8);
+    if (desertShakeAmount < 0.001) { desertShakePhase = 0; return; }
+    desertShakePhase = (desertShakePhase + dt * 9) % 1;
+    camera.position.y += Math.sin(desertShakePhase * Math.PI * 2) * 0.035 * desertShakeAmount;
+    document.body.dataset.desertShake = desertShakeAmount.toFixed(2);
+  }
   function updateCamera(dt) {
     if (__debugFreezeCam) return;
     // 視点のみモード(V 2回目)では自車(影・ランプ含む)を一切映さない。
@@ -10461,6 +10476,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1'
       updateFx(dt);
       updateTailTrails(dt);
       updateCamera(dt);
+      applyDesertShake(dt);
       updateWeatherEffects(dt);
       route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView);
       if (gunmaAtmosphere) {

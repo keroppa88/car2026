@@ -16,6 +16,16 @@ export const CAR_CONFIGS = {
 // ルート66(driving_us_s)のループ順。108区間で1周。
 // 3:青看板 8:黄看板 17:シェル 26:黄看板 35:マルボロ 44:青看板 53:ケンタッキー
 // 59:黄看板 66:青看板 80:黄看板 89:バグダッドカフェ 101:軍事基地 108:ナイトホーク
+// ルート66の地図の倍率。道路・看板・建物をまとめて同じ割合で拡大する(1=元の寸法)。
+export const ROUTE66_SCALE = 1.3;
+const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);
+
+const ROUTE66_GROUND_MATERIALS = [
+  '[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01',
+  '[Color M05]', 'M05', '[Blacktop Old 01]', 'Blacktop Old 01',
+  '[Color M04]', 'M04', '97a8128a-f00f-4500-98e2-d94e18e18c43',
+];
+
 export const ROUTE66_SEQUENCE = [
   'sa01','sa01','sa01','sa02','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa06',
   'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa05',
@@ -378,13 +388,13 @@ export const MAP_CONFIGS = {
     label: 'ルート66',
     file: 'map/route66/sa01.glb',
     preview: 'picture/root66.png',
-    // driving_us_s の砂漠マップ。GLBは1単位=1mなので縮尺はそのまま。
-    scale: 1,
+    // driving_us_s の砂漠マップ。GLBは1単位=1m。道路幅を広げるため全体を拡大する。
+    scale: ROUTE66_SCALE,
     assetRevision: '20260927-route66-1',
     // sa01(ベース道路)の間に看板・店などの特殊マップが入る108区間を1周とする。
     segmentFiles: ROUTE66_SEQUENCE.map((name) => `map/route66/${name}.glb`),
     // 各GLBは595.76m。元ゲームは585m間隔で並べていたので、10.76m重ねる。
-    sequenceOverlapMeters: 10.76,
+    sequenceOverlapMeters: R66(10.76),
     sequenceAnchorX: 'min',
     loopMode: 'sequence',
     // 元ゲームが非表示にしていた緑・青緑・マゼンタ系の装飾メッシュを隠す。
@@ -392,8 +402,10 @@ export const MAP_CONFIGS = {
     roadMaterial: 'M06_Steel_Smoke',
     roadMaterialAliases: ['M06'],
     // 砂漠(Formica Beige)と中央線は地表。壁扱いせず、どこでも走れる。
-    nonWallMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
-    drivableMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
+    // 地面の高さにある面の材質は区間ごとに違う(全9ファイルを下向きに走査して確認):
+    // sa06 の道路 M05 とアスファルト、sa09 基地の M04、sa08 の小さな面。
+    nonWallMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
+    drivableMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
     sandMaterialAliases: ['[Formica Beige]', 'Formica Beige'],
     dustNormalInterval: 0.06,
     dustHeavyInterval: 0.012,
@@ -404,21 +416,25 @@ export const MAP_CONFIGS = {
     drivableSeamAssistRatio: 10,
     // 元ゲームと同じく建物・看板には衝突しない。
     ignoreMapWallCollisions: true,
-    // 右側通行。中央線(x=2.25)から右へ2.9mが自車・同方向車線。
-    cpuCenterLineEntryX: 2.25,
-    cpuLaneOffset: -2.9,
-    cpuSameDirectionLaneRangeX: [3.6, 6.3],
-    cpuOncomingLaneRangeX: [-1.8, 0.9],
+    // 右側通行。中央線(元寸法でx=2.25)から右へ2.9mが自車・同方向車線。
+    cpuCenterLineEntryX: R66(2.25),
+    cpuLaneOffset: -R66(2.9),
+    cpuSameDirectionLaneRangeX: [R66(3.6), R66(6.3)],
+    cpuOncomingLaneRangeX: [R66(-1.8), R66(0.9)],
+    // CPU車は海岸線の速度の1/3。
+    cpuSpeedScale: 1 / 3,
+    // 砂漠を走ると画面を縦に小刻みに揺らす。
+    desertShake: true,
     autoDriveMode: 'seaCruise130',
     spawnSearchRadius: 2000,
     spawnReference: 'fixed',
-    spawnReferenceX: 2.25,
+    spawnReferenceX: R66(2.25),
     spawnReferenceZ: -20,
     spawnExactReference: false,
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI,
     // Z減少方向を向くと、このゲームの「右」は-X。右車線(+X)へは負の値で寄せる。
-    spawnOffsetRight: -2.9,
+    spawnOffsetRight: -R66(2.9),
     spawnSurfaceMode: 'roadSurface',
     treePlacement: { ...commonTrees, enabled: false, seed: 20260927 },
     mapWhiteGlow: false,
