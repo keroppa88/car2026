@@ -48,29 +48,31 @@ export function createMoorScenery(scene, course, seed) {
   const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3(), position = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
 
-  // Lone trees: a short dark trunk under a wind-bent round crown.
+  // Lone trees: gnarled, wind-bent hawthorns that are mostly bare branches.
+  // Four shapes are grown once and shared by instancing.
+  const variants = Array.from({ length: 4 }, () => buildTreeGeometry(random));
   const treeSpots = [];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 60; i++) {
     const spot = place(14, 260);
-    if (spot) treeSpots.push({ ...spot, size: 0.8 + random() * 0.7, lean: (random() - 0.5) * 0.5, turn: random() * Math.PI * 2 });
+    if (spot) treeSpots.push({ ...spot, size: 0.8 + random() * 0.6, turn: (random() - 0.5) * 0.8, variant: i % variants.length });
   }
-  const treeMatrices = [];
-  for (const tree of treeSpots) copies(tree, (x, z) => treeMatrices.push({ x, z, tree }));
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.34, 3.2, 6).translate(0, 1.6, 0),
-    new THREE.MeshLambertMaterial({ color: 0x3b3129 }), treeMatrices.length);
-  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.6, 1).scale(1.25, 0.85, 1.1).translate(0, 4.4, 0),
-    new THREE.MeshLambertMaterial({ color: 0x3e5230, flatShading: true }), treeMatrices.length);
-  treeMatrices.forEach(({ x, z, tree }, i) => {
-    position.set(x, groundHeightAt(x, z) - 0.2, z);
-    quaternion.setFromAxisAngle(up, tree.turn)
-      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), tree.lean));
-    scale.setScalar(tree.size);
-    matrix.compose(position, quaternion, scale);
-    trunks.setMatrixAt(i, matrix);
-    crowns.setMatrixAt(i, matrix);
+  const barkMaterial = new THREE.MeshLambertMaterial({ color: 0x4a4038, flatShading: true });
+  variants.forEach((geometry, v) => {
+    const placed = [];
+    for (const tree of treeSpots) if (tree.variant === v) copies(tree, (x, z) => placed.push({ x, z, tree }));
+    const mesh = new THREE.InstancedMesh(geometry, barkMaterial, Math.max(placed.length, 1));
+    mesh.count = placed.length;
+    placed.forEach(({ x, z, tree }, i) => {
+      position.set(x, groundHeightAt(x, z) - 0.15, z);
+      // The prevailing wind bends every tree the same way; only a little turn.
+      quaternion.setFromAxisAngle(up, tree.turn);
+      scale.setScalar(tree.size);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(i, matrix);
+    });
+    mesh.name = 'MoorTree';
+    group.add(mesh);
   });
-  trunks.name = crowns.name = 'MoorTree';
-  group.add(trunks, crowns);
 
   // Rocks: flat-shaded, squashed boulders, some in small clusters.
   const rockSpots = [];
@@ -101,4 +103,59 @@ export function createMoorScenery(scene, course, seed) {
   group.add(rocks);
   scene.add(group);
   return group;
+}
+
+// One gnarled tree: a leaning trunk that forks into ever thinner branches,
+// every branch pushed downwind (+x) and a little upward. Built from open
+// five-sided tubes, all in one geometry.
+function buildTreeGeometry(random) {
+  const positions = [], indices = [];
+  const wind = new THREE.Vector3(1, 0, 0.25).normalize();
+  const upward = new THREE.Vector3(0, 1, 0);
+  const side = new THREE.Vector3(), other = new THREE.Vector3(), point = new THREE.Vector3();
+  const tube = (start, end, r0, r1) => {
+    const dir = end.clone().sub(start).normalize();
+    side.set(dir.y, -dir.x, 0);
+    if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+    side.normalize();
+    other.crossVectors(dir, side).normalize();
+    const base = positions.length / 3;
+    for (const [centre, r] of [[start, r0], [end, r1]]) {
+      for (let k = 0; k < 5; k++) {
+        const angle = k / 5 * Math.PI * 2;
+        point.copy(centre).addScaledVector(side, Math.cos(angle) * r).addScaledVector(other, Math.sin(angle) * r);
+        positions.push(point.x, point.y, point.z);
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      const a = base + k, b = base + (k + 1) % 5;
+      indices.push(a, b, a + 5, b, b + 5, a + 5);
+    }
+  };
+  const grow = (start, dir, length, radius, depth) => {
+    // A slight kink halfway makes each branch crooked rather than straight.
+    const bend = new THREE.Vector3(random() - 0.5, random() * 0.3, random() - 0.5).multiplyScalar(0.35);
+    const middle = start.clone().addScaledVector(dir, length * 0.5);
+    const endDir = dir.clone().add(bend).normalize();
+    const end = middle.clone().addScaledVector(endDir, length * 0.5);
+    const tip = Math.max(radius * 0.62, 0.03);
+    tube(start, middle, radius, (radius + tip) / 2);
+    tube(middle, end, (radius + tip) / 2, tip);
+    if (depth === 0) return;
+    const children = depth >= 4 ? 2 : 2 + (random() < 0.5 ? 1 : 0);
+    for (let c = 0; c < children; c++) {
+      const axis = new THREE.Vector3(random() - 0.5, random() - 0.5, random() - 0.5).cross(endDir).normalize();
+      const childDir = endDir.clone().applyAxisAngle(axis, 0.45 + random() * 0.55)
+        .addScaledVector(wind, 0.4).addScaledVector(upward, 0.12).normalize();
+      grow(end, childDir, length * (0.66 + random() * 0.14), tip, depth - 1);
+    }
+  };
+  // Trunk leans downwind, then forks low like a hawthorn on open moor.
+  const trunkDir = upward.clone().addScaledVector(wind, 0.35 + random() * 0.25).normalize();
+  grow(new THREE.Vector3(0, 0, 0), trunkDir, 2.4 + random() * 0.8, 0.3, 5);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }

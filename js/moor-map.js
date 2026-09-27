@@ -37,15 +37,21 @@ export function buildMoorMap(seed) {
     }
     return z;
   };
-  // Rolling hills, periodic along x so the copies past each end match.
+  // The moor also repeats north-south every zPeriod metres, so the car can
+  // drive off across the grass for ever in any direction.
+  const zPeriod = 2400;
+  const wz = (2 * Math.PI) / zPeriod;
+  // Wrap z into the one period around the road.
+  const wrapZ = (z) => z - zPeriod * Math.round(z / zPeriod);
+  // Rolling hills, periodic along x and z so every copy matches.
   const hillPhase = [random(), random(), random(), random()].map((v) => v * Math.PI * 2);
   const hillsAt = (x, z) => {
-    const u = (x - x0) * w;
+    const u = (x - x0) * w, v = z * wz;
     return 20
-      + 7.5 * Math.sin(2 * u + hillPhase[0] + z * 0.004)
-      + 4.5 * Math.sin(3 * u + hillPhase[1] - z * 0.006)
-      + 2 * Math.sin(7 * u + hillPhase[2] + z * 0.011)
-      + 5 * Math.sin(u + hillPhase[3] + z * 0.009);
+      + 7.5 * Math.sin(2 * u + hillPhase[0] + 2 * v)
+      + 4.5 * Math.sin(3 * u + hillPhase[1] - 3 * v)
+      + 2 * Math.sin(7 * u + hillPhase[2] + 11 * v)
+      + 5 * Math.sin(u + hillPhase[3] + 4 * v);
   };
 
   const count = Math.round(period / 3);
@@ -99,28 +105,31 @@ export function buildMoorMap(seed) {
 
   const group = new THREE.Group();
   group.name = 'moor_procedural';
-  const mistColor = new THREE.Color(0xb7bcb6);
+  const mistColor = new THREE.Color(0x9ea596);
   const mistTime = { value: 0 };
   // Distant moor fades into the overcast haze, like the photographs.
-  const farHaze = [0.30, 0.22];
+  const farHaze = [0.16, 0.14];
   // Nearby grass keeps its own colour; only thin wisps drift over it.
   const nearHaze = [0.03, 0.22];
 
   // Ground: the road's own level beside it, easing into the rolling hills.
   const terrainSampleAt = (x, z) => {
+    const [rx, rz] = ringPosition(x, z);
+    // Far from the road the ground is the hills alone.
+    if (Math.abs(z - zAt(x)) > 260) return { height: hillsAt(rx, rz), distance: 260 };
     let nearest = Infinity, roadY = 0;
     for (let i = 0; i < ext.length; i += 3) {
       const p = ext[i];
       const d = Math.hypot(x - p.x, z - p.z);
       if (d < nearest) { nearest = d; roadY = p.y; }
     }
-    const [rx, rz] = ringPosition(x, z);
     const blend = THREE.MathUtils.smoothstep(nearest, 9, 80);
     return { height: THREE.MathUtils.lerp(roadY - 0.45, hillsAt(rx, rz), blend), distance: nearest };
   };
   const extBounds = new THREE.Box3().setFromPoints(ext);
   const minX = extBounds.min.x - 450, maxX = extBounds.max.x + 450;
-  const minZ = extBounds.min.z - 450, maxZ = extBounds.max.z + 450;
+  // One full z period plus a view margin each side of the wrap lines.
+  const minZ = -zPeriod / 2 - 700, maxZ = zPeriod / 2 + 700;
   const cell = 16;
   const columns = Math.ceil((maxX - minX) / cell);
   const lines = Math.ceil((maxZ - minZ) / cell);
@@ -130,7 +139,8 @@ export function buildMoorMap(seed) {
   const terrainMistPatches = new Float32Array(terrainMistDistances.length);
   const terrainIndices = [];
   // Straw grass, green grass and brown heather, mixed in broad patches.
-  const straw = [0.55, 0.50, 0.31], green = [0.34, 0.43, 0.22], heather = [0.37, 0.28, 0.24];
+  // Linear colour values (they display brighter than they read).
+  const straw = [0.36, 0.29, 0.14], green = [0.17, 0.25, 0.09], heather = [0.21, 0.13, 0.10];
   for (let iz = 0; iz <= lines; iz++) {
     for (let ix = 0; ix <= columns; ix++) {
       const x = minX + (maxX - minX) * ix / columns;
@@ -142,9 +152,9 @@ export function buildMoorMap(seed) {
       terrainVertices[index + 1] = sample.height;
       terrainVertices[index + 2] = z;
       terrainMistDistances[iz * (columns + 1) + ix] = sample.distance;
-      terrainMistPatches[iz * (columns + 1) + ix] = mistPatchAt(rx, rz);
-      const greenMix = 0.5 + 0.5 * Math.sin(rx * 0.011 + Math.sin(rz * 0.013) * 1.6);
-      const heatherMix = THREE.MathUtils.smoothstep(Math.sin(rx * 0.0067 - rz * 0.0081 + 1.3), 0.35, 0.9);
+      terrainMistPatches[iz * (columns + 1) + ix] = mistPatchAt(rx, wrapZ(rz));
+      const greenMix = 0.5 + 0.5 * Math.sin(rx * 0.011 + Math.sin(rz * wz * 5) * 1.6);
+      const heatherMix = THREE.MathUtils.smoothstep(Math.sin(rx * 0.0067 - rz * wz * 3 + 1.3), 0.35, 0.9);
       const shade = 0.88 + 0.12 * Math.sin(ix * 1.71 + iz * 2.13);
       for (let c = 0; c < 3; c++) {
         const base = straw[c] + (green[c] - straw[c]) * greenMix;
@@ -166,8 +176,9 @@ export function buildMoorMap(seed) {
   const terrain = new THREE.Mesh(terrainGeometry, addSideMist(new THREE.MeshLambertMaterial({
     name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide,
   }), mistColor, mistTime, seam, farHaze, nearHaze));
-  terrain.name = 'GunmaGrass';
-  group.add(terrain);
+  terrain.name = 'MoorGround';
+  // Kept out of the map group, so it is never ray-cast: the car reads the
+  // ground height straight from the grid instead (groundHeightAt).
   // Height of the ground mesh itself, so the verge and scenery sit on it.
   const groundHeightAt = (x, z) => {
     const fx = THREE.MathUtils.clamp((x - minX) * columns / (maxX - minX), 0, columns - 1e-6);
@@ -241,45 +252,15 @@ export function buildMoorMap(seed) {
     group.add(mesh);
   }
 
-  // Low dry-stone walls along both edges, in place of guardrails. The top
-  // edge wobbles a little so the wall reads as stacked stone.
-  const wallMaterial = new THREE.MeshLambertMaterial({
-    name: 'GunmaGuardrail', color: 0x6a675e, side: THREE.DoubleSide,
-  });
-  for (const side of [-1, 1]) {
-    const vertices = new Float32Array(ext.length * 4 * 3);
-    const indices = [];
-    for (let i = 0; i < ext.length; i++) {
-      const point = ext[i], normal = extTangents[i];
-      const r = ((extIndices[i] % routeCount) + routeCount) % routeCount;
-      const top = 0.78 + 0.07 * Math.sin(r * 2.3) + 0.04 * Math.sin(r * 5.1);
-      const o = i * 12;
-      for (const [k, across, y] of [[0, 5.27, -0.3], [1, 5.27, top], [2, 5.62, top], [3, 5.62, -0.3]]) {
-        vertices[o + k * 3] = point.x + side * normal.x * across;
-        vertices[o + k * 3 + 1] = point.y + y;
-        vertices[o + k * 3 + 2] = point.z + side * normal.z * across;
-      }
-      if (i + 1 < ext.length) {
-        const a = i * 4, b = (i + 1) * 4;
-        // Road face, top and back face.
-        for (const [p, q] of [[0, 1], [1, 2], [2, 3]]) {
-          indices.push(a + p, b + p, a + q, a + q, b + p, b + q);
-        }
-      }
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const wall = new THREE.Mesh(geometry, wallMaterial);
-    wall.name = 'GunmaGuardrail';
-    group.add(wall);
-  }
-
   // Ground height with nothing past the mesh, for the atmosphere module.
   const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ
     ? -Infinity : groundHeightAt(x, z));
   const climb = Math.max(...route.map((p) => p.y)) - Math.min(...route.map((p) => p.y));
-  return { group, route, tangents, ext, extTangents, extIndices, seam, climb, mistColor, mistTime,
-    groundHeightAt, terrainHeightAt, ringPosition, gridBounds: { minX, maxX, minZ, maxZ } };
+  // Normal of the ground mesh at (x, z), from its height field.
+  const groundNormalAt = (x, z) => new THREE.Vector3(
+    groundHeightAt(x - 1, z) - groundHeightAt(x + 1, z), 2,
+    groundHeightAt(x, z - 1) - groundHeightAt(x, z + 1)).normalize();
+  return { group, ground: terrain, route, tangents, ext, extTangents, extIndices, seam, climb,
+    mistColor, mistTime, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
+    zWrap: { center: 0, period: zPeriod }, gridBounds: { minX, maxX, minZ, maxZ } };
 }
