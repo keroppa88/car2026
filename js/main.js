@@ -11,7 +11,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-3';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-4';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -19,8 +19,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
-import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
-import { createMoorFog } from './moor-fog.js?v=20260927-moor-1';
+import { createMoorFog } from './moor-fog.js?v=20260927-moor-2';
 
 (function () {
   'use strict';
@@ -60,7 +59,6 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-1';
   let gunmaCourse = null;
   let gunmaAtmosphere = null;
   let moorScenery = null;
-  let moorGrass = null;
   let moorFog = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
@@ -6204,13 +6202,14 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-1';
           gunmaCourse.terrainHeightAt, null, { layers: 2, heightScale: 0.4 });
         // 地面は地図の外に置く(レイキャストしない)。高さは格子から直接読む。
         scene.add(gunmaCourse.ground);
+        // 草原を走ると森林地帯と同じ砂煙を出す。
+        sandMeshes.push(gunmaCourse.ground);
         for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
         }
         moorScenery = createMoorScenery(scene, gunmaCourse, GUNMA_SEED);
-        moorGrass = createMoorGrass(scene, gunmaCourse);
-        // 地表近くに、ところどころ漂う霧。
+        // 低地の窪みに溜まる、地表近くの霧。
         moorFog = createMoorFog(scene, gunmaCourse);
         document.body.dataset.mapFog = 'moor-haze';
       }
@@ -10423,7 +10422,6 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-1';
         gunmaCanopy?.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
         if (moorScenery) moorScenery.visible = !topView;
-        moorGrass?.update(dt, camera, topView);
         moorFog?.update(dt, camera, gunmaCourse.mistColor, topView);
         if (gunmaRoadsideForest) {
           gunmaRoadsideForest.visible = !topView;
