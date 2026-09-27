@@ -330,7 +330,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '嵐が丘',
     file: 'procedural:moor',
-    preview: 'picture/moor.png',
+    preview: 'picture/arashigaoka.png',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
