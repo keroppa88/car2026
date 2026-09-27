@@ -11,12 +11,14 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260925-puffs-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
-import { buildGunmaMap } from './gunma-map.js?v=20260925-endless-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260926-foothill-clouds-1';
+import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-1';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
+import { buildMoorMap } from './moor-map.js?v=20260927-moor-1';
+import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
 
 (function () {
   'use strict';
@@ -29,6 +31,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   const DEFAULT_SEQUENCE_MAP_ASSET_REVISION = '20260801-searoad01-06-lite';
   const COURSE_KEY = pageQuery.get('course') || 'tokyo';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
+  // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
+  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
@@ -53,6 +57,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     : Math.floor(Math.random() * 0xffffffff);
   let gunmaCourse = null;
   let gunmaAtmosphere = null;
+  let moorScenery = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -361,7 +366,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   document.body.dataset.mapFallOutsideRoad = String(Boolean(MAP_CONFIG.fallOutsideRoad));
   document.body.dataset.playerFallingOutsideRoad = 'false';
   document.body.dataset.cpuPlayerCollision =
-    COURSE_KEY === 'sea' || COURSE_KEY === 'gunma' ? 'disabled' : 'enabled';
+    COURSE_KEY === 'sea' || TOUGE_COURSE ? 'disabled' : 'enabled';
   document.body.dataset.mapWallCollisions =
     MAP_CONFIG.ignoreMapWallCollisions ? 'disabled' : 'enabled';
   document.body.dataset.mapDrivableSeamAssistRatio =
@@ -372,12 +377,13 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
 
   const scene = new THREE.Scene();
   // ぐんまーも初期の空は #8ecbef、地平線 #eaf4fb、雲1(下の weatherCloudMode)。
-  const SKY = 0x8ecbef;
+  // 嵐が丘は低い雲の曇り空。
+  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, COURSE_KEY === 'gunma' ? 2200 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -401,7 +407,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   // コントロールパネルから変更する上空色・地平線色。昼夜照明とは独立して保持し、
   // 夜へ切り替えたときは同じ色相を暗くして反映する。
   const weatherTopColor = new THREE.Color(SKY);
-  const weatherHorizonColor = new THREE.Color(0xeaf4fb);
+  const weatherHorizonColor = new THREE.Color(COURSE_KEY === 'moor' ? 0xd1d5d4 : 0xeaf4fb);
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -414,7 +420,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
-  let weatherCloudMode = COURSE_KEY === 'gunma' ? 1 : 0;   // 0=なし、1=雲1、2=雲2
+  let weatherCloudMode = TOUGE_COURSE ? 1 : 0;   // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
   let weatherRainSystem = null;
   let weatherStarSystem = null;
@@ -485,13 +491,13 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     const gunmaHaze = new THREE.Color(0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
     gunmaHaze.lerp(horizon, 0.18);
-    if (COURSE_KEY === 'gunma' && gunmaCourse?.mistColor) {
+    if (TOUGE_COURSE && gunmaCourse?.mistColor) {
       gunmaCourse.mistColor.copy(gunmaHaze);
     }
     weatherSkyUniforms.topColor.value.copy(top);
     weatherSkyUniforms.horizonColor.value.copy(horizon);
     weatherSkyUniforms.horizonBandColor.value.copy(
-      COURSE_KEY === 'gunma' ? gunmaHaze : horizon
+      TOUGE_COURSE ? gunmaHaze : horizon
     );
     weatherSkyUniforms.flatSky.value = weatherFlatSky ? 1 : 0;
     // 選んでいる側(空/地平線)の色をそのまま16進で見せる。夜の減光は反映しない。
@@ -503,7 +509,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    if (fog) fog.color.copy(COURSE_KEY === 'gunma' ? gunmaHaze : horizon);
+    if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
@@ -530,6 +536,13 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       shadow: 0.85, litSky: 0.5, shadowSky: 0.5, opacity: 0.85,
     },
   ];
+  // 嵐が丘の雲1は、空一面に低く垂れこめる灰色の雲。
+  if (COURSE_KEY === 'moor') {
+    Object.assign(CLOUD_CFGS[0], {
+      cov: 0.66, soft: 0.34, scale: 0.9, stretch: 0.55, minY: 0.03, band: 0.06,
+      shadow: 0.92, litSky: 0.32, shadowSky: 0.62, opacity: 0.96,
+    });
+  }
   const initialCloudConfig = CLOUD_CFGS[0];
   let cloudDome = null;
   let cloudTime = 0, cloudFlow = 0, cloudDriftAcc = 0;
@@ -2607,7 +2620,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       }
       seaSurfaceBridge = null;
     }
-    if (COURSE_KEY === 'gunma' && gunmaCourse?.route.length) {
+    if (TOUGE_COURSE && gunmaCourse?.route.length) {
       // Past either end the road is a copy of the other end: warp by one seam.
       const seam = gunmaCourse.seam;
       const warp = player.pos.x > seam.endX ? -1 : player.pos.x < seam.startX ? 1 : 0;
@@ -5326,8 +5339,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     let originalBox;
     let sequenceLayout = null;
     try {
-      if (COURSE_KEY === 'gunma') {
-        gunmaCourse = buildGunmaMap(GUNMA_SEED);
+      if (TOUGE_COURSE) {
+        gunmaCourse = COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED) : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
         originalBox = new THREE.Box3().setFromObject(map);
         document.body.dataset.gunmaSeed = String(GUNMA_SEED);
@@ -6058,8 +6071,8 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   async function init() {
     const [playerCarMesh, tree1, tree2] = await Promise.all([
       VOX.load(PLAYER_CAR_VOX, { scale: VOXEL_SCALE }),
-      COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree01.vox', { scale: TREE_SCALE }),
-      COURSE_KEY === 'gunma' ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
+      TOUGE_COURSE ? null : VOX.load('vox/object/tree01.vox', { scale: TREE_SCALE }),
+      TOUGE_COURSE ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
     // 森林地帯はCPU車なし。群馬は少数の車種だけを読み込んで複製する。
     const discoveredCpuVox = COURSE_KEY === 'forest'
@@ -6070,12 +6083,12 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     const cpuVoxLimit = (CAR2_MODE || COURSE_KEY === 'sea' || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT
       : 4;
-    const gunmaCarVox = COURSE_KEY === 'gunma'
+    const gunmaCarVox = TOUGE_COURSE
       ? pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 2, 6, 0)
       : [];
     const cpuCars = COURSE_KEY === 'forest'
       ? []
-      : await loadCpuCars(COURSE_KEY === 'gunma'
+      : await loadCpuCars(TOUGE_COURSE
         ? gunmaCarVox : discoveredCpuVox.slice(0, cpuVoxLimit));
     const cpuMeshes = cpuCars.map((car) => car.mesh);
 
@@ -6128,7 +6141,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     // 左右2灯を車体前端より前に置き、路面とガードレールを照らす。
     // ぐんまーは元の光量10倍・到達距離8倍・同距離での照射幅3倍。
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
-    const gunmaHeadlights = COURSE_KEY === 'gunma';
+    const gunmaHeadlights = TOUGE_COURSE;
     for (const side of [-1, 1]) {
       const intensity = gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
@@ -6149,6 +6162,19 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       // 読み込み式の4マップでは無効化し、遠景までマテリアル本来の色を保つ。
       scene.fog = null;
       document.body.dataset.mapFog = 'none';
+      if (COURSE_KEY === 'moor') {
+        // 嵐が丘: 開けた草原。雲海も木陰もなく、遠くは曇り空の霞に溶ける。
+        applyWeatherSky();
+        const low = Math.min(...gunmaCourse.route.map((p) => p.y));
+        gunmaAtmosphere = createMountainAtmosphere(scene, low - 60, gunmaCourse.route,
+          gunmaCourse.terrainHeightAt);
+        for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
+          const layer = scene.getObjectByName(name);
+          if (layer) layer.visible = false;
+        }
+        moorScenery = createMoorScenery(scene, gunmaCourse, GUNMA_SEED);
+        document.body.dataset.mapFog = 'moor-haze';
+      }
       if (COURSE_KEY === 'gunma') {
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
         applyWeatherSky();
@@ -6386,10 +6412,10 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       }
       addMapDebugVisuals(mapSpawn);
-      if (COURSE_KEY !== 'gunma') {
+      if (!TOUGE_COURSE) {
         placeTreesOnSurface(tree1, MAP_CONFIG.treePlacement, mulberry32(MAP_CONFIG.treePlacement.seed));
       }
-      if (COURSE_KEY === 'gunma') {
+      if (TOUGE_COURSE) {
         document.body.dataset.gunmaRoadWidth = '8.64';
         document.body.dataset.gunmaRoutePoints = String(gunmaCourse.route.length);
       }
@@ -6420,7 +6446,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         : [];
       Object.keys(info.loops).slice(0, 4).forEach((name, i) => {
         if (CAR2_MODE || COURSE_KEY === 'indy' || COURSE_KEY === 'sea'
-          || COURSE_KEY === 'forest' || COURSE_KEY === 'gunma') return;
+          || COURSE_KEY === 'forest' || TOUGE_COURSE) return;
         const wps = info.loops[name].sort((a, b) => a.i - b.i).map((waypoint) => ({
           x: waypoint.p.x,
           z: waypoint.p.z,
@@ -6463,7 +6489,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
         car2AutoRoute = buildSequenceRoadCenterline(2);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
         document.body.dataset.forestAutoDriveRoadMaterial = MAP_CONFIG.roadMaterial;
-      } else if (COURSE_KEY === 'gunma') {
+      } else if (TOUGE_COURSE) {
         // 従来位置から車幅の半分(0.78m)左へ。右車輪は従来の車体中心を通る。
         // The copy of the first 200 m after the end lets the autopilot look
         // across the seam instead of steering back toward the start.
@@ -7427,9 +7453,12 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     musicMenuRefresh();
     return true;
   }
-  // ぐんまー: 最初にアクセルを踏んだとき、musiclist.txt のこの曲を流す。
+  // ぐんまー・嵐が丘: 最初にアクセルを踏んだとき、musiclist.txt のコースの曲を流す。
   // すでに別の曲を流していれば邪魔しない。YouTubeの準備中は1秒おきに再試行する。
-  const GUNMA_THEME_LABEL = 'NIKO,Night of Fire (1997)';
+  const GUNMA_THEME_LABEL = {
+    gunma: 'NIKO,Night of Fire (1997)',
+    moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
+  }[COURSE_KEY] ?? null;
   let gunmaThemeDone = false;
   let gunmaThemeRetryAt = 0;
   function startGunmaTheme() {
@@ -8663,7 +8692,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       input = 0;
     } else {
       throttle = !!keys['s'] || gamepadState.throttle;   // S / RT = アクセル
-      if (throttle && COURSE_KEY === 'gunma') startGunmaTheme();
+      if (throttle && GUNMA_THEME_LABEL) startGunmaTheme();
       brake = !!keys['a'] || gamepadState.brake;         // A / LT = ブレーキ
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
@@ -8797,7 +8826,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
     // 効かせると押し合いになって両方その場で止まってしまう。
     // ユーザーが操作している間は従来どおり当たり判定あり（ぶつかれば避ける）。
     // 海岸線は交通量を優先し、操作中も相互にすり抜ける。
-    const cpuCollisionOff = COURSE_KEY === 'sea' || COURSE_KEY === 'gunma'
+    const cpuCollisionOff = COURSE_KEY === 'sea' || TOUGE_COURSE
       || demoActive || autoDrive;
     document.body.dataset.playerCpuCollisionMode = cpuCollisionOff ? 'pass' : 'solid';
     if (!cpuCollisionOff) {
@@ -10224,7 +10253,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
   }
 
   // F: 画面上部のバックミラー。メイン描画の後に後方視点を小窓へ描く。
-  const mirrorCam = new THREE.PerspectiveCamera(55, 3.4, 0.5, COURSE_KEY === 'gunma' ? 2200 : 1200);
+  const mirrorCam = new THREE.PerspectiveCamera(55, 3.4, 0.5, TOUGE_COURSE ? 2200 : 1200);
   function renderMirror() {
     if (!mirrorView || topView) return;
     const W = window.innerWidth, H = window.innerHeight;
@@ -10341,13 +10370,16 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
       updateWeatherEffects(dt);
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
-        gunmaCanopy.update(dt, weatherDuskLevel());
+        gunmaCanopy?.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
-        gunmaRoadsideForest.visible = !topView;
-        // Distant mountains move with the camera, so they do not jump at the seam.
-        gunmaRoadsideForest.userData.farRing?.position.set(
-          camera.position.x - gunmaRoadsideForest.userData.farCenter.x, 0,
-          camera.position.z - gunmaRoadsideForest.userData.farCenter.z);
+        if (moorScenery) moorScenery.visible = !topView;
+        if (gunmaRoadsideForest) {
+          gunmaRoadsideForest.visible = !topView;
+          // Distant mountains move with the camera, so they do not jump at the seam.
+          gunmaRoadsideForest.userData.farRing?.position.set(
+            camera.position.x - gunmaRoadsideForest.userData.farCenter.x, 0,
+            camera.position.z - gunmaRoadsideForest.userData.farCenter.z);
+        }
       }
       renderer.render(scene, camera);
       renderMirror();

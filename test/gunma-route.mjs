@@ -66,3 +66,16 @@ for (const seed of [1, 20260923, 4294967295]) {
   }
 }
 console.log('Gunma CPU lanes and endless seam interpolation: OK');
+
+// 嵐が丘 shares the endless ring: both ends meet at the same height and the
+// step across the seam is an ordinary road step.
+import { buildMoorMap } from '../js/moor-map.js';
+for (const seed of [1, 20260923, 4294967295]) {
+  const { route, seam } = buildMoorMap(seed);
+  const first = route[0], last = route[route.length - 1];
+  assert.ok(Math.abs(first.y - last.y) < 0.5);
+  const step = Math.hypot(first.x + seam.offset.x - last.x, first.z + seam.offset.z - last.z);
+  const normalStep = Math.hypot(route[1].x - first.x, route[1].z - first.z);
+  assert.ok(Math.abs(step - normalStep) < 0.2);
+}
+console.log('Moor endless seam: OK');
