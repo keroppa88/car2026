@@ -335,7 +335,8 @@ export const MAP_CONFIGS = {
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
     nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaCenterLine', 'GunmaEdgeLine', 'GunmaGuardrail'],
-    drivableMaterialAliases: [],
+    // 嵐が丘は路肩と草原にも入れる(草原の先はコード側で地面の高さを返す)。
+    drivableMaterialAliases: ['GunmaShoulder', 'GunmaGrass'],
     supportSurfaceMode: 'drivable',
     blockOutsideDrivableSurface: true,
     ignoreMapWallCollisions: true,

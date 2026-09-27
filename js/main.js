@@ -11,14 +11,15 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-2';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-3';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-1';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
-import { buildMoorMap } from './moor-map.js?v=20260927-moor-1';
-import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
+import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
+import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-2';
+import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
 
 (function () {
   'use strict';
@@ -58,6 +59,7 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
   let gunmaCourse = null;
   let gunmaAtmosphere = null;
   let moorScenery = null;
+  let moorGrass = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -488,7 +490,8 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
       top.multiplyScalar(0.075);
       horizon.multiplyScalar(0.12);
     }
-    const gunmaHaze = new THREE.Color(0xaebdb4);
+    // 地表のモヤの色。嵐が丘は曇り空の下の、少し緑がかった灰色。
+    const gunmaHaze = new THREE.Color(COURSE_KEY === 'moor' ? 0x9ea596 : 0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
     gunmaHaze.lerp(horizon, 0.18);
     if (TOUGE_COURSE && gunmaCourse?.mistColor) {
@@ -2272,13 +2275,25 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
     rayOrigin.set(x, mapRayTop, z);
     groundCaster.set(rayOrigin, DOWN);
     groundCaster.far = Math.max(20, mapRayTop - mapRayBottom + 20);
-    return groundCaster.intersectObjects(supportMeshes, true)
+    const hits = groundCaster.intersectObjects(supportMeshes, true)
       .filter((candidate) => {
         if (!candidate.face) return false;
         wallNormal.copy(candidate.face.normal).transformDirection(candidate.object.matrixWorld);
         const minGroundNormalY = minimumGroundNormalY(candidate.object);
         return Math.abs(wallNormal.y) > minGroundNormalY;
       });
+    // 嵐が丘の草原はどこでも走れる。巨大な地面メッシュへはレイを飛ばさず、
+    // 高さの格子から直接、地面の面を作って返す。
+    if (COURSE_KEY === 'moor' && gunmaCourse?.ground) {
+      const y = gunmaCourse.groundHeightAt(x, z);
+      hits.push({
+        point: new THREE.Vector3(x, y, z),
+        face: { normal: gunmaCourse.groundNormalAt(x, z) },
+        object: gunmaCourse.ground,
+        distance: mapRayTop - y,
+      });
+    }
+    return hits;
   }
   function roadSeamAssistHeight(object) {
     const baseHeight = playerClimbHeight;
@@ -2630,6 +2645,15 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
         mapLoopCount++;
         document.body.dataset.mapLoopCount = String(mapLoopCount);
       }
+      // 嵐が丘は南北にも繰り返す草原。周期の端を越えたら反対側へ移す。
+      const zWrap = gunmaCourse.zWrap;
+      if (zWrap) {
+        const half = zWrap.period / 2;
+        if (player.pos.z > zWrap.center + half) player.pos.z -= zWrap.period;
+        else if (player.pos.z < zWrap.center - half) player.pos.z += zWrap.period;
+      }
+    }
+    if (COURSE_KEY === 'gunma' && gunmaCourse?.route.length) {
       // The car body reaches the white guardrail before its centre leaves the road.
       // Slide along the rail while retaining longitudinal speed.
       const route = gunmaCourse.route;
@@ -5780,6 +5804,13 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
     BOUND_X_MIN = fin.min.x - 5;
     BOUND_X_MAX = fin.max.x + 5;
     BOUND_Z = Math.max(Math.abs(fin.min.z), Math.abs(fin.max.z)) + 5;
+    // 嵐が丘の草原は地図(道路)の外まで続く。走れる範囲を地面全体に広げる。
+    if (COURSE_KEY === 'moor' && gunmaCourse?.gridBounds) {
+      const ground = gunmaCourse.gridBounds;
+      BOUND_X_MIN = ground.minX;
+      BOUND_X_MAX = ground.maxX;
+      BOUND_Z = Math.max(Math.abs(ground.minZ), Math.abs(ground.maxZ));
+    }
     document.body.dataset.mapBoundsX = `${fin.min.x.toFixed(3)},${fin.max.x.toFixed(3)}`;
     document.body.dataset.mapBoundsZ = `${fin.min.z.toFixed(3)},${fin.max.z.toFixed(3)}`;
     document.body.dataset.mapRoadBoundsX = roadBounds.isEmpty()
@@ -6166,13 +6197,17 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
         // 嵐が丘: 開けた草原。雲海も木陰もなく、遠くは曇り空の霞に溶ける。
         applyWeatherSky();
         const low = Math.min(...gunmaCourse.route.map((p) => p.y));
+        // 遠景の山は二重まで、低く。
         gunmaAtmosphere = createMountainAtmosphere(scene, low - 60, gunmaCourse.route,
-          gunmaCourse.terrainHeightAt);
+          gunmaCourse.terrainHeightAt, null, { layers: 2, heightScale: 0.4 });
+        // 地面は地図の外に置く(レイキャストしない)。高さは格子から直接読む。
+        scene.add(gunmaCourse.ground);
         for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
         }
         moorScenery = createMoorScenery(scene, gunmaCourse, GUNMA_SEED);
+        moorGrass = createMoorGrass(scene, gunmaCourse);
         document.body.dataset.mapFog = 'moor-haze';
       }
       if (COURSE_KEY === 'gunma') {
@@ -10373,6 +10408,7 @@ import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-1';
         gunmaCanopy?.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
         if (moorScenery) moorScenery.visible = !topView;
+        moorGrass?.update(dt, camera, topView);
         if (gunmaRoadsideForest) {
           gunmaRoadsideForest.visible = !topView;
           // Distant mountains move with the camera, so they do not jump at the seam.

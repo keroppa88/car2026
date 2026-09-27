@@ -61,7 +61,11 @@ export function createCanopyShade(seam) {
 // Fixed valley elevation: the road climbs through and above the sea of clouds.
 // upper (optional): a second cloud sea over the foothills, { y, fromY, toY }.
 // It fades in as the camera climbs from fromY to toY.
-export function createMountainAtmosphere(scene, elevation, route, groundHeightAt, upper = null) {
+// ridgeOptions (optional): { layers, heightScale } for the distant ridgelines.
+export function createMountainAtmosphere(scene, elevation, route, groundHeightAt, upper = null,
+  ridgeOptions = {}) {
+  const ridgeLayers = ridgeOptions.layers ?? 3;
+  const ridgeScale = ridgeOptions.heightScale ?? 1;
   const group = new THREE.Group();
   group.name = 'gunma-valley-clouds';
   const uniforms = {
@@ -78,13 +82,13 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
   const radius = Math.min(Math.hypot(size.x, size.z) * 0.5 + 450, 1500);
   const ridgeVertices = [], ridgeShades = [], ridgeHeights = [], ridgeIndices = [];
   const segments = 96;
-  for (let layer = 0; layer < 3; layer++) {
+  for (let layer = 0; layer < ridgeLayers; layer++) {
     for (let i = 0; i <= segments; i++) {
       const angle = i / segments * Math.PI * 2;
       const r = radius + layer * 85;
       const profile = 0.5 + 0.23*Math.sin(angle*5+layer*1.7)
         + 0.16*Math.sin(angle*11-layer) + 0.11*Math.sin(angle*19+layer);
-      const top = bounds.max.y - 30 + layer*35 + profile*95;
+      const top = bounds.max.y - 30 + (layer*35 + profile*95) * ridgeScale;
       const x = center.x + Math.cos(angle)*r, z = center.z + Math.sin(angle)*r;
       ridgeVertices.push(x, elevation-140, z, x, top, z);
       ridgeShades.push(0.44+layer*0.16, 0.44+layer*0.16);
