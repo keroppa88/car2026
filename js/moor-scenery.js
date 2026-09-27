@@ -1,7 +1,6 @@
 import * as THREE from '../lib/three.module.js';
 
-// Lone trees and scattered gritstone rocks on the open moor. Two instanced
-// meshes each for trees and rocks: a handful of draw calls in total.
+// Lone trees on the open moor, instanced: a handful of draw calls in total.
 // Positions are chosen along one period of the ring, then repeated one seam
 // before and after, so the copies past each end of the road match.
 export function createMoorScenery(scene, course, seed) {
@@ -75,33 +74,6 @@ export function createMoorScenery(scene, course, seed) {
     group.add(mesh);
   });
 
-  // Rocks: flat-shaded, squashed boulders, some in small clusters.
-  const rockSpots = [];
-  for (let i = 0; i < 220; i++) {
-    const spot = place(10, 320);
-    if (!spot) continue;
-    const cluster = random() < 0.3 ? 2 + Math.floor(random() * 4) : 1;
-    for (let c = 0; c < cluster; c++) {
-      rockSpots.push({
-        x: spot.x + (random() - 0.5) * 4 * c, z: spot.z + (random() - 0.5) * 4 * c,
-        size: 0.35 + random() * (c === 0 ? 1.4 : 0.7), turn: random() * Math.PI * 2,
-        squash: 0.45 + random() * 0.35,
-      });
-    }
-  }
-  const rockMatrices = [];
-  for (const rock of rockSpots) copies(rock, (x, z) => rockMatrices.push({ x, z, rock }));
-  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0),
-    new THREE.MeshLambertMaterial({ color: 0x77736a, flatShading: true }), rockMatrices.length);
-  rockMatrices.forEach(({ x, z, rock }, i) => {
-    position.set(x, groundHeightAt(x, z) + rock.size * rock.squash * 0.35, z);
-    quaternion.setFromAxisAngle(up, rock.turn);
-    scale.set(rock.size * 1.3, rock.size * rock.squash, rock.size);
-    matrix.compose(position, quaternion, scale);
-    rocks.setMatrixAt(i, matrix);
-  });
-  rocks.name = 'MoorRock';
-  group.add(rocks);
   scene.add(group);
   return group;
 }
