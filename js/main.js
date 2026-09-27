@@ -20,6 +20,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
+import { createMoorFog } from './moor-fog.js?v=20260927-moor-1';
 
 (function () {
   'use strict';
@@ -60,6 +61,7 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
   let gunmaAtmosphere = null;
   let moorScenery = null;
   let moorGrass = null;
+  let moorFog = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -6208,6 +6210,8 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
         }
         moorScenery = createMoorScenery(scene, gunmaCourse, GUNMA_SEED);
         moorGrass = createMoorGrass(scene, gunmaCourse);
+        // 地表近くに、ところどころ漂う霧。
+        moorFog = createMoorFog(scene, gunmaCourse);
         document.body.dataset.mapFog = 'moor-haze';
       }
       if (COURSE_KEY === 'gunma') {
@@ -10420,6 +10424,7 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
         if (moorScenery) moorScenery.visible = !topView;
         moorGrass?.update(dt, camera, topView);
+        moorFog?.update(dt, camera, gunmaCourse.mistColor, topView);
         if (gunmaRoadsideForest) {
           gunmaRoadsideForest.visible = !topView;
           // Distant mountains move with the camera, so they do not jump at the seam.
