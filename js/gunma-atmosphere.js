@@ -73,7 +73,9 @@ export function createMountainAtmosphere(scene, elevation, route, groundHeightAt
   const bounds = new THREE.Box3().setFromPoints(route);
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
-  const radius = Math.hypot(size.x, size.z) * 0.5 + 450;
+  // The ring follows the camera, so a long straight course need not push it
+  // past the far plane.
+  const radius = Math.min(Math.hypot(size.x, size.z) * 0.5 + 450, 1500);
   const ridgeVertices = [], ridgeShades = [], ridgeHeights = [], ridgeIndices = [];
   const segments = 96;
   for (let layer = 0; layer < 3; layer++) {

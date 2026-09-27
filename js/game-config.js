@@ -326,6 +326,34 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  moor: {
+    ...commonMap,
+    label: '嵐が丘',
+    file: 'procedural:moor',
+    preview: 'picture/moor.png',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaCenterLine', 'GunmaEdgeLine', 'GunmaGuardrail'],
+    drivableMaterialAliases: [],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: true,
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    spawnReference: 'fixed',
+    spawnReferenceX: 0,
+    spawnReferenceZ: 0,
+    spawnExactReference: false,
+    spawnDirectionMode: 'configured',
+    spawnHeading: Math.PI / 2,
+    spawnOffsetRight: 1.68,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20260923 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   monaco: {
     ...commonMap,
     label: 'モンテカルロ',
@@ -408,4 +436,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor'];

@@ -1,15 +1,18 @@
 import * as THREE from '../lib/three.module.js';
 
-function mistPatchAt(x, z) {
+export function mistPatchAt(x, z) {
   const wisps = Math.sin(x * 0.12 + Math.sin(z * 0.09) * 1.3)
     * Math.sin(z * 0.10 - x * 0.05) + 0.15 * Math.sin(x * 0.28 + z * 0.17);
   return THREE.MathUtils.smoothstep(wisps, -0.5, 0.7);
 }
 
 // Haze is applied only to grass. Asphalt and guardrails keep their full contrast.
-function addSideMist(material, mistColor, mistTime, seam) {
+// farHaze / nearHaze: [base, per-wisp] haze on distant / nearby ground.
+export function addSideMist(material, mistColor, mistTime, seam, farHaze = [0.14, 0.20], nearHaze = [0.12, 0.64]) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.gunmaMistColor = { value: mistColor };
+    shader.uniforms.gunmaFarHaze = { value: new THREE.Vector2(farHaze[0], farHaze[1]) };
+    shader.uniforms.gunmaNearHaze = { value: new THREE.Vector2(nearHaze[0], nearHaze[1]) };
     shader.uniforms.gunmaSeam = { value: new THREE.Vector4(seam.startX, seam.endX, seam.offset.x, seam.offset.z) };
     shader.uniforms.gunmaMistTime = mistTime;
     shader.vertexShader = shader.vertexShader
@@ -28,6 +31,7 @@ function addSideMist(material, mistColor, mistTime, seam) {
         uniform vec3 gunmaMistColor;
         uniform float gunmaMistTime;
         uniform vec4 gunmaSeam;
+        uniform vec2 gunmaFarHaze, gunmaNearHaze;
         varying float vMistDistance;
         varying float vMistPatch;
         varying vec3 vMistWorld;
@@ -49,13 +53,13 @@ function addSideMist(material, mistColor, mistTime, seam) {
         float wisps = smoothstep(0.22,0.76,mistDensity);
         // Distant ground keeps its forest colour; the cloud sea supplies the white.
         // A strong far-field haze here painted the valley as one flat pale sheet.
-        float haze = roadside * mix(0.12+0.64*wisps, 0.14+0.20*wisps, farField);
+        float haze = roadside * mix(gunmaNearHaze.x+gunmaNearHaze.y*wisps, gunmaFarHaze.x+gunmaFarHaze.y*wisps, farField);
         // Fine detail is evaluated per pixel, not interpolated across broad terrain triangles.
         outgoingLight *= 0.86 + 0.20*mistDensity + 0.04*vMistPatch;
         outgoingLight = mix(outgoingLight, gunmaMistColor*(0.90+0.10*wisps), haze);
         #include <output_fragment>`);
   };
-  material.customProgramCacheKey = () => 'gunma-side-mist-v6';
+  material.customProgramCacheKey = () => 'gunma-side-mist-v8';
   return material;
 }
 
