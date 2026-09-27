@@ -1,7 +1,7 @@
 import * as THREE from '../lib/three.module.js';
 
-// Upright moor grass (tussocks) around the camera only. One instanced mesh of
-// crossed blade cards on a world-anchored grid, re-laid only when the camera
+// Thin, dry, upright grass stalks around the camera only. One instanced mesh of
+// crossed stalk cards on a world-anchored grid, re-laid only when the camera
 // has moved a few metres, so the tufts stay put as the car drives through.
 const RADIUS = 44;
 const SPACING = 1.7;
@@ -10,8 +10,8 @@ export function createMoorGrass(scene, course) {
   const { route, seam, groundHeightAt } = course;
   const texture = makeBladeTexture();
   // Three crossed cards, origin at the base.
-  const card = new THREE.PlaneGeometry(1.3, 1, 1, 1).translate(0, 0.5, 0);
-  const cards = [0, 1, 2].map((k) => card.clone().rotateY(k * Math.PI / 3));
+  const card = new THREE.PlaneGeometry(0.9, 1, 1, 1).translate(0, 0.5, 0);
+  const cards = [0, 1].map((k) => card.clone().rotateY(k * Math.PI / 2));
   const geometry = mergeCards(cards);
   const time = { value: 0 };
   const material = new THREE.MeshLambertMaterial({
@@ -28,14 +28,15 @@ export function createMoorGrass(scene, course) {
         + sin(grassTime * 3.1 + grassRoot.z * 0.5) * 0.04;
       transformed.x += sway * position.y * position.y;`);
   };
-  material.customProgramCacheKey = () => 'moor-grass-v1';
+  material.customProgramCacheKey = () => 'moor-grass-v2';
   const cells = Math.ceil(RADIUS / SPACING);
   const capacity = Math.ceil(Math.PI * cells * cells) + 16;
   const mesh = new THREE.InstancedMesh(geometry, material, capacity);
   mesh.frustumCulled = false;
   mesh.name = 'MoorGrass';
   // Straw, pale gold and olive, so the grass does not look uniform.
-  const tints = [0xd8b886, 0xe2c292, 0xc9a877, 0xbcb27f, 0xd4ae7e].map((c) => new THREE.Color(c));
+  // Pale, dry, withered colours: bleached beige and grey-brown.
+  const tints = [0xd9d1b8, 0xcfc4a4, 0xe2dcc6, 0xc8bd9c, 0xbdb299].map((c) => new THREE.Color(c));
   scene.add(mesh);
 
   const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
@@ -73,7 +74,7 @@ export function createMoorGrass(scene, course) {
         if (!clear) continue;
         // Shrink towards the edge of the patch so it has no visible rim.
         const fade = 1 - THREE.MathUtils.smoothstep(d, RADIUS * 0.7, RADIUS);
-        const height = (0.55 + hash(cellX, cellZ, 37) * 0.6) * fade;
+        const height = (0.6 + hash(cellX, cellZ, 37) * 0.55) * fade;
         if (height < 0.05) continue;
         position.set(x, groundHeightAt(x, z) - 0.08, z);
         quaternion.setFromAxisAngle(up, hash(cellX, cellZ, 51) * Math.PI);
@@ -102,7 +103,8 @@ export function createMoorGrass(scene, course) {
   };
 }
 
-// Tapered blades on a transparent card, in light and dark straw.
+// Thin, nearly straight dry stalks on a transparent card, a few with a small
+// seed head.
 function makeBladeTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -110,17 +112,23 @@ function makeBladeTexture() {
   const ctx = canvas.getContext('2d');
   let seed = 7;
   const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 70; i++) {
-    const x = 3 + random() * 58, lean = (random() - 0.5) * 22, top = 4 + random() * 44;
-    const width = 0.8 + random() * 1.6;
-    const shade = 175 + Math.floor(random() * 75);
-    ctx.fillStyle = `rgb(${shade},${Math.floor(shade * 0.9)},${Math.floor(shade * 0.62)})`;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 16; i++) {
+    const x = 4 + random() * 56, lean = (random() - 0.5) * 6, top = 6 + random() * 40;
+    const shade = 185 + Math.floor(random() * 50);
+    ctx.strokeStyle = `rgb(${shade},${Math.floor(shade * 0.94)},${Math.floor(shade * 0.8)})`;
+    ctx.lineWidth = 1 + random() * 0.8;
     ctx.beginPath();
-    ctx.moveTo(x - width, 128);
-    ctx.quadraticCurveTo(x + lean * 0.3, 70, x + lean, top);
-    ctx.quadraticCurveTo(x + lean * 0.3 + width * 0.4, 70, x + width, 128);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(x, 128);
+    ctx.lineTo(x + lean, top);
+    ctx.stroke();
+    if (random() < 0.4) {
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x + lean, top);
+      ctx.lineTo(x + lean * 1.1, top + 8);
+      ctx.stroke();
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
