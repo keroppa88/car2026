@@ -20,6 +20,12 @@ export const CAR_CONFIGS = {
 export const ROUTE66_SCALE = 1.3;
 const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);
 
+const ROUTE66_GROUND_MATERIALS = [
+  '[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01',
+  '[Color M05]', 'M05', '[Blacktop Old 01]', 'Blacktop Old 01',
+  '[Color M04]', 'M04', '97a8128a-f00f-4500-98e2-d94e18e18c43',
+];
+
 export const ROUTE66_SEQUENCE = [
   'sa01','sa01','sa01','sa02','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa06',
   'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa05',
@@ -396,8 +402,10 @@ export const MAP_CONFIGS = {
     roadMaterial: 'M06_Steel_Smoke',
     roadMaterialAliases: ['M06'],
     // 砂漠(Formica Beige)と中央線は地表。壁扱いせず、どこでも走れる。
-    nonWallMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
-    drivableMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
+    // 地面の高さにある面の材質は区間ごとに違う(全9ファイルを下向きに走査して確認):
+    // sa06 の道路 M05 とアスファルト、sa09 基地の M04、sa08 の小さな面。
+    nonWallMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
+    drivableMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
     sandMaterialAliases: ['[Formica Beige]', 'Formica Beige'],
     dustNormalInterval: 0.06,
     dustHeavyInterval: 0.012,
@@ -413,6 +421,10 @@ export const MAP_CONFIGS = {
     cpuLaneOffset: -R66(2.9),
     cpuSameDirectionLaneRangeX: [R66(3.6), R66(6.3)],
     cpuOncomingLaneRangeX: [R66(-1.8), R66(0.9)],
+    // CPU車は海岸線の速度の1/3。
+    cpuSpeedScale: 1 / 3,
+    // 砂漠を走ると画面を縦に小刻みに揺らす。
+    desertShake: true,
     autoDriveMode: 'seaCruise130',
     spawnSearchRadius: 2000,
     spawnReference: 'fixed',
