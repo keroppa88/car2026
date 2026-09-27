@@ -50,7 +50,8 @@ export function createMoorScenery(scene, course, seed) {
 
   // Lone trees: gnarled, wind-bent hawthorns that are mostly bare branches.
   // Four shapes are grown once and shared by instancing.
-  const variants = Array.from({ length: 4 }, () => buildTreeGeometry(random));
+  // Two shapes lean with the wind, two stand upright.
+  const variants = [1, 1, 0, 0].map((lean) => buildTreeGeometry(random, lean));
   const treeSpots = [];
   for (let i = 0; i < 60; i++) {
     const spot = place(14, 260);
@@ -108,7 +109,7 @@ export function createMoorScenery(scene, course, seed) {
 // One gnarled tree: a leaning trunk that forks into ever thinner branches,
 // every branch pushed downwind (+x) and a little upward. Built from open
 // five-sided tubes, all in one geometry.
-function buildTreeGeometry(random) {
+function buildTreeGeometry(random, lean) {
   const positions = [], indices = [];
   const wind = new THREE.Vector3(1, 0, 0.25).normalize();
   const upward = new THREE.Vector3(0, 1, 0);
@@ -146,12 +147,13 @@ function buildTreeGeometry(random) {
     for (let c = 0; c < children; c++) {
       const axis = new THREE.Vector3(random() - 0.5, random() - 0.5, random() - 0.5).cross(endDir).normalize();
       const childDir = endDir.clone().applyAxisAngle(axis, 0.45 + random() * 0.55)
-        .addScaledVector(wind, 0.4).addScaledVector(upward, 0.12).normalize();
+        .addScaledVector(wind, 0.15 + 0.25 * lean).addScaledVector(upward, 0.12).normalize();
       grow(end, childDir, length * (0.66 + random() * 0.14), tip, depth - 1);
     }
   };
-  // Trunk leans downwind, then forks low like a hawthorn on open moor.
-  const trunkDir = upward.clone().addScaledVector(wind, 0.35 + random() * 0.25).normalize();
+  // Trunk leans gently downwind (or stands upright), then forks low like a
+  // hawthorn on open moor.
+  const trunkDir = upward.clone().addScaledVector(wind, (0.17 + random() * 0.13) * lean).normalize();
   grow(new THREE.Vector3(0, 0, 0), trunkDir, 2.4 + random() * 0.8, 0.3, 5);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

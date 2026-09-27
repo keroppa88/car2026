@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-2';
-import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
+import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-3';
+import { createMoorGrass } from './moor-grass.js?v=20260927-moor-3';
 
 (function () {
   'use strict';
@@ -7465,7 +7465,9 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
   let musicAutoAdvance = false;
   let musicSkipAttempts = 0;
   // quiet: 準備中の表示を出さない(ぐんまーのアクセル連動再生用)。
+  let musicAutoQuiet = false;
   function playCurrent(isAuto, quiet = false) {
+    musicAutoQuiet = quiet;
     const it = musicItems[musicSel];
     if (!it || !it.url) return false;
     musicAutoAdvance = !!isAuto;
@@ -7542,6 +7544,8 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
   let musicToastEl = null;
   let musicToastTimer = 0;
   function musicToast(text) {
+    // アクセル連動の自動再生中は、再生前の案内を一切出さない。
+    if (musicAutoQuiet) return;
     if (!musicToastEl) {
       musicToastEl = document.createElement('div');
       musicToastEl.style.cssText = 'position:fixed;left:50%;bottom:44px;transform:translateX(-50%);'
@@ -7679,6 +7683,7 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
             if (ev.data === 1) {
               document.body.dataset.youtubePlayer = 'playing';
               musicSkipAttempts = 0;
+              musicAutoQuiet = false;
             }
             if (ev.data === 0) playNext();
           },
@@ -7686,6 +7691,12 @@ import { createMoorGrass } from './moor-grass.js?v=20260927-moor-2';
           // 選曲画面へ戻し、次の決定操作で確実に playVideo() を呼ぶ。
           onAutoplayBlocked: () => {
             document.body.dataset.youtubePlayer = 'autoplay-blocked';
+            // 自動再生のときは選曲画面を開かず、次のアクセル操作で黙って再試行する。
+            if (musicAutoQuiet) {
+              gunmaThemeDone = false;
+              gunmaThemeRetryAt = performance.now() + 1000;
+              return;
+            }
             musicToast('♪ 再生が制限されました：選択曲をもう一度決定');
             openMusicMenu();
           },
