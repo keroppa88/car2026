@@ -340,6 +340,12 @@ export const MAP_CONFIGS = {
     supportSurfaceMode: 'drivable',
     blockOutsideDrivableSurface: true,
     ignoreMapWallCollisions: true,
+    // 草原では森林地帯と同じ砂煙を車の後ろに出す。
+    sandMaterialAliases: ['GunmaGrass'],
+    dustNormalInterval: 0.06,
+    dustHeavyInterval: 0.012,
+    dustScale: 1.12,
+    dustColor: [164, 133, 86],
     loopMode: 'none',
     roadMotionStep: 0.15,
     spawnReference: 'fixed',

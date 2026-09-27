@@ -1,19 +1,21 @@
 import * as THREE from '../lib/three.module.js';
 
-// Low fog lying in patches over the moor, close to the ground. One instanced
-// mesh of soft camera-facing sheets on a world-anchored grid around the
-// camera: most grid cells stay clear, a few hold a patch of three or four
-// sheets that drift slowly with the wind.
+// Low fog pooled in the hollows of the moor, close to the ground. One instanced
+// mesh of small, round, soft puffs on a world-anchored grid around the camera.
+// A grid cell only holds fog when it lies lower than the ground around it, so
+// the fog gathers at the foot of the slopes; many overlapping puffs make a
+// fluffy bank with no straight edge.
 const RADIUS = 260;
-const CELL = 36;
+const CELL = 30;
+const PUFFS = 10;
 
 export function createMoorFog(scene, course) {
   const { groundHeightAt } = course;
-  const texture = makeFogTexture();
+  const texture = makePuffTexture();
   const time = { value: 0 };
   const tint = { value: new THREE.Color(0xc9cdc6) };
   const cells = Math.ceil(RADIUS / CELL);
-  const capacity = Math.ceil(Math.PI * cells * cells) * 4;
+  const capacity = Math.ceil(Math.PI * cells * cells) * PUFFS;
   const material = new THREE.ShaderMaterial({
     uniforms: { fogMap: { value: texture }, time, tint },
     vertexShader: `
@@ -22,13 +24,16 @@ export function createMoorFog(scene, course) {
       varying float fogFade;
       void main() {
         vec4 centre = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-        // Slow drift and a gentle swell, different for every sheet.
-        centre.x += sin(time * 0.06 + centre.z * 0.013) * 9.0;
-        centre.z += cos(time * 0.045 + centre.x * 0.011) * 5.0;
+        // Slow drift and a gentle swell, different for every puff.
+        centre.x += sin(time * 0.06 + centre.z * 0.013) * 6.0;
+        centre.z += cos(time * 0.045 + centre.x * 0.011) * 4.0;
+        centre.y += sin(time * 0.2 + centre.x * 0.05) * 0.4;
         vec4 view = viewMatrix * modelMatrix * centre;
         float range = length(view.xyz);
-        // Clear right around the camera and far away, so no sheet edge shows.
-        fogFade = smoothstep(12.0, 40.0, range) * (1.0 - smoothstep(${(RADIUS * 0.75).toFixed(1)}, ${RADIUS.toFixed(1)}, range));
+        // Clear right around the camera and far away, so no puff pops in.
+        // The instance's z scale carries how deep the hollow is (0..1).
+        fogFade = length(instanceMatrix[2].xyz)
+          * smoothstep(8.0, 30.0, range) * (1.0 - smoothstep(${(RADIUS * 0.7).toFixed(1)}, ${RADIUS.toFixed(1)}, range));
         view.xy += position.xy * vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
         fogUv = uv;
         gl_Position = projectionMatrix * view;
@@ -39,8 +44,8 @@ export function createMoorFog(scene, course) {
       varying vec2 fogUv;
       varying float fogFade;
       void main() {
-        float alpha = texture2D(fogMap, fogUv).a * 0.42 * fogFade;
-        if (alpha < 0.01) discard;
+        float alpha = texture2D(fogMap, fogUv).a * 0.3 * fogFade;
+        if (alpha < 0.004) discard;
         gl_FragColor = vec4(tint, alpha);
       }`,
     transparent: true, depthWrite: false,
@@ -56,6 +61,23 @@ export function createMoorFog(scene, course) {
     h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
     return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
   };
+  // How far a spot sits below the ground around it, 0 (not a hollow) to 1.
+  // Cached per cell: the terrain never changes.
+  const hollowCache = new Map();
+  const hollowAt = (cellX, cellZ) => {
+    const key = cellX * 100003 + cellZ;
+    let depth = hollowCache.get(key);
+    if (depth !== undefined) return depth;
+    const x = cellX * CELL, z = cellZ * CELL;
+    let around = 0;
+    for (let k = 0; k < 8; k++) {
+      const angle = k / 8 * Math.PI * 2;
+      around += groundHeightAt(x + Math.cos(angle) * 80, z + Math.sin(angle) * 80);
+    }
+    depth = THREE.MathUtils.smoothstep(around / 8 - groundHeightAt(x, z), 1.0, 3.0);
+    hollowCache.set(key, depth);
+    return depth;
+  };
   const matrix = new THREE.Matrix4();
   const lastCentre = new THREE.Vector2(Infinity, Infinity);
   const relay = (cx, cz) => {
@@ -64,18 +86,22 @@ export function createMoorFog(scene, course) {
     for (let iz = -cells; iz <= cells; iz++) {
       for (let ix = -cells; ix <= cells; ix++) {
         const cellX = gx + ix, cellZ = gz + iz;
-        // About one cell in four holds a fog patch.
-        if (hash(cellX, cellZ, 3) > 0.26) continue;
-        const sheets = 3 + Math.floor(hash(cellX, cellZ, 5) * 2);
-        for (let k = 0; k < sheets && n < capacity; k++) {
-          const x = (cellX + hash(cellX, cellZ, 7 + k) - 0.5) * CELL;
-          const z = (cellZ + hash(cellX, cellZ, 17 + k) - 0.5) * CELL;
-          if (Math.hypot(x - cx, z - cz) > RADIUS) continue;
-          const width = 26 + hash(cellX, cellZ, 29 + k) * 30;
-          const height = 3.5 + hash(cellX, cellZ, 41 + k) * 3;
-          // Centre a little above the ground; the faint lower edge sinks in.
-          matrix.makeScale(width, height, 1);
-          matrix.setPosition(x, groundHeightAt(x, z) + height * 0.32, z);
+        if (Math.hypot(cellX * CELL - cx, cellZ * CELL - cz) > RADIUS + CELL) continue;
+        const depth = hollowAt(cellX, cellZ);
+        // Not every hollow holds fog, so it lies here and there.
+        if (depth < 0.05 || hash(cellX, cellZ, 3) > 0.7) continue;
+        const puffs = Math.round(PUFFS * (0.5 + depth * 0.5));
+        for (let k = 0; k < puffs && n < capacity; k++) {
+          // Puffs cluster round the cell centre, overlapping one another.
+          const angle = hash(cellX, cellZ, 7 + k) * Math.PI * 2;
+          const r = Math.sqrt(hash(cellX, cellZ, 17 + k)) * CELL * 0.75;
+          const x = cellX * CELL + Math.cos(angle) * r;
+          const z = cellZ * CELL + Math.sin(angle) * r;
+          const width = 16 + hash(cellX, cellZ, 29 + k) * 18;
+          const height = width * (0.28 + hash(cellX, cellZ, 41 + k) * 0.12);
+          // Centre a little above the ground; the soft lower edge sinks in.
+          matrix.makeScale(width, height, depth);
+          matrix.setPosition(x, groundHeightAt(x, z) + height * 0.3, z);
           mesh.setMatrixAt(n++, matrix);
         }
       }
@@ -98,21 +124,22 @@ export function createMoorFog(scene, course) {
   };
 }
 
-// Several soft blobs clustered into one wide, low bank of fog.
-function makeFogTexture() {
+// One round, soft puff: dense in the middle, fading smoothly to nothing well
+// inside the square, so no edge of the sheet ever shows.
+function makePuffTexture() {
+  const size = 64;
   const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 64;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d');
-  let seed = 11;
-  const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 16; i++) {
-    const x = 28 + random() * 72, y = 30 + random() * 12, r = 14 + random() * 14;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.35)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 64);
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2 - 1);
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    // Gaussian-like falloff, exactly zero at the rim.
+    const a = Math.exp(-t * t * 3.2) * (1 - t);
+    g.addColorStop(t, `rgba(255,255,255,${a.toFixed(3)})`);
   }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
   return new THREE.CanvasTexture(canvas);
 }
