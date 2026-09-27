@@ -19,7 +19,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
-import { createMoorFog } from './moor-fog.js?v=20260927-moor-2';
+import { createMoorFog } from './moor-fog.js?v=20260927-moor-3';
 
 (function () {
   'use strict';
@@ -540,9 +540,11 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-2';
     },
   ];
   // 嵐が丘の雲1は、空一面に低く垂れこめる灰色の雲。
+  // scaleを小さくすると頭上の雲が大きく見え、projを小さくすると地平線へ
+  // 強く圧縮されるので、雲の層が低い位置にあるように見える。
   if (COURSE_KEY === 'moor') {
     Object.assign(CLOUD_CFGS[0], {
-      cov: 0.66, soft: 0.34, scale: 0.9, stretch: 0.55, minY: 0.03, band: 0.06,
+      cov: 0.66, soft: 0.34, scale: 0.4, stretch: 0.55, proj: 0.025, minY: 0.015, band: 0.05,
       shadow: 0.92, litSky: 0.32, shadowSky: 0.62, opacity: 0.96,
     });
   }

@@ -74,7 +74,7 @@ export function createMoorFog(scene, course) {
       const angle = k / 8 * Math.PI * 2;
       around += groundHeightAt(x + Math.cos(angle) * 80, z + Math.sin(angle) * 80);
     }
-    depth = THREE.MathUtils.smoothstep(around / 8 - groundHeightAt(x, z), 1.0, 3.0);
+    depth = THREE.MathUtils.smoothstep(around / 8 - groundHeightAt(x, z), 0.2, 2.4);
     hollowCache.set(key, depth);
     return depth;
   };
@@ -89,7 +89,7 @@ export function createMoorFog(scene, course) {
         if (Math.hypot(cellX * CELL - cx, cellZ * CELL - cz) > RADIUS + CELL) continue;
         const depth = hollowAt(cellX, cellZ);
         // Not every hollow holds fog, so it lies here and there.
-        if (depth < 0.05 || hash(cellX, cellZ, 3) > 0.7) continue;
+        if (depth < 0.05 || hash(cellX, cellZ, 3) > 0.9) continue;
         const puffs = Math.round(PUFFS * (0.5 + depth * 0.5));
         for (let k = 0; k < puffs && n < capacity; k++) {
           // Puffs cluster round the cell centre, overlapping one another.
