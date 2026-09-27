@@ -377,7 +377,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: 'ルート66',
     file: 'map/route66/sa01.glb',
-    preview: 'picture/route66.png',
+    preview: 'picture/root66.png',
     // driving_us_s の砂漠マップ。GLBは1単位=1mなので縮尺はそのまま。
     scale: 1,
     assetRevision: '20260927-route66-1',
