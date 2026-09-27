@@ -13,6 +13,18 @@ export const CAR_CONFIGS = {
   },
 };
 
+// ルート66(driving_us_s)のループ順。108区間で1周。
+// 3:青看板 8:黄看板 17:シェル 26:黄看板 35:マルボロ 44:青看板 53:ケンタッキー
+// 59:黄看板 66:青看板 80:黄看板 89:バグダッドカフェ 101:軍事基地 108:ナイトホーク
+export const ROUTE66_SEQUENCE = [
+  'sa01','sa01','sa01','sa02','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa06',
+  'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa05',
+  'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa02','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa04',
+  'sa01','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa01','sa01','sa02','sa01','sa01','sa01','sa01','sa01',
+  'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa03','sa01','sa01','sa01','sa01','sa07',
+  'sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa01','sa09','sa01','sa01','sa01','sa01','sa01','sa08',
+];
+
 const commonMap = {
   rotationY: 0,
   positionOffsetX: 0,
@@ -361,6 +373,57 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  route66: {
+    ...commonMap,
+    label: 'ルート66',
+    file: 'map/route66/sa01.glb',
+    preview: 'picture/route66.png',
+    // driving_us_s の砂漠マップ。GLBは1単位=1mなので縮尺はそのまま。
+    scale: 1,
+    assetRevision: '20260927-route66-1',
+    // sa01(ベース道路)の間に看板・店などの特殊マップが入る108区間を1周とする。
+    segmentFiles: ROUTE66_SEQUENCE.map((name) => `map/route66/${name}.glb`),
+    // 各GLBは595.76m。元ゲームは585m間隔で並べていたので、10.76m重ねる。
+    sequenceOverlapMeters: 10.76,
+    sequenceAnchorX: 'min',
+    loopMode: 'sequence',
+    // 元ゲームが非表示にしていた緑・青緑・マゼンタ系の装飾メッシュを隠す。
+    hideVegetationMeshes: true,
+    roadMaterial: 'M06_Steel_Smoke',
+    roadMaterialAliases: ['M06'],
+    // 砂漠(Formica Beige)と中央線は地表。壁扱いせず、どこでも走れる。
+    nonWallMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
+    drivableMaterialAliases: ['[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01'],
+    sandMaterialAliases: ['[Formica Beige]', 'Formica Beige'],
+    dustNormalInterval: 0.06,
+    dustHeavyInterval: 0.012,
+    dustScale: 1.12,
+    dustColor: [164, 133, 86],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    drivableSeamAssistRatio: 10,
+    // 元ゲームと同じく建物・看板には衝突しない。
+    ignoreMapWallCollisions: true,
+    // 右側通行。中央線(x=2.25)から右へ2.9mが自車・同方向車線。
+    cpuCenterLineEntryX: 2.25,
+    cpuLaneOffset: -2.9,
+    cpuSameDirectionLaneRangeX: [3.6, 6.3],
+    cpuOncomingLaneRangeX: [-1.8, 0.9],
+    autoDriveMode: 'seaCruise130',
+    spawnSearchRadius: 2000,
+    spawnReference: 'fixed',
+    spawnReferenceX: 2.25,
+    spawnReferenceZ: -20,
+    spawnExactReference: false,
+    spawnDirectionMode: 'configured',
+    spawnHeading: Math.PI,
+    // Z減少方向を向くと、このゲームの「右」は-X。右車線(+X)へは負の値で寄せる。
+    spawnOffsetRight: -2.9,
+    spawnSurfaceMode: 'roadSurface',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20260927 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   monaco: {
     ...commonMap,
     label: 'モンテカルロ',
@@ -443,4 +506,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66'];

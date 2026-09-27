@@ -11,7 +11,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-moor-4';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-route66-2';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -20,6 +20,7 @@ import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-1';
 
 (function () {
   'use strict';
@@ -34,6 +35,8 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor';
+  // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
+  const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
@@ -60,6 +63,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   let gunmaAtmosphere = null;
   let moorScenery = null;
   let moorFog = null;
+  let route66Scenery = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -368,7 +372,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   document.body.dataset.mapFallOutsideRoad = String(Boolean(MAP_CONFIG.fallOutsideRoad));
   document.body.dataset.playerFallingOutsideRoad = 'false';
   document.body.dataset.cpuPlayerCollision =
-    COURSE_KEY === 'sea' || TOUGE_COURSE ? 'disabled' : 'enabled';
+    STRAIGHT_SEQUENCE_COURSE || TOUGE_COURSE ? 'disabled' : 'enabled';
   document.body.dataset.mapWallCollisions =
     MAP_CONFIG.ignoreMapWallCollisions ? 'disabled' : 'enabled';
   document.body.dataset.mapDrivableSeamAssistRatio =
@@ -380,9 +384,13 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   const scene = new THREE.Scene();
   // ぐんまーも初期の空は #8ecbef、地平線 #eaf4fb、雲1(下の weatherCloudMode)。
   // 嵐が丘は低い雲の曇り空。
-  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : 0x8ecbef;
+  // ルート66は元ゲームの初期色(#9bbae8、上空はその0.42倍)。霧は砂漠の茶色で、
+  // 遠くの地面が空に溶けず地平線がくっきり出るようにする。
+  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.Fog(SKY, 130, 480);
+  scene.fog = COURSE_KEY === 'route66'
+    ? new THREE.FogExp2(0x8a7048, 0.003)
+    : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : 1200);
@@ -409,7 +417,8 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   // コントロールパネルから変更する上空色・地平線色。昼夜照明とは独立して保持し、
   // 夜へ切り替えたときは同じ色相を暗くして反映する。
   const weatherTopColor = new THREE.Color(SKY);
-  const weatherHorizonColor = new THREE.Color(COURSE_KEY === 'moor' ? 0xd1d5d4 : 0xeaf4fb);
+  const weatherHorizonColor = new THREE.Color(
+    COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8 : 0xeaf4fb);
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -512,7 +521,11 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
+    if (fog && COURSE_KEY === 'route66') {
+      // 砂漠の茶色。夜は同じ色相のまま暗くする。
+      fog.color.setHex(0x8a7048);
+      if (nightMode) fog.color.multiplyScalar(0.12);
+    } else if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
@@ -2178,7 +2191,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
       Boolean(MAP_CONFIG.ignoreRoadTriangleWalls)
         && roadMeshes.includes(object)
     ) || (
-      COURSE_KEY === 'sea'
+      STRAIGHT_SEQUENCE_COURSE
         && car2DrivableMeshes.includes(object)
     );
   }
@@ -3714,7 +3727,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
   // 直線・曲線の両方に追従する道路中央ラインを作る。
   function buildSequenceRoadCenterline(sampleStep = 3) {
     if (!mapBounds || mapBounds.isEmpty()) return [];
-    if (COURSE_KEY === 'sea') {
+    if (STRAIGHT_SEQUENCE_COURSE) {
       const startZ = mapBounds.max.z - 3;
       const endZ = mapBounds.min.z + 3;
       const spanZ = startZ - endZ;
@@ -3726,7 +3739,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
         x: centerX,
         y: 0,
         z: Math.max(endZ, startZ - index * sampleStep),
-        width: MAP_CONFIG.cpuLaneOffset * 2 + 0.8,
+        width: Math.abs(MAP_CONFIG.cpuLaneOffset) * 2 + 0.8,
       }));
       document.body.dataset.seaCpuCenterLineMode = 'fixed-straight-x';
       document.body.dataset.seaCpuCenterLineX = centerX.toFixed(3);
@@ -5353,6 +5366,28 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
     document.body.dataset.mapVisualLoopCopies = String(car2VisualWraps.length);
   }
 
+  // ルート66(driving_us_s)の元ゲームと同じ規則で、緑・青緑系の草や苔の装飾と
+  // マゼンタ系の補助面を非表示にする(取り除くと以後の処理対象にもならない)。
+  function hideVegetationMeshes(root) {
+    const hidden = [];
+    root.traverse((object) => {
+      if (!object.isMesh) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const hide = materials.some((material) => {
+        const c = material?.color;
+        if (!c) return false;
+        const magenta = c.r > 0.6 && c.g < 0.35 && c.b > 0.5;
+        const vegetation = c.r < 0.78 && Math.max(c.g, c.b) > c.r + 0.06;
+        return magenta || vegetation;
+      });
+      if (hide) hidden.push(object);
+    });
+    for (const object of hidden) object.removeFromParent();
+    document.body.dataset.mapHiddenVegetationMeshes = String(
+      Number(document.body.dataset.mapHiddenVegetationMeshes || 0) + hidden.length
+    );
+  }
+
   async function loadGltfMap(url) {
     // 読込式マップの接続軸は元モデルY（ゲーム内Z）のみ。
     // X方向の左右には複製マップを一切生成しない。
@@ -5395,6 +5430,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
           const centerLineMaterials = MAP_CONFIG.cpuCenterLineMode === 'brightestGrayPerSegment'
             ? markBrightestSequenceMaterial(template)
             : [];
+          if (MAP_CONFIG.hideVegetationMeshes) hideVegetationMeshes(template);
           let count = 0;
           template.traverse((object) => { if (object.isMesh) count++; });
           if (count > 200) template = mergeMapMeshes(template);
@@ -6113,7 +6149,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
       : await discoverCpuCarVox();
     // 首都高速と海岸線は速度が車種ランク基準なので、cpu_car_list.txt の車種を
     // ひととおり読み込む（4車種だけだとランクが偏る）。
-    const cpuVoxLimit = (CAR2_MODE || COURSE_KEY === 'sea' || COURSE_KEY === 'indy')
+    const cpuVoxLimit = (CAR2_MODE || STRAIGHT_SEQUENCE_COURSE || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT
       : 4;
     const gunmaCarVox = TOUGE_COURSE
@@ -6193,8 +6229,15 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
       const info = await loadGltfMap(MAP_GLTF);
       // 130〜480mの常時フォグが地図全体を空色へ混ぜ、元色より白く見せていた。
       // 読み込み式の4マップでは無効化し、遠景までマテリアル本来の色を保つ。
-      scene.fog = null;
-      document.body.dataset.mapFog = 'none';
+      // ルート66は元ゲームと同じ砂漠色の霧を残し、地平線をくっきり見せる。
+      if (COURSE_KEY !== 'route66') {
+        scene.fog = null;
+        document.body.dataset.mapFog = 'none';
+      } else {
+        route66Scenery = createRoute66Scenery(scene, MAP_CONFIG.segmentFiles,
+          MAP_CONFIG.sequenceOverlapMeters);
+        document.body.dataset.mapFog = 'route66-desert';
+      }
       if (COURSE_KEY === 'moor') {
         // 嵐が丘: 開けた草原。雲海も木陰もなく、遠くは曇り空の霞に溶ける。
         applyWeatherSky();
@@ -6485,7 +6528,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
         ? Array.from({ length: 4 }, (_, i) => cpuMeshes[i % cpuMeshes.length].clone())
         : [];
       Object.keys(info.loops).slice(0, 4).forEach((name, i) => {
-        if (CAR2_MODE || COURSE_KEY === 'indy' || COURSE_KEY === 'sea'
+        if (CAR2_MODE || COURSE_KEY === 'indy' || STRAIGHT_SEQUENCE_COURSE
           || COURSE_KEY === 'forest' || TOUGE_COURSE) return;
         const wps = info.loops[name].sort((a, b) => a.i - b.i).map((waypoint) => ({
           x: waypoint.p.x,
@@ -6518,7 +6561,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
         document.body.dataset.tokyoCpuSharpTurnPoints = String(
           tokyoCpuRoute.filter((point) => Math.abs(point.turn) > CAR2_CPU_DRIFT_TURN).length
         );
-      } else if (COURSE_KEY === 'sea') {
+      } else if (STRAIGHT_SEQUENCE_COURSE) {
         const seaRoadCenterline = buildSequenceRoadCenterline();
         spawnSequenceTrafficCpuCars(seaRoadCenterline, cpuCars);
         car2AutoRoute = offsetSequenceLane(seaRoadCenterline);
@@ -8877,7 +8920,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
     // 効かせると押し合いになって両方その場で止まってしまう。
     // ユーザーが操作している間は従来どおり当たり判定あり（ぶつかれば避ける）。
     // 海岸線は交通量を優先し、操作中も相互にすり抜ける。
-    const cpuCollisionOff = COURSE_KEY === 'sea' || TOUGE_COURSE
+    const cpuCollisionOff = STRAIGHT_SEQUENCE_COURSE || TOUGE_COURSE
       || demoActive || autoDrive;
     document.body.dataset.playerCpuCollisionMode = cpuCollisionOff ? 'pass' : 'solid';
     if (!cpuCollisionOff) {
@@ -10419,6 +10462,7 @@ import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
       updateTailTrails(dt);
       updateCamera(dt);
       updateWeatherEffects(dt);
+      route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView);
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
         gunmaCanopy?.update(dt, weatherDuskLevel());
