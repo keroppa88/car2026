@@ -22,7 +22,7 @@ import { buildNeoMap } from './neo-map.js?v=20260928-neo-tron-1';
 import { createNeoCity } from './neo-city.js?v=20260928-neo-tron-5';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-1';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
 
 (function () {
   'use strict';
