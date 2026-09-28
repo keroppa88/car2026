@@ -22,7 +22,7 @@ import { buildNeoMap } from './neo-map.js?v=20260928-neo-tron-1';
 import { createNeoCity } from './neo-city.js?v=20260928-neo-tron-5';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66lane-1';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-1';
 
 (function () {
   'use strict';
@@ -395,7 +395,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66lane-1'
     : NEO_COURSE ? 0x000000 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = COURSE_KEY === 'route66'
-    ? new THREE.FogExp2(0x8a7048, 0.003)
+    ? new THREE.FogExp2(0xc0aa8a, 0.003)
     : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
@@ -530,8 +530,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66lane-1'
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
     if (fog && COURSE_KEY === 'route66') {
-      // 砂漠の茶色。夜は同じ色相のまま暗くする。
-      fog.color.setHex(0x8a7048);
+      // 砂漠と同じ色。夜は同じ色相のまま暗くする。
+      fog.color.setHex(0xc0aa8a);
       if (nightMode) fog.color.multiplyScalar(0.12);
     } else if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
     cloudUniforms.uSkyColor.value.copy(top);
@@ -6233,7 +6233,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66lane-1'
     // 左右2灯を車体前端より前に置き、路面とガードレールを照らす。
     // ぐんまーは元の光量10倍・到達距離8倍・同距離での照射幅3倍。
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
-    const gunmaHeadlights = TOUGE_COURSE;
+    // ルート66もぐんまーと同じ強さで、暗い砂漠の道の先まで照らす。
+    const gunmaHeadlights = TOUGE_COURSE || COURSE_KEY === 'route66';
     for (const side of [-1, 1]) {
       const intensity = gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
