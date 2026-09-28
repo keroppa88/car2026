@@ -555,7 +555,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260928-neotokyo-1';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20260928-neouc-1';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -866,10 +866,19 @@
     if (!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
       window.addEventListener('keydown', () => { location.href = location.pathname; });
     }
+  } else if (hasGameSelection && requestedCourse === 'neo') {
+    // NeoTokyo はコース廃止中。黒地に白文字の案内だけ出す。
+    document.body.replaceChildren();
+    document.body.style.cssText = 'margin:0;background:#000;';
+    const notice = document.createElement('div');
+    notice.textContent = 'Under construction';
+    notice.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;'
+      + 'color:#fff;background:#000;font:bold 48px sans-serif;';
+    document.body.append(notice);
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20260928-neotokyo-1');
+    import('./js/main.js?v=20260928-neouc-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
