@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap } from './neo-map.js?v=20260928-neo-1';
-import { createNeoCity } from './neo-city.js?v=20260928-neo-3';
+import { buildNeoMap } from './neo-map.js?v=20260928-neo-tron-1';
+import { createNeoCity } from './neo-city.js?v=20260928-neo-tron-5';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2';
@@ -392,7 +392,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   // ルート66は元ゲームの初期色(#9bbae8、上空はその0.42倍)。霧は砂漠の茶色で、
   // 遠くの地面が空に溶けず地平線がくっきり出るようにする。
   const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61
-    : NEO_COURSE ? 0x07061a : 0x8ecbef;
+    : NEO_COURSE ? 0x020308 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = COURSE_KEY === 'route66'
     ? new THREE.FogExp2(0x8a7048, 0.003)
@@ -425,7 +425,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   const weatherTopColor = new THREE.Color(SKY);
   const weatherHorizonColor = new THREE.Color(
     COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8
-      : NEO_COURSE ? 0x2a1850 : 0xeaf4fb);
+      : NEO_COURSE ? 0x1f8f78 : 0xeaf4fb);
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -508,7 +508,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
     }
     // 地表のモヤの色。嵐が丘は曇り空の下の、少し緑がかった灰色。
     const gunmaHaze = new THREE.Color(COURSE_KEY === 'moor' ? 0x9ea596
-      : NEO_COURSE ? 0x1c1233 : 0xaebdb4);
+      : NEO_COURSE ? 0x0a1f1a : 0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
     gunmaHaze.lerp(horizon, 0.18);
     if (TOUGE_COURSE && gunmaCourse?.mistColor) {
@@ -2689,7 +2689,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       const point = route[closest], normal = gunmaCourse.tangents[closest];
       const lateral = (player.pos.x - point.x) * normal.x
         + (player.pos.z - point.z) * normal.z;
-      const limit = 3.87;
+      // 未来都市は道幅が変わり、チューブの床(道路の端から4.7m)まで寄れる。
+      const limit = NEO_COURSE ? gunmaCourse.halfWidths[closest] + 3.8 : 3.87;
       if (Math.abs(lateral) > limit) {
         const side = Math.sign(lateral);
         const correction = lateral - side * limit;
