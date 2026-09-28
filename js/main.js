@@ -392,7 +392,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   // ルート66は元ゲームの初期色(#9bbae8、上空はその0.42倍)。霧は砂漠の茶色で、
   // 遠くの地面が空に溶けず地平線がくっきり出るようにする。
   const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61
-    : NEO_COURSE ? 0x020308 : 0x8ecbef;
+    : NEO_COURSE ? 0x000000 : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = COURSE_KEY === 'route66'
     ? new THREE.FogExp2(0x8a7048, 0.003)
@@ -425,7 +425,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   const weatherTopColor = new THREE.Color(SKY);
   const weatherHorizonColor = new THREE.Color(
     COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8
-      : NEO_COURSE ? 0x1f8f78 : 0xeaf4fb);
+      : NEO_COURSE ? 0x000000 : 0xeaf4fb);
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -508,7 +508,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
     }
     // 地表のモヤの色。嵐が丘は曇り空の下の、少し緑がかった灰色。
     const gunmaHaze = new THREE.Color(COURSE_KEY === 'moor' ? 0x9ea596
-      : NEO_COURSE ? 0x0a1f1a : 0xaebdb4);
+      : NEO_COURSE ? 0x000000 : 0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
     gunmaHaze.lerp(horizon, 0.18);
     if (TOUGE_COURSE && gunmaCourse?.mistColor) {
@@ -1106,6 +1106,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   ];
   function weatherDuskLevel() {
     if (nightMode) return 1;
+    // 未来都市は空が黒いだけで昼の照明。車を昼と同じくはっきり見せる。
+    if (NEO_COURSE) return 0;
     // パネルの「明暗」メーターの表示値(0〜1)で判定する。HSLのlは0.10〜0.98へ
     // 割り当てられているので、生のlで比べるとメーターの%とずれる。
     const meter = clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1);
@@ -3977,10 +3979,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       oncoming: paths.oncoming.distances[paths.oncoming.points.length - 1 - anchor] - 90,
     };
     let created = 0;
-    for (const [direction, count, speeds] of [
-      ['same', GUNMA_CPU_SAME, [65, 75, 85]],
-      ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
-    ]) {
+    // 未来都市は対向車なし。同じ台数を全部、自分と同じ向きに走らせる。
+    const trafficPlan = NEO_COURSE
+      ? [['same', GUNMA_CPU_SAME + GUNMA_CPU_ONCOMING, [65, 75, 85]]]
+      : [
+        ['same', GUNMA_CPU_SAME, [65, 75, 85]],
+        ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
+      ];
+    for (const [direction, count, speeds] of trafficPlan) {
       const path = paths[direction];
       for (let i = 0; i < count; i++) {
         const distance = starts[direction] + i * path.length / count;
@@ -6640,8 +6646,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       if (DEBUG_MAP && pageQuery.get('debugNight') === '1' && !nightMode) {
         nightMode = true;
       }
-      // 未来都市はネオンが映える夜から始める。
-      if (NEO_COURSE) nightMode = true;
       // 初期の照明を確定させる。horizonの明度が最初から50%未満なら
       // この時点で地表も暗い状態から始まる。
       applyNight();
