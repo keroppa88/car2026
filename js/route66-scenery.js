@@ -1,7 +1,6 @@
 import * as THREE from '../lib/three.module.js';
 
 // ルート66(driving_us_s)の砂漠を飾る three.js の要素:
-//  - 遠景の山: 輪郭を描いた筒を3重にし、カメラに追従させる(元ゲームの2.5倍の寸法)。
 //  - 小石: カメラ周辺だけに、世界座標に固定した格子で配置する1つの InstancedMesh。
 //  - 砂漠の延長面: GLB の地面(横幅約400m)の外側を地平線まで埋める。
 // 元ゲームの座標は 0.4 倍・中心寄せされていたので、ここでは GLB の元座標(m)に直している。
@@ -12,6 +11,9 @@ const SEGMENT_TOP_Z = 7.17;        // GLB の元座標で区間の手前端(Z �
 const ROAD_BAND = [-2.97, 7.53];   // 小石を置かない道路帯(元座標 X)
 const PEBBLE_RADIUS = 60;
 const PEBBLE_CELL = 4.5;           // 元ゲームの密度(約0.05個/m²)に合わせた格子
+// 道路の両側は地平線まで砂漠だけ。GLBの地面が画面に出る色(実測)に合わせ、
+// 外側の面と霧を同じ色にして、境目も灰色の帯も出ないようにする。
+export const DESERT_COLOR = 0xc0aa8a;
 
 // 建物などの下に小石が出ないよう、区間ごとに除外する範囲(元座標)。
 const PEBBLE_ZONES = {
@@ -28,70 +30,11 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
   group.name = 'route66-scenery';
   scene.add(group);
 
-  // ---------------------------------------------------------- 遠景の山 ---
-  function silhouette(seed, rs) {
-    const W = 2048, H = 512;
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    const profile = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) {
-      const t = x / W * Math.PI * 2;
-      profile[x] = 0.30 * Math.sin(t * 3 + seed) + 0.20 * Math.sin(t * 7 + seed * 1.3)
-        + 0.10 * Math.sin(t * 13 + seed * 0.7) + 0.05 * Math.sin(t * 23 + seed * 2.1)
-        + 0.03 * Math.sin(t * 41 + seed * 1.7);
-    }
-    let min = Infinity, max = -Infinity;
-    for (const v of profile) { min = Math.min(min, v); max = Math.max(max, v); }
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(0, H);
-    for (let x = 0; x <= W; x++) {
-      const n = (profile[x] - min) / (max - min);
-      ctx.lineTo(x, H * (0.60 + (1 - n) * 0.38 * rs));
-    }
-    ctx.lineTo(W, H);
-    ctx.closePath();
-    ctx.fill();
-    return new THREE.CanvasTexture(canvas);
-  }
-  // grey: 層の基本の灰色。tint: 地平線色を混ぜる割合(遠い層ほど霞む)。
-  const layers = [
-    { r: 375, h: 225, cy: 37.5, grey: 0x6f6f72, tint: 0.35, seed: 1.2, rs: 37 / 90 },
-    { r: 650, h: 237.5, cy: 42.5, grey: 0x7c7c80, tint: 0.5, seed: 2.7, rs: 43 / 95 },
-    { r: 1000, h: 250, cy: 50, grey: 0x8c8c90, tint: 0.65, seed: 4.1, rs: 53 / 100 },
-  ];
-  const mountains = layers.map((layer) => {
-    // 元の筒は地面より下まで伸びていて、その部分が遠くの砂漠の上に灰色で
-    // 描かれ地平線が欠けて見えた。筒は地面(y=0)から上だけにし、輪郭の
-    // 高さが変わらないよう模様の縦位置を合わせる。
-    const bottom = layer.cy - layer.h / 2;
-    const top = layer.cy + layer.h / 2;
-    const map = silhouette(layer.seed, layer.rs);
-    map.repeat.set(1, top / layer.h);
-    map.offset.set(0, -bottom / layer.h);
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(layer.r, layer.r, top, 64, 1, true),
-      new THREE.MeshBasicMaterial({
-        map, color: layer.grey, side: THREE.BackSide,
-        transparent: true, alphaTest: 0.05, depthWrite: false, fog: false,
-      }));
-    mesh.position.y = top / 2;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = -0.4;
-    mesh.name = 'Route66Mountains';
-    mesh.userData.baseGrey = new THREE.Color(layer.grey);
-    mesh.userData.tint = layer.tint;
-    group.add(mesh);
-    return mesh;
-  });
-
   // ---------------------------------------------------- 砂漠の延長面 ---
   // 照明を受けない色にする。照明を受けると地平線で明るい線が出る。
   const desert = new THREE.Mesh(
     new THREE.PlaneGeometry(3000, 3000),
-    new THREE.MeshBasicMaterial({ color: 0x8a7048 }));
+    new THREE.MeshBasicMaterial({ color: DESERT_COLOR }));
   desert.rotation.x = -Math.PI / 2;
   desert.position.y = -0.05;
   desert.frustumCulled = false;
@@ -158,23 +101,13 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
     if (pebbles.instanceColor) pebbles.instanceColor.needsUpdate = true;
   };
 
-  const tint = new THREE.Color();
   return {
     group,
     update(camera, horizonColor, night, hidden) {
       const cx = camera.position.x, cz = camera.position.z;
-      for (const mesh of mountains) {
-        mesh.position.x = cx;
-        mesh.position.z = cz;
-        mesh.visible = !hidden;
-        // 地平線色を暗めにして混ぜ、白く飛ばずに輪郭が見えるようにする。
-        tint.copy(horizonColor).multiplyScalar(night ? 0.12 * 0.55 : 0.55);
-        mesh.material.color.copy(mesh.userData.baseGrey).lerp(tint, mesh.userData.tint);
-        if (night) mesh.material.color.multiplyScalar(0.25);
-      }
       desert.position.x = Math.round(cx / 50) * 50;
       desert.position.z = Math.round(cz / 50) * 50;
-      desert.material.color.setHex(0x8a7048);
+      desert.material.color.setHex(DESERT_COLOR);
       if (night) desert.material.color.multiplyScalar(0.12);
       pebbles.visible = !hidden;
       if (Math.hypot(cx - lastCentre.x, cz - lastCentre.y) > 4) {
