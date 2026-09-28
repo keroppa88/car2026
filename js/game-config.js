@@ -449,9 +449,9 @@ export const MAP_CONFIGS = {
   },
   neo: {
     ...commonMap,
-    label: '未来都市',
+    label: 'NeoTokyo',
     file: 'procedural:neo',
-    preview: 'picture/neo.png',
+    preview: 'picture/neotokyo.png',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
