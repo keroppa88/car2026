@@ -63,13 +63,21 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
     { r: 1000, h: 250, cy: 50, grey: 0x8c8c90, tint: 0.65, seed: 4.1, rs: 53 / 100 },
   ];
   const mountains = layers.map((layer) => {
+    // 元の筒は地面より下まで伸びていて、その部分が遠くの砂漠の上に灰色で
+    // 描かれ地平線が欠けて見えた。筒は地面(y=0)から上だけにし、輪郭の
+    // 高さが変わらないよう模様の縦位置を合わせる。
+    const bottom = layer.cy - layer.h / 2;
+    const top = layer.cy + layer.h / 2;
+    const map = silhouette(layer.seed, layer.rs);
+    map.repeat.set(1, top / layer.h);
+    map.offset.set(0, -bottom / layer.h);
     const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(layer.r, layer.r, layer.h, 64, 1, true),
+      new THREE.CylinderGeometry(layer.r, layer.r, top, 64, 1, true),
       new THREE.MeshBasicMaterial({
-        map: silhouette(layer.seed, layer.rs), color: layer.grey, side: THREE.BackSide,
+        map, color: layer.grey, side: THREE.BackSide,
         transparent: true, alphaTest: 0.05, depthWrite: false, fog: false,
       }));
-    mesh.position.y = layer.cy;
+    mesh.position.y = top / 2;
     mesh.frustumCulled = false;
     mesh.renderOrder = -0.4;
     mesh.name = 'Route66Mountains';

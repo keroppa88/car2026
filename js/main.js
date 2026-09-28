@@ -11,7 +11,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260928-neo-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260928-r66lane-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -22,7 +22,7 @@ import { buildNeoMap } from './neo-map.js?v=20260928-neo-tron-1';
 import { createNeoCity } from './neo-city.js?v=20260928-neo-tron-5';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66lane-1';
 
 (function () {
   'use strict';
@@ -3945,14 +3945,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
     });
   }
 
-  function offsetSequenceLane(centerRoute) {
+  function offsetSequenceLane(centerRoute, laneOffsetOverride = null) {
     return centerRoute.map((point, index) => {
       const before = centerRoute[Math.max(0, index - 1)];
       const after = centerRoute[Math.min(centerRoute.length - 1, index + 1)];
       const dx = after.x - before.x;
       const dz = after.z - before.z;
       const length = Math.hypot(dx, dz) || 1;
-      const laneOffset = MAP_CONFIG.cpuLaneOffset
+      const laneOffset = laneOffsetOverride ?? MAP_CONFIG.cpuLaneOffset
         ?? clamp(point.width * 0.25, 1.2, 2.1);
       return {
         x: point.x + (dz / length) * laneOffset,
@@ -4052,9 +4052,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       // 速度は cpu_car_list.txt のランク(S/A/B/C)基準。対向車だけそこから50%落とす。
       const rankSpeedKmh = cpuTopSpeedKmhFor(vehicle.url);
       // コースごとの全体倍率(ルート66は1/3)をさらに掛ける。
-      const speedKmh = (oncoming
-        ? Math.round(rankSpeedKmh * SEA_ONCOMING_SPEED_SCALE)
-        : rankSpeedKmh) * (MAP_CONFIG.cpuSpeedScale ?? 1);
+      // 同方向車の速度を範囲で指定したコース(ルート66)は、その範囲に均等に散らす。
+      const sameRange = MAP_CONFIG.cpuSameDirectionSpeedRangeKmh;
+      const speedKmh = !oncoming && sameRange
+        ? Math.round(sameRange[0] + (sameRange[1] - sameRange[0])
+          * ((laneIndex * 0.618) % 1))
+        : (oncoming
+          ? Math.round(rankSpeedKmh * SEA_ONCOMING_SPEED_SCALE)
+            * (MAP_CONFIG.cpuOncomingSpeedScale ?? 1)
+          : rankSpeedKmh) * (MAP_CONFIG.cpuSpeedScale ?? 1);
       const base = speedKmh / 3.6;
       const bike = isKabuVoxUrl(vehicle.url);
       const group = makeCarGroup(vehicle.mesh.clone(), false, bike, 'seaCpuBoost');
@@ -6586,7 +6592,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       } else if (STRAIGHT_SEQUENCE_COURSE) {
         const seaRoadCenterline = buildSequenceRoadCenterline();
         spawnSequenceTrafficCpuCars(seaRoadCenterline, cpuCars);
-        car2AutoRoute = offsetSequenceLane(seaRoadCenterline);
+        // 自動運転の走行ラインはCPU車の車線と別に指定できる(ルート66)。
+        car2AutoRoute = offsetSequenceLane(seaRoadCenterline, MAP_CONFIG.autoDriveLaneOffset ?? null);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'forest') {
         // Wood_Chips_01_1K路面全体を2m間隔で輪切りにし、
