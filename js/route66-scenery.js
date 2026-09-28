@@ -3,6 +3,8 @@ import * as THREE from '../lib/three.module.js';
 // ルート66(driving_us_s)の砂漠を飾る three.js の要素:
 //  - 小石: カメラ周辺だけに、世界座標に固定した格子で配置する1つの InstancedMesh。
 //  - 砂漠の延長面: GLB の地面(横幅約400m)の外側を地平線まで埋める。
+//  - 遠景の山: 地平線より少し上に浮かせ、すそを透明へぼかした薄い山並み。
+//    地面と接しないので、山が砂漠の上に重なって灰色の帯になることがない。
 // 元ゲームの座標は 0.4 倍・中心寄せされていたので、ここでは GLB の元座標(m)に直している。
 // 地図は scale 倍に拡大して置かれるので、世界座標 ÷ scale で元座標に戻して判定する。
 
@@ -29,6 +31,63 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
   const group = new THREE.Group();
   group.name = 'route66-scenery';
   scene.add(group);
+
+  // ---------------------------------------------------------- 遠景の山 ---
+  // 輪郭の内側を塗り、下40%は透明から徐々に濃くする(すそをぼかす)。
+  function mountainTexture(seed) {
+    const W = 2048, H = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const profile = new Float32Array(W + 1);
+    for (let x = 0; x <= W; x++) {
+      const t = x / W * Math.PI * 2;
+      profile[x] = 0.30 * Math.sin(t * 3 + seed) + 0.20 * Math.sin(t * 7 + seed * 1.3)
+        + 0.10 * Math.sin(t * 13 + seed * 0.7) + 0.05 * Math.sin(t * 23 + seed * 2.1)
+        + 0.03 * Math.sin(t * 41 + seed * 1.7);
+    }
+    let min = Infinity, max = -Infinity;
+    for (const v of profile) { min = Math.min(min, v); max = Math.max(max, v); }
+    const fade = ctx.createLinearGradient(0, H, 0, 0);
+    fade.addColorStop(0, 'rgba(255,255,255,0)');
+    fade.addColorStop(0.4, 'rgba(255,255,255,1)');
+    fade.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.fillStyle = fade;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x++) {
+      const n = (profile[x] - min) / (max - min);
+      // 峰は上端、谷は高さの45%まで。
+      ctx.lineTo(x, H * (1 - n) * 0.55);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+    return new THREE.CanvasTexture(canvas);
+  }
+  // 以前の山と同じくらいの見かけの高さ(仰角2〜3度)。遠い層ほど淡い。
+  const MOUNTAIN_LIFT = 6;          // 地平線から浮かせる高さ(m)
+  const mountainLayers = [
+    { r: 1000, h: 48, seed: 1.2, grey: 0x7c7f88, opacity: 0.5 },
+    { r: 1120, h: 62, seed: 2.7, grey: 0x8c909a, opacity: 0.35 },
+  ];
+  const mountains = mountainLayers.map((layer) => {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(layer.r, layer.r, layer.h, 64, 1, true),
+      new THREE.MeshBasicMaterial({
+        map: mountainTexture(layer.seed), color: layer.grey, side: THREE.BackSide,
+        transparent: true, opacity: layer.opacity, depthWrite: false, fog: false,
+      }));
+    mesh.position.y = MOUNTAIN_LIFT + layer.h / 2;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -0.4;
+    mesh.name = 'Route66Mountains';
+    mesh.userData.grey = new THREE.Color(layer.grey);
+    group.add(mesh);
+    return mesh;
+  });
+  const tint = new THREE.Color();
 
   // ---------------------------------------------------- 砂漠の延長面 ---
   // 照明を受けない色にする。照明を受けると地平線で明るい線が出る。
@@ -104,6 +163,15 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
   return {
     group,
     update(camera, horizonColor, night, hidden) {
+      for (const mesh of mountains) {
+        mesh.position.x = camera.position.x;
+        mesh.position.z = camera.position.z;
+        mesh.visible = !hidden;
+        // 地平線の色に半分なじませて、空に溶け込む淡い山にする。
+        tint.copy(horizonColor);
+        mesh.material.color.copy(mesh.userData.grey).lerp(tint, 0.5);
+        if (night) mesh.material.color.multiplyScalar(0.2);
+      }
       const cx = camera.position.x, cz = camera.position.z;
       desert.position.x = Math.round(cx / 50) * 50;
       desert.position.z = Math.round(cz / 50) * 50;
