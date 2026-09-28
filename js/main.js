@@ -2010,9 +2010,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
   // ------------------------------------------------------------- player ---
   // インディアナポリスだけユーザー車を250km/h・加速力1.5倍にする。
   // CPU車の速度は個別のAI設定を使うため、この値の影響を受けない。
-  const PLAYER_TOP_SPEED_KMH = COURSE_KEY === 'indy' ? 250 : 180;
+  // ルート66は自車だけ速度(最高速・各ギア・加速・自動運転の巡航)を1.5倍にする。
+  const PLAYER_SPEED_SCALE = COURSE_KEY === 'route66' ? 1.5 : 1;
+  const PLAYER_TOP_SPEED_KMH = (COURSE_KEY === 'indy' ? 250 : 180) * PLAYER_SPEED_SCALE;
   const PLAYER_TOP_SPEED = PLAYER_TOP_SPEED_KMH / 3.6;
-  const PLAYER_ACCEL_MULTIPLIER = COURSE_KEY === 'indy' ? 1.5 : 1;
+  const PLAYER_ACCEL_MULTIPLIER = (COURSE_KEY === 'indy' ? 1.5 : 1) * PLAYER_SPEED_SCALE;
   const GEARS = [
     { name: 'R', vmax: -8.3, acc: 5.5 },   // ~30 km/h reverse
     { name: 'N', vmax: 0, acc: 0 },
@@ -2022,7 +2024,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
     { name: '4', vmax: 27.8, acc: 7.0 },   // 100 km/h
     // インディアナポリスでは250km/h手前でも駆動力が残るよう5速比だけ延長する。
     { name: '5', vmax: COURSE_KEY === 'indy' ? 75.0 : 54.0, acc: 14.0 },
-  ];
+  ].map((g) => ({ ...g, vmax: g.vmax * PLAYER_SPEED_SCALE }));
   document.body.dataset.playerTopSpeedKmh = String(PLAYER_TOP_SPEED_KMH);
   document.body.dataset.playerAccelerationMultiplier = String(PLAYER_ACCEL_MULTIPLIER);
 
@@ -8561,7 +8563,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
       // ループ地点の継ぎ目(次の目標が遠い)は直進で通過し、ワープ後に再同期
       if (Math.hypot(wps[autoIdx].x - player.pos.x, wps[autoIdx].z - player.pos.z) > 80) {
         if (autoMode === 'seaCruise130' || autoMode === 'forestCruise130Drift') {
-          const target = 130 / 3.6;
+          const target = 130 * PLAYER_SPEED_SCALE / 3.6;
           document.body.dataset.autoDriveTargetKmh = '130';
           document.body.dataset.autoDrivePhase =
             autoMode === 'forestCruise130Drift'
@@ -8592,8 +8594,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
     ].join(',');
 
     if (autoMode === 'seaCruise130') {
-      const target = 130 / 3.6;
-      document.body.dataset.autoDriveTargetKmh = '130';
+      const target = 130 * PLAYER_SPEED_SCALE / 3.6;
+      document.body.dataset.autoDriveTargetKmh = String(130 * PLAYER_SPEED_SCALE);
       document.body.dataset.autoDrivePhase = 'left-lane-cruise';
       return {
         throttle: speed < target,
@@ -9358,7 +9360,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
         const segX = targetWp.x - previousWp.x;
         const segZ = targetWp.z - previousWp.z;
         const passed = (ai.pos.x - targetWp.x) * segX + (ai.pos.z - targetWp.z) * segZ > 0;
-        const reached = Math.hypot(targetWp.x - ai.pos.x, targetWp.z - ai.pos.z) < 11;
+        // 海岸線・ルート66の交通は3m間隔の点を追う。11mで次へ進めると目標が
+        // 毎フレーム1点ずつ先へ逃げ、経路への引き戻しで設定速度に関係なく
+        // 1フレーム3m(約200km/h)で引っぱられていた。通過か1.5m以内で進める。
+        const reachRadius = ai.sequenceTraffic ? 1.5 : 11;
+        const reached = Math.hypot(targetWp.x - ai.pos.x, targetWp.z - ai.pos.z) < reachRadius;
         if ((passed || reached) && ai.idx >= ai.wps.length - 1 && ai.closedLoop) {
           // 周回コース(インディ)はルートが輪。位置も向きもそのままに
           // 目標だけ先頭へ戻す。座標を書き換えると周回のたびに車が跳ぶ。
