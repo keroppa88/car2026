@@ -11,13 +11,15 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260927-route66-6';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260928-neo-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
+import { buildNeoMap } from './neo-map.js?v=20260928-neo-1';
+import { createNeoCity } from './neo-city.js?v=20260928-neo-3';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2';
@@ -34,7 +36,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   const COURSE_KEY = pageQuery.get('course') || 'tokyo';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
-  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor';
+  // 未来都市も同じ無限の輪の生成道路。沿道だけが違う。
+  const NEO_COURSE = COURSE_KEY === 'neo';
+  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -64,6 +68,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   let moorScenery = null;
   let moorFog = null;
   let route66Scenery = null;
+  let neoCity = null;
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -386,7 +391,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   // 嵐が丘は低い雲の曇り空。
   // ルート66は元ゲームの初期色(#9bbae8、上空はその0.42倍)。霧は砂漠の茶色で、
   // 遠くの地面が空に溶けず地平線がくっきり出るようにする。
-  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61 : 0x8ecbef;
+  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61
+    : NEO_COURSE ? 0x07061a : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
   scene.fog = COURSE_KEY === 'route66'
     ? new THREE.FogExp2(0x8a7048, 0.003)
@@ -418,7 +424,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   // 夜へ切り替えたときは同じ色相を暗くして反映する。
   const weatherTopColor = new THREE.Color(SKY);
   const weatherHorizonColor = new THREE.Color(
-    COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8 : 0xeaf4fb);
+    COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8
+      : NEO_COURSE ? 0x2a1850 : 0xeaf4fb);
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -431,7 +438,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
   let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
-  let weatherCloudMode = TOUGE_COURSE ? 1 : 0;   // 0=なし、1=雲1、2=雲2
+  let weatherCloudMode = TOUGE_COURSE && !NEO_COURSE ? 1 : 0;   // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
   let weatherRainSystem = null;
   let weatherStarSystem = null;
@@ -500,7 +507,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       horizon.multiplyScalar(0.12);
     }
     // 地表のモヤの色。嵐が丘は曇り空の下の、少し緑がかった灰色。
-    const gunmaHaze = new THREE.Color(COURSE_KEY === 'moor' ? 0x9ea596 : 0xaebdb4);
+    const gunmaHaze = new THREE.Color(COURSE_KEY === 'moor' ? 0x9ea596
+      : NEO_COURSE ? 0x1c1233 : 0xaebdb4);
     if (nightMode) gunmaHaze.multiplyScalar(0.12);
     gunmaHaze.lerp(horizon, 0.18);
     if (TOUGE_COURSE && gunmaCourse?.mistColor) {
@@ -2668,7 +2676,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
         else if (player.pos.z < zWrap.center - half) player.pos.z += zWrap.period;
       }
     }
-    if (COURSE_KEY === 'gunma' && gunmaCourse?.route.length) {
+    if ((COURSE_KEY === 'gunma' || NEO_COURSE) && gunmaCourse?.route.length) {
       // The car body reaches the white guardrail before its centre leaves the road.
       // Slide along the rail while retaining longitudinal speed.
       const route = gunmaCourse.route;
@@ -5402,7 +5410,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
     let sequenceLayout = null;
     try {
       if (TOUGE_COURSE) {
-        gunmaCourse = COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED) : buildGunmaMap(GUNMA_SEED);
+        gunmaCourse = COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
+          : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
         originalBox = new THREE.Box3().setFromObject(map);
         document.body.dataset.gunmaSeed = String(GUNMA_SEED);
@@ -6231,7 +6240,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       // 130〜480mの常時フォグが地図全体を空色へ混ぜ、元色より白く見せていた。
       // 読み込み式の4マップでは無効化し、遠景までマテリアル本来の色を保つ。
       // ルート66は元ゲームと同じ砂漠色の霧を残し、地平線をくっきり見せる。
-      if (COURSE_KEY !== 'route66') {
+      if (NEO_COURSE) {
+        // 未来都市: ビルの谷間の奥を紫の靄に沈める。
+        applyWeatherSky();
+        neoCity = createNeoCity(scene, gunmaCourse);
+        document.body.dataset.mapFog = 'neo-haze';
+      } else if (COURSE_KEY !== 'route66') {
         scene.fog = null;
         document.body.dataset.mapFog = 'none';
       } else {
@@ -6625,6 +6639,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       if (DEBUG_MAP && pageQuery.get('debugNight') === '1' && !nightMode) {
         nightMode = true;
       }
+      // 未来都市はネオンが映える夜から始める。
+      if (NEO_COURSE) nightMode = true;
       // 初期の照明を確定させる。horizonの明度が最初から50%未満なら
       // この時点で地表も暗い状態から始まる。
       applyNight();
@@ -10479,6 +10495,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260927-route66-2'
       applyDesertShake(dt);
       updateWeatherEffects(dt);
       route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView);
+      neoCity?.update(camera, topView);
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
         gunmaCanopy?.update(dt, weatherDuskLevel());
