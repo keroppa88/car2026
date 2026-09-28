@@ -19,6 +19,8 @@ export const CAR_CONFIGS = {
 // ルート66の地図の倍率。道路・看板・建物をまとめて同じ割合で拡大する(1=元の寸法)。
 export const ROUTE66_SCALE = 1.3;
 const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);
+// ルート66の車線中心の、中央線からの距離(m)。元の2.9m×倍率から0.6m内側。
+const ROUTE66_LANE = +(R66(2.9) - 0.6).toFixed(3);
 
 const ROUTE66_GROUND_MATERIALS = [
   '[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01',
@@ -416,13 +418,18 @@ export const MAP_CONFIGS = {
     drivableSeamAssistRatio: 10,
     // 元ゲームと同じく建物・看板には衝突しない。
     ignoreMapWallCollisions: true,
-    // 右側通行。中央線(元寸法でx=2.25)から右へ2.9mが自車・同方向車線。
+    // 右側通行。車線は中央線(元寸法でx=2.25)から左右へ約3.2m。
+    // 元の2.9m(1.3倍で3.77m)は外側に寄りすぎたので、車体幅の1/3(約0.6m)中央へ寄せた。
+    // 自動運転・同方向車・対向車・開始位置はすべてこの距離にそろえる。
     cpuCenterLineEntryX: R66(2.25),
-    cpuLaneOffset: -R66(2.9),
+    cpuLaneOffset: -ROUTE66_LANE,
     cpuSameDirectionLaneRangeX: [R66(3.6), R66(6.3)],
     cpuOncomingLaneRangeX: [R66(-1.8), R66(0.9)],
-    // CPU車は海岸線の速度の1/3。
+    // CPU車は海岸線の速度の1/3。ただし同方向車は100〜150km/hに設定する。
     cpuSpeedScale: 1 / 3,
+    cpuSameDirectionSpeedRangeKmh: [100, 150],
+    // 対向車はさらに半分の速度にする。
+    cpuOncomingSpeedScale: 0.5,
     // 砂漠を走ると画面を縦に小刻みに揺らす。
     desertShake: true,
     autoDriveMode: 'seaCruise130',
@@ -434,7 +441,7 @@ export const MAP_CONFIGS = {
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI,
     // Z減少方向を向くと、このゲームの「右」は-X。右車線(+X)へは負の値で寄せる。
-    spawnOffsetRight: -R66(2.9),
+    spawnOffsetRight: -ROUTE66_LANE,
     spawnSurfaceMode: 'roadSurface',
     treePlacement: { ...commonTrees, enabled: false, seed: 20260927 },
     mapWhiteGlow: false,
