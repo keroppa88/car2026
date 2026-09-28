@@ -426,6 +426,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
   const weatherHorizonColor = new THREE.Color(
     COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8
       : NEO_COURSE ? 0x000000 : 0xeaf4fb);
+  // ルート66の既定の空: パネル値で スカイ 色調60・彩度95・明暗60、
+  // ホライゾン 色調55・彩度40・明暗80(明暗は 0.10+値×0.88 の明度)、雲A。
+  if (COURSE_KEY === 'route66') {
+    weatherTopColor.setHSL(0.60, 0.95, 0.1 + 0.60 * 0.88);
+    weatherHorizonColor.setHSL(0.55, 0.40, 0.1 + 0.80 * 0.88);
+  }
   const weatherTopHsl = { h: 0, s: 0, l: 0 };
   const weatherHorizonHsl = { h: 0, s: 0, l: 0 };
   weatherTopColor.getHSL(weatherTopHsl);
@@ -438,7 +444,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66desert-
   let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
-  let weatherCloudMode = TOUGE_COURSE && !NEO_COURSE ? 1 : 0;   // 0=なし、1=雲1、2=雲2
+  let weatherCloudMode = (TOUGE_COURSE && !NEO_COURSE) || COURSE_KEY === 'route66' ? 1 : 0;   // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
   let weatherRainSystem = null;
   let weatherStarSystem = null;
