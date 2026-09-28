@@ -11,7 +11,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260928-r66lane-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20260928-neotokyo-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -7581,6 +7581,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
   const GUNMA_THEME_LABEL = {
     gunma: 'NIKO,Night of Fire (1997)',
     moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
+    neo: 'Daft Punk,TRON Legacy End Titles (2010)',
   }[COURSE_KEY] ?? null;
   let gunmaThemeDone = false;
   let gunmaThemeRetryAt = 0;
