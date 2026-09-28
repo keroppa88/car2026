@@ -1,109 +1,94 @@
 import * as THREE from '../lib/three.module.js';
 
-// 未来都市: 高層ビルの谷間を走る二車線道路。約7割は街区に沿って直角に曲がる
-// 市街地(zone: city)。ビル街が途切れると高速道路のような開けた区間(highway)で
-// ゆるいカーブになり、続いてゆるいS字のトンネル(tunnel)に入る。ぐんまー・嵐が丘と同じ無限の輪で、
-// 最後の点は route[0] + seam.offset へ続き、端を越えると反対側の同じ場所へ移る。
-//
-// 1周は東へ進む。北(-z)へ曲がった分と南(+z)へ曲がった分を等しくして、
-// 両端が z = 0 で東向きに揃うようにしてある。
+// 未来都市(トロン風): 黒い空間に光る格子だけの抽象的なコース。
+// 90度近いなめらかなカーブが主体。前半(zone: tube)は上下左右を格子に囲まれた
+// チューブの中、後半(zone: open)は格子の地面だけが広がり夜空が開ける。
+// 道幅は二車線から広くなったり戻ったりする(halfWidths)。
+// ぐんまー・嵐が丘と同じ無限の輪: 最後の点は route[0] + seam.offset へ続く。
 
-// 1周分の道(約4.2km、首都高と同程度)。dir は E/N/S の直線、s は東向きのゆるいS字。
-// zone は沿道の種類。東西の長さ(周期)はビルの格子24mで割り切れる3048mにしてある。
-const LAYOUT = [
-  { dir: 'E', len: 200, zone: 'city' },
-  { dir: 'N', len: 180, zone: 'city' },
-  { dir: 'E', len: 220, zone: 'city' },
-  { dir: 'S', len: 180, zone: 'city' },
-  { dir: 'E', len: 160, zone: 'city' },
-  { dir: 'S', len: 160, zone: 'city' },
-  { dir: 'E', len: 240, zone: 'city' },
-  { dir: 'N', len: 160, zone: 'city' },
-  { dir: 'E', len: 180, zone: 'city' },
-  { dir: 'N', len: 140, zone: 'city' },
-  { dir: 'E', len: 160, zone: 'city' },
-  { dir: 'S', len: 140, zone: 'city' },
-  { dir: 'E', len: 120, zone: 'city' },
-  { dir: 'N', len: 150, zone: 'city' },
-  { dir: 'E', len: 248, zone: 'city' },
-  { dir: 'S', len: 150, zone: 'city' },
-  { dir: 'E', len: 180, zone: 'city' },
-  { s: true, len: 640, amp: 80, zone: 'highway' },
-  { s: true, len: 520, amp: -60, zone: 'tunnel' },
-  { dir: 'E', len: 180, zone: 'highway' },
+// 前半の道。s は直線(m)、t は曲がる角度(度・左が正)と半径 r。wide は広い道幅。
+// 後半は前半を南北に反転した形で、両端が z = 0 で東向きにそろう。
+const HALF = [
+  { s: 200 },
+  { t: 85, r: 55 },
+  { s: 160, wide: true },
+  { t: -85, r: 55 },
+  { s: 140 },
+  { t: -90, r: 45 },
+  { s: 180 },
+  { t: 90, r: 45 },
+  { s: 120 },
+  { t: 80, r: 65 },
+  { s: 180, wide: true },
+  { t: -80, r: 65 },
+  { s: 150 },
+  { t: -88, r: 50 },
+  { s: 130 },
+  { t: 88, r: 50 },
+  { s: 180 },
 ];
-// 直角の角の丸み(m)。街の交差点らしく小さく、ただし車線が裏返らない大きさ。
-const CORNER_RADIUS = 16;
-const DIRS = { E: new THREE.Vector3(1, 0, 0), N: new THREE.Vector3(0, 0, -1), S: new THREE.Vector3(0, 0, 1) };
+const NARROW = 4.32;              // 二車線の半幅(ぐんまーと同じ)
+const WIDE = 8.6;                 // 広い区間の半幅(四車線ぶん)
+const GRID_STEP = 10;             // 後半の地面の格子(m)。周期をこの倍数にして継ぎ目で揃える
 
 export function buildNeoMap() {
   const x0 = -40;
-  // 各区間の始点・終点(角)と向き。
-  const pieces = [];
-  let cursor = new THREE.Vector3(x0, 0, 0);
-  for (const piece of LAYOUT) {
-    const dir = piece.s ? DIRS.E : DIRS[piece.dir];
-    const end = cursor.clone().addScaledVector(dir, piece.len);
-    pieces.push({ ...piece, dir, start: cursor.clone(), end });
-    cursor = end;
-  }
-  const period = cursor.x - x0;
-
-  // 細かい点列を作る。直線の両端は角の丸みの分だけ短くし、角は四分円でつなぐ。
+  const pieces = [
+    ...HALF.map((p) => ({ ...p, zone: 'tube' })),
+    ...HALF.map((p) => ({ ...p, t: p.t === undefined ? undefined : -p.t, zone: 'open' })),
+  ];
+  // 細かい点列(2m間隔)を向きと曲率で積み上げる。
   const dense = [];
-  const push = (p, zone) => {
-    const last = dense[dense.length - 1];
-    if (!last || last.p.distanceToSquared(p) > 1e-4) dense.push({ p, zone });
-  };
-  const turnAt = (i) => i > 0 && i < pieces.length && !pieces[i - 1].dir.equals(pieces[i].dir);
-  pieces.forEach((piece, i) => {
-    const trimStart = turnAt(i) ? CORNER_RADIUS : 0;
-    const trimEnd = turnAt(i + 1) ? CORNER_RADIUS : 0;
-    if (piece.s) {
-      const steps = Math.ceil(piece.len / 2);
-      for (let k = 0; k <= steps; k++) {
-        const t = k / steps;
-        const s = Math.sin(Math.PI * t);
-        push(new THREE.Vector3(piece.start.x + piece.len * t, 0, piece.start.z + piece.amp * s * s), piece.zone);
-      }
-    } else {
-      const a = piece.start.clone().addScaledVector(piece.dir, trimStart);
-      const b = piece.end.clone().addScaledVector(piece.dir, -trimEnd);
-      const steps = Math.max(1, Math.ceil(a.distanceTo(b) / 2));
-      for (let k = 0; k <= steps; k++) push(a.clone().lerp(b, k / steps), piece.zone);
+  let x = x0, z = 0, heading = 0;   // heading 0 = 東(+x)、正 = 北(-z)へ曲がる
+  const push = (zone, wide) => dense.push({ p: new THREE.Vector3(x, 0, z), zone, wide });
+  push('tube', false);
+  const walk = (length, curvature, zone, wide) => {
+    const steps = Math.max(1, Math.ceil(length / 2));
+    const ds = length / steps;
+    for (let k = 0; k < steps; k++) {
+      heading += curvature * ds / 2;
+      x += Math.cos(heading) * ds;
+      z -= Math.sin(heading) * ds;
+      heading += curvature * ds / 2;
+      push(zone, wide);
     }
-    if (turnAt(i + 1)) {
-      const next = pieces[i + 1];
-      const centre = piece.end.clone().addScaledVector(piece.dir, -CORNER_RADIUS)
-        .addScaledVector(next.dir, CORNER_RADIUS);
-      const from = piece.end.clone().addScaledVector(piece.dir, -CORNER_RADIUS).sub(centre);
-      const to = piece.end.clone().addScaledVector(next.dir, CORNER_RADIUS).sub(centre);
-      const a0 = Math.atan2(from.z, from.x);
-      let delta = Math.atan2(to.z, to.x) - a0;
-      if (delta > Math.PI) delta -= Math.PI * 2;
-      if (delta < -Math.PI) delta += Math.PI * 2;
-      for (let k = 1; k < 12; k++) {
-        const angle = a0 + delta * k / 12;
-        push(new THREE.Vector3(centre.x + Math.cos(angle) * CORNER_RADIUS, 0,
-          centre.z + Math.sin(angle) * CORNER_RADIUS), piece.zone);
-      }
+  };
+  pieces.forEach((piece) => {
+    if (piece.s !== undefined) walk(piece.s, 0, piece.zone, !!piece.wide);
+    else {
+      const angle = THREE.MathUtils.degToRad(piece.t);
+      walk(Math.abs(angle) * piece.r, Math.sign(angle) / piece.r, piece.zone, false);
     }
   });
+  // 周期を格子の倍数にするため、最後の直線を少し延ばす。
+  const extra = Math.ceil((x - x0) / GRID_STEP) * GRID_STEP - (x - x0);
+  if (extra > 1e-6) walk(extra, 0, 'open', false);
+  const period = Math.round(x - x0);
 
-  // 3m間隔に取り直す。沿道の種類も一緒に運ぶ。
+  // 3m前後の等間隔に取り直す(点の数は4の倍数: 格子の輪が継ぎ目で揃う)。
   const lengths = [0];
   for (let i = 1; i < dense.length; i++) lengths.push(lengths[i - 1] + dense[i].p.distanceTo(dense[i - 1].p));
   const total = lengths[lengths.length - 1];
-  const routeCount = Math.ceil(total / 3);
-  const route = [];
-  const zones = [];
+  const routeCount = Math.round(total / 3 / 4) * 4;
+  const route = [], zones = [], wideFlags = [];
   for (let i = 0, j = 0; i < routeCount; i++) {
     const d = total * i / routeCount;
     while (lengths[j + 1] < d) j++;
     const t = (d - lengths[j]) / (lengths[j + 1] - lengths[j]);
     route.push(dense[j].p.clone().lerp(dense[j + 1].p, t));
-    zones.push(t < 0.5 ? dense[j].zone : dense[j + 1].zone);
+    const near = t < 0.5 ? dense[j] : dense[j + 1];
+    zones.push(near.zone);
+    wideFlags.push(near.wide ? 1 : 0);
   }
+  const ring = (i) => ((i % routeCount) + routeCount) % routeCount;
+  // 道幅は約45mかけてなめらかに広げ・戻す。
+  const halfWidths = wideFlags.map((_, i) => {
+    let sum = 0;
+    for (let k = -15; k <= 15; k++) sum += wideFlags[ring(i + k)];
+    const t = THREE.MathUtils.smoothstep(sum / 31, 0, 1);
+    return NARROW + (WIDE - NARROW) * t;
+  });
+
   const offset = new THREE.Vector3(period, 0, 0);
   const at = (i) => {
     const laps = Math.floor(i / routeCount);
@@ -117,39 +102,41 @@ export function buildNeoMap() {
     return { x: dz / length, z: -dx / length };
   };
   const tangents = route.map((_, i) => normalAt(i));
-  const copy = Math.ceil(160 / (total / routeCount));
+  const copy = Math.ceil(160 / (total / routeCount) / 2) * 2;
   const extIndices = Array.from({ length: routeCount + copy * 2 }, (_, j) => j - copy);
   const ext = extIndices.map(at);
   const extTangents = extIndices.map(normalAt);
-  const extZones = extIndices.map((i) => zones[((i % routeCount) + routeCount) % routeCount]);
+  const extZones = extIndices.map((i) => zones[ring(i)]);
+  const extHalfWidths = extIndices.map((i) => halfWidths[ring(i)]);
   const seam = {
     offset: { x: offset.x, z: offset.z },
     startX: route[0].x, endX: route[0].x + offset.x,
   };
-  const ringPosition = (x, z) => (x > seam.endX ? [x - offset.x, z - offset.z]
-    : x < seam.startX ? [x + offset.x, z + offset.z] : [x, z]);
+  const ringPosition = (px, pz) => (px > seam.endX ? [px - offset.x, pz - offset.z]
+    : px < seam.startX ? [px + offset.x, pz + offset.z] : [px, pz]);
 
+  // 走行面: 道路と、その外のチューブの床まで(車が横の制限まで寄れるように)。
+  // 見た目は黒一色。光る線は neo-city.js が描く。
   const group = new THREE.Group();
   group.name = 'neo_procedural';
-  // 道路。縁の線はネオンのように自ら光る(照明に左右されない)。
   const bands = [
-    { name: 'GunmaRoad', from: -4.32, to: 4.32, y: 0, color: 0x24262e },
-    { name: 'GunmaShoulder', from: -7.4, to: -4.32, y: 0.02, color: 0x33303f },
-    { name: 'GunmaShoulder', from: 4.32, to: 7.4, y: 0.02, color: 0x33303f },
-    { name: 'GunmaCenterLine', from: -0.07, to: 0.07, y: 0.018, color: 0xff3fb0, glow: true },
-    { name: 'GunmaEdgeLine', from: -4.2, to: -4.08, y: 0.018, color: 0x2ff3ff, glow: true },
-    { name: 'GunmaEdgeLine', from: 4.08, to: 4.2, y: 0.018, color: 0x2ff3ff, glow: true },
+    { name: 'GunmaRoad', from: -1, to: 1, color: 0x05060a },
+    { name: 'GunmaShoulder', from: -1, to: -1, extra: -4.7, color: 0x020306 },
+    { name: 'GunmaShoulder', from: 1, to: 1, extra: 4.7, color: 0x020306 },
   ];
   for (const band of bands) {
     const vertices = new Float32Array(ext.length * 2 * 3);
     const indices = [];
     for (let i = 0; i < ext.length; i++) {
-      const point = ext[i], normal = extTangents[i];
+      const point = ext[i], normal = extTangents[i], w = extHalfWidths[i];
       for (let side = 0; side < 2; side++) {
-        const across = side ? band.to : band.from;
+        // 路肩は道路の端から外へ extra(m) まで。
+        const across = band.extra
+          ? band.from * w + (side ? band.extra : 0)
+          : (side ? band.to : band.from) * w;
         const o = (i * 2 + side) * 3;
         vertices[o] = point.x + normal.x * across;
-        vertices[o + 1] = point.y + band.y;
+        vertices[o + 1] = point.y;
         vertices[o + 2] = point.z + normal.z * across;
       }
       if (i + 1 < ext.length) {
@@ -161,19 +148,17 @@ export function buildNeoMap() {
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const material = band.glow
-      ? new THREE.MeshBasicMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide })
-      : new THREE.MeshLambertMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry,
+      new THREE.MeshBasicMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide }));
     mesh.name = band.name;
     group.add(mesh);
   }
 
-  // 平らな街。地面の高さは常に0。
   const groundHeightAt = () => 0;
   const groundNormalAt = () => new THREE.Vector3(0, 1, 0);
   const terrainHeightAt = () => 0;
-  return { group, route, tangents, ext, extTangents, extIndices, extZones, zones, seam,
-    climb: 0, mistColor: new THREE.Color(0x2a1a44), mistTime: { value: 0 },
+  return { group, route, tangents, ext, extTangents, extIndices, extZones, zones,
+    halfWidths, extHalfWidths, seam, climb: 0, gridStep: GRID_STEP,
+    mistColor: new THREE.Color(0x0a1f1a), mistTime: { value: 0 },
     groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition };
 }
