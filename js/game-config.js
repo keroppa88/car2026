@@ -440,6 +440,35 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  neo: {
+    ...commonMap,
+    label: '未来都市',
+    file: 'procedural:neo',
+    preview: 'picture/neo.png',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaCenterLine', 'GunmaEdgeLine'],
+    drivableMaterialAliases: ['GunmaShoulder'],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    // ビル・トンネルは地図の外に置いてあり、左右はガードレールと同じ横の制限で止める。
+    ignoreMapWallCollisions: true,
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    spawnReference: 'fixed',
+    spawnReferenceX: 0,
+    spawnReferenceZ: 0,
+    spawnExactReference: false,
+    spawnDirectionMode: 'configured',
+    spawnHeading: Math.PI / 2,
+    spawnOffsetRight: 1.68,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20260928 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   monaco: {
     ...commonMap,
     label: 'モンテカルロ',
@@ -522,4 +551,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo'];
