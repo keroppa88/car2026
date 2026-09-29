@@ -14,7 +14,7 @@
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/67640bd0-feb6-4a39-add6-4bbb5b0e5889" />
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/e7de67a0-dae4-415d-b741-058154b32b47" />
 <img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/6dd6147a-82fb-4ada-8a9a-bc46c01b1e99" />
-<img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/93977747-ecf3-4634-91fc-bf859de3c3a3" />
+<img width="200" height="120" alt="image" src="https://github.com/user-attachments/assets/603505bd-b7bb-46d1-94b3-23705e2fb290" />
 
 
 ## ドライブしながら音楽を聴く。
