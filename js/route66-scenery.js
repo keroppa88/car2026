@@ -162,7 +162,7 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
 
   return {
     group,
-    update(camera, horizonColor, night, hidden) {
+    update(camera, horizonColor, night, hidden, shade = night ? 0.12 : 1) {
       for (const mesh of mountains) {
         mesh.position.x = camera.position.x;
         mesh.position.z = camera.position.z;
@@ -171,12 +171,12 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
         tint.copy(horizonColor);
         mesh.material.color.copy(mesh.userData.grey).lerp(tint, 0.5);
         if (night) mesh.material.color.multiplyScalar(0.2);
+        else mesh.material.color.multiplyScalar(shade);
       }
       const cx = camera.position.x, cz = camera.position.z;
       desert.position.x = Math.round(cx / 50) * 50;
       desert.position.z = Math.round(cz / 50) * 50;
-      desert.material.color.setHex(DESERT_COLOR);
-      if (night) desert.material.color.multiplyScalar(0.12);
+      desert.material.color.setHex(DESERT_COLOR).multiplyScalar(shade);
       pebbles.visible = !hidden;
       if (Math.hypot(cx - lastCentre.x, cz - lastCentre.y) > 4) {
         lastCentre.set(cx, cz);
