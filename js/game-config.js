@@ -407,7 +407,9 @@ export const MAP_CONFIGS = {
     // 地面の高さにある面の材質は区間ごとに違う(全9ファイルを下向きに走査して確認):
     // sa06 の道路 M05 とアスファルト、sa09 基地の M04、sa08 の小さな面。
     nonWallMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
-    drivableMaterialAliases: [...ROUTE66_GROUND_MATERIALS],
+    // sa06(最初のガソリンスタンド)・sa08 のセンターラインは建物と同じ材質。
+    // 乗って走れる面にだけ加え、壁判定からは外さない(建物の壁は壁のまま)。
+    drivableMaterialAliases: [...ROUTE66_GROUND_MATERIALS, '[Color M00]', 'M00', '[Color M01]'],
     sandMaterialAliases: ['[Formica Beige]', 'Formica Beige'],
     dustNormalInterval: 0.06,
     dustHeavyInterval: 0.012,
