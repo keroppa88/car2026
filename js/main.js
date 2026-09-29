@@ -7384,6 +7384,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   //   夜        : 夜間モード(Nキー)にする
   //   星 / 雨   : 星・雨を出す
   //   雲1 / 雲2 : 2種類ある雲のどちらかを出す
+  //   P / PP    : ライトを点ける / 消す(Pボタンと同じ。すでにその状態ならそのまま)
   function parseMusicEffects(tail) {
     const effects = {};
     for (const token of String(tail).trim().split(/[\s　]+/)) {
@@ -7406,6 +7407,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         effects.rain = true;
       } else if ((matched = token.match(/^雲([12])$/))) {
         effects.cloudMode = Number(matched[1]);
+      } else if (/^[PpＰｐ]$/.test(token)) {
+        effects.lamp = true;
+      } else if (/^[PpＰｐ]{2}$/.test(token)) {
+        effects.lamp = false;
       }
     }
     return Object.keys(effects).length ? effects : null;
@@ -7502,6 +7507,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 空だけでなく地表の明るさもやり直す。applyWeatherSky だけだと空が明るく
     // 戻っても道路や車が暗いままになる（明暗に応じた照明は applyNight が持つ）。
     applyNight();
+    // 曲の P / PP で変えたライトも、曲の前の状態へ戻す。
+    lampOverride = saved.lampOverride;
+    refreshLampVisibility();
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = '';
     document.body.dataset.weatherFlatSky = String(weatherFlatSky);
@@ -7516,7 +7524,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       horizonH: weatherHorizonHsl.h, horizonS: weatherHorizonHsl.s,
       horizonL: weatherHorizonHsl.l,
       rain: weatherRain, stars: weatherStars, cloudMode: weatherCloudMode,
-      flatSky: weatherFlatSky, night: nightMode,
+      flatSky: weatherFlatSky, night: nightMode, lampOverride,
     };
     // 指定色をそのまま当てる。明るさも曲の指定に従う。以前は明るさだけ
     // 残していたが、手で暗くしたあと曲を変えるとその暗さが居座り、次の曲の
@@ -7549,6 +7557,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 地表の照明もそれに追随させるため（applyWeatherSky だけだと空しか変わらず、
     // 明暗10%の曲でも道路や車が昼のまま明るく残ってしまう）。
     applyNight();
+    // P / PP: 空の明暗で決まる自動点灯より後に、指定どおりの点灯状態へそろえる。
+    if (musicSkyEnabled && effects.lamp !== undefined) {
+      lampOverride = effects.lamp === autoVehicleLightsVisible() ? null : effects.lamp;
+      refreshLampVisibility();
+    }
     refreshWeatherControls();
     document.body.dataset.musicTrackEffects = JSON.stringify(effects);
     document.body.dataset.weatherFlatSky = String(weatherFlatSky);
