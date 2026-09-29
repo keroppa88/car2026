@@ -286,9 +286,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!e.repeat) {
       if (k === 'ArrowUp') shiftUp = true;
       if (k === 'ArrowDown') shiftDown = true;
-      if (k.toLowerCase() === 'n') { nightMode = !nightMode; applyNight(); }
+      if (k.toLowerCase() === 'n') { nightMode = !nightMode; lampOverride = null; applyNight(); }
       if (k.toLowerCase() === 'p') {
-        manualLampMode = !manualLampMode;
+        // 今の点灯状態を反転させる。夜間モード・曲ごとの空の暗さより優先。
+        const next = !vehicleLightsShouldBeVisible();
+        lampOverride = next === autoVehicleLightsVisible() ? null : next;
         refreshLampVisibility();
       }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
@@ -787,7 +789,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 全車(自車+CPU)のヘッドライトとテールランプが控えめに発光する
   // (車体のランプが光って見えるだけで、路面や周囲は照らさない)。
   let nightMode = false;
-  let manualLampMode = false;
+  // Pボタンの手動点灯/消灯。null は自動(夜間モード・空の暗さ)に任せる。
+  let lampOverride = null;
   const NIGHT_SKY = 0x050a12;
   const nightLampGroups = [];        // 車両・街灯を含む完全夜間用の灯火
   const vehicleLampGroups = [];      // 薄暗い天候でも点灯する車両灯火だけ
@@ -800,16 +803,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 8m先で内側へ寄せる量。0にすると平行で重なりが薄いので、少し内向きにする。
   const HEADLIGHT_AIM_X = 0.2;
 
+  function autoVehicleLightsVisible() {
+    return nightMode || weatherDimVehicleLights;
+  }
   function vehicleLightsShouldBeVisible() {
-    return nightMode || manualLampMode || weatherDimVehicleLights;
+    return lampOverride ?? autoVehicleLightsVisible();
   }
 
   // 首都高速では、空の暗さで車両灯火が自動点灯した場合も街灯を連動させる。
   // 他コースは従来どおり、夜間モードまたは手動点灯時だけ街灯を点ける。
   function streetLightsShouldBeVisible() {
-    return nightMode
-      || manualLampMode
-      || (COURSE_KEY === 'tokyo' && weatherDimVehicleLights);
+    return lampOverride ?? (nightMode
+      || (COURSE_KEY === 'tokyo' && weatherDimVehicleLights));
   }
 
   function refreshVehicleLightsVisibility() {
@@ -833,7 +838,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       streetLampHeads.material =
         allLampsVisible ? streetLampHeadNightMat : streetLampHeadDayMat;
     }
-    document.body.dataset.manualLampMode = String(manualLampMode);
+    document.body.dataset.manualLampMode = String(lampOverride);
     document.body.dataset.streetLightsVisible = String(allLampsVisible);
   }
 
@@ -848,8 +853,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       0,
       1
     );
-    weatherDimVehicleLights =
-      Math.max(topBrightness, horizonBrightness) <= 0.4;
+    const dim = Math.max(topBrightness, horizonBrightness) <= 0.4;
+    // 空の明暗が切り替わったら(曲の変更など)手動設定を解除し、自動に戻す。
+    if (dim !== weatherDimVehicleLights) lampOverride = null;
+    weatherDimVehicleLights = dim;
     refreshLampVisibility();
   }
 
