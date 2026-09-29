@@ -17,7 +17,7 @@ export const CAR_CONFIGS = {
 // 3:青看板 8:黄看板 17:シェル 26:黄看板 35:マルボロ 44:青看板 53:ケンタッキー
 // 59:黄看板 66:青看板 80:黄看板 89:バグダッドカフェ 101:軍事基地 108:ナイトホーク
 // ルート66の地図の倍率。道路・看板・建物をまとめて同じ割合で拡大する(1=元の寸法)。
-export const ROUTE66_SCALE = 1.3;
+export const ROUTE66_SCALE = 1.17;   // 1.3 × 0.9
 const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);
 // ルート66の車線中心の、中央線からの距離(m)。元の2.9m×倍率から0.6m内側。
 const ROUTE66_LANE = +(R66(2.9) - 0.6).toFixed(3);
