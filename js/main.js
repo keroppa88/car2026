@@ -22,7 +22,7 @@ import { buildNeoMap } from './neo-map.js?v=20260928-neo-tron-1';
 import { createNeoCity } from './neo-city.js?v=20260928-neo-tron-5';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
+import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
 
 (function () {
   'use strict';
@@ -539,8 +539,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
     const fog = scene.fog || savedFog;
     if (fog && COURSE_KEY === 'route66') {
       // 砂漠と同じ色。夜は同じ色相のまま暗くする。
-      fog.color.setHex(0xc0aa8a);
-      if (nightMode) fog.color.multiplyScalar(0.12);
+      fog.color.setHex(0xc0aa8a).multiplyScalar(route66DesertShade());
     } else if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
@@ -550,6 +549,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
     document.body.dataset.weatherHorizonHsl =
       `${weatherHorizonHsl.h.toFixed(3)},${weatherHorizonHsl.s.toFixed(3)},${weatherHorizonHsl.l.toFixed(3)}`;
     updateWeatherVehicleLights();
+  }
+
+  // ルート66の砂漠(遠景の面と霧)の明るさ。地平線の明暗に連動させ、
+  // 地平線を暗くした時に砂漠だけ明るい線として残らないようにする。
+  // 既定の地平線(明暗80)で1、最低値で0.03(近くの暗い地面と同じくらい)。
+  function route66DesertShade() {
+    if (nightMode) return 0.12;
+    const t = clamp((weatherHorizonHsl.l - 0.1) / (0.804 - 0.1), 0, 1);
+    return 0.03 + (1 - 0.03) * t;
   }
 
   // ------------------------------------------------------------ clouds ----
@@ -10527,7 +10535,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260928-r66mtn-1';
       updateCamera(dt);
       applyDesertShake(dt);
       updateWeatherEffects(dt);
-      route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView);
+      route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView, route66DesertShade());
       neoCity?.update(camera, topView);
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
