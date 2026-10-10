@@ -25,7 +25,6 @@ https://media-ssl.musicradio.com/ClassicFM 「Radio,UK/Classic FM」
 ------邦楽------
 https://www.youtube.com/watch?v=B1NhGDoZs8k   「藤木孝,24000のキッス (1961)」　#249ea5　地平線#c06894　音量-18%
 https://www.youtube.com/watch?v=1Xeoa8k-iKc   「ジュリー藤尾,遠くへ行きたい (1962)」
-https://www.youtube.com/watch?v=IA2eK1pcvM8   「THE MAMAS & THE PAPAS,California Dreamin (1965)」　#226695　地平線#2ec28d　雲1
 https://www.youtube.com/watch?v=WBGxcdX5xo4   「菅原洋一,知りたくないの (1965)」　#682a87　地平線#289a75　星
 https://www.youtube.com/watch?v=4zbAHjZtJMU   「加山雄三,夜空の星 (1966)」　#0d0e1a　地平線#1d3940　夜　星
 https://www.youtube.com/watch?v=iHCXVGkDeAs   「山本直純,マグマ大使 (1966)」　#d36c3a　地平線#63473f
@@ -123,7 +122,6 @@ https://www.youtube.com/watch?v=ekcUo8s7M1g   「前野曜子,コブラ (1982)�
 https://www.youtube.com/watch?v=G0xJ8p5uwA8   「かおりくみこ、ザ・チャープス,Lはラブリー『The♥かぼちゃワイン』 (1982)」
 https://www.youtube.com/watch?v=2ljSD1rZzUE   「稲垣潤一,ドラマティック・レイン (1982)」　#ca8df6　地平線#f9c8fa　雨　雲2
 https://www.youtube.com/watch?v=HaqiC3y-VAM   「岩崎宏美,聖母たちのララバイ (1982)」　#23a25e　地平線#48c346
-https://www.youtube.com/watch?v=miAawzeIzgE   「Vangelis,♪Blade Runner (End Titles) (1982)」　#3c113e　地平線#5f7786　雨　星　雲2
 https://www.youtube.com/watch?v=HAh_Z4Uq0UM   「中森明菜,スローモーション (1982)」　#aacfff　地平線#53c1dc　雲1
 https://www.youtube.com/watch?v=i5U93W19Ays   「中森明菜,セカンド・ラブ (1982)」　#4666a2　地平線#5a7abc　雲1
 https://www.youtube.com/watch?v=OPoSXc_ODdg   「井上陽水,リバーサイド ホテル (1982)」　#2a2cca　地平線#ac592a　雲1　音量-20%
@@ -526,7 +524,6 @@ https://www.youtube.com/watch?v=Fo6aKnRnBxM   「Gerry Rafferty,Baker Street (19
 https://www.youtube.com/watch?v=ukkRG-flg20   「Carly Simon,You Belong to Me (1978)」　#8d5a23　地平線#a4772c
 https://www.youtube.com/watch?v=rpuPCcw-cDU   「CHIC,I Want Your Love(1978)」　#7134ba　地平線#7d50d0　雲1
 https://www.youtube.com/watch?v=YSOACab2t7k   「Kate Bush,Moving(1978)」　#65289c　地平線#227f5e　星
-https://www.youtube.com/watch?v=YSOACab2t7k   「Kate Bush,Moving (1978)」　#4465bf　地平線#6c7dc6　雲1
 https://www.youtube.com/watch?v=XbAM2_6jKY0   「The Nolans,I'm In the Mood for Dancing (1979)」　#2184af　地平線#46add3　雲1
 https://www.youtube.com/watch?v=0c9s70yytYE   「Pet Shop Boys,Go West (1979)」　#3f619c　地平線#617ebe　雲1
 https://www.youtube.com/watch?v=I248-SyRDnU   「Bee Gees,Tragedy (1979)」　#884c38　地平線#61443e
