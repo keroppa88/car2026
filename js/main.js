@@ -7580,7 +7580,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let musicSkipAttempts = 0;
   // quiet: 準備中の表示を出さない(ぐんまーのアクセル連動再生用)。
   let musicAutoQuiet = false;
-  function playCurrent(isAuto, quiet = false) {
+  // keepSky: 曲の空の指示を当てず、音量・開始位置だけ使う(ルート66の既定曲)。
+  function playCurrent(isAuto, quiet = false, keepSky = false) {
     musicAutoQuiet = quiet;
     const it = musicItems[musicSel];
     if (!it || !it.url) return false;
@@ -7599,7 +7600,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       playRadio(it.url, it.effects?.startSeconds);
     }
     // 鳴らし始められた時だけ演出を当てる。準備中で抜けた場合は当てない。
-    applyMusicEffects(it.effects);
+    const effects = keepSky && it.effects
+      ? Object.fromEntries(Object.entries(it.effects)
+        .filter(([key]) => key === 'volumePercent' || key === 'startSeconds'))
+      : it.effects;
+    applyMusicEffects(effects && Object.keys(effects).length ? effects : null);
     setNowPlaying(it.label);
     musicMenuRefresh();
     return true;
@@ -7610,7 +7615,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     gunma: 'NIKO,Night of Fire (1997)',
     moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
     neo: 'Daft Punk,TRON Legacy End Titles (2010)',
+    route66: 'David Ferguson,The Housebuilding Song (2021)',
   }[COURSE_KEY] ?? null;
+  // ルート66はステージ既定の空のまま流す(曲の空色は当てない)。
+  const GUNMA_THEME_KEEP_SKY = COURSE_KEY === 'route66';
   let gunmaThemeDone = false;
   let gunmaThemeRetryAt = 0;
   function startGunmaTheme() {
@@ -7621,7 +7629,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       return;
     }
     musicSel = idx;
-    if (playCurrent(false, true)) {
+    if (playCurrent(false, true, GUNMA_THEME_KEEP_SKY)) {
       gunmaThemeDone = true;
       document.body.dataset.gunmaThemeStarted = 'true';
     } else {
