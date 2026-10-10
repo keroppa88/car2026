@@ -7347,6 +7347,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let musicSel = 0;
   let musicMenuEl = null;
   let musicListEl = null;
+  let toggleMusicSearch = () => {};   // コントロールパネルの曲検索(パネル作成時に差し替え)
   let controlPanelTab = 'music';
   let controlPanelMusicPage = null;
   let controlPanelWeatherPage = null;
@@ -7994,7 +7995,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const panel = document.createElement('div');
       panel.className = 'control-panel-window';
       panel.style.cssText = 'width:min(639px,90vw);height:min(426px,88vh);display:flex;flex-direction:column;'
-        + 'overflow:hidden;'
+        + 'overflow:hidden;position:relative;'
         + 'background:#0a0a0a;border:3px double #fff;border-radius:0;padding:8px 14px 14px;color:#fff;'
         + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
 
@@ -8002,10 +8003,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       tabs.className = 'control-panel-tabs';
       tabs.style.cssText = 'display:grid;grid-template-columns:1.15fr 1fr 1fr 52px;'
         + 'gap:4px;margin:-1px 2px 14px;font:24px/1.6 "Courier New",monospace;';
+      // タイトルは左に詰めて小さく。右側に曲の検索ボタン(虫メガネ)。
       const title = document.createElement('div');
-      title.textContent = 'Control Panel';
-      title.style.cssText = 'background:#030303;color:#fff;padding:0 18px;white-space:nowrap;'
-        + 'border-bottom:1px solid #fff;letter-spacing:.5px;';
+      title.style.cssText = 'background:#030303;color:#fff;padding:0 6px 0 8px;white-space:nowrap;'
+        + 'border-bottom:1px solid #fff;display:flex;align-items:center;gap:6px;';
+      const titleText = document.createElement('span');
+      titleText.textContent = 'Control Panel';
+      titleText.style.cssText = 'flex:1;font-size:17px;letter-spacing:0;';
+      const searchButton = document.createElement('button');
+      searchButton.type = 'button';
+      searchButton.textContent = '🔍';
+      searchButton.title = '曲を検索';
+      searchButton.setAttribute('aria-label', '曲を検索');
+      searchButton.style.cssText = 'border:1px solid #fff;background:#030303;color:#fff;'
+        + 'cursor:pointer;font:18px/1 sans-serif;padding:3px 6px;outline:none;';
+      searchButton.addEventListener('click', () => toggleMusicSearch());
+      title.append(titleText, searchButton);
       const makeTab = (text, tab) => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -8032,6 +8045,63 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       closeButton.addEventListener('click', closeMusicMenu);
       tabs.append(title, controlPanelMusicTab, controlPanelWeatherTab, closeButton);
       panel.appendChild(tabs);
+
+      // 曲の検索: 虫メガネで浮かび上がる検索ボックス。入力するたびに
+      // 曲名に検索語を含む曲を下に並べる。クリック(Enterは先頭)でその曲を
+      // 選び、ダブルクリック(Shift+Enter)で再生する。Escで閉じる。
+      const searchBox = document.createElement('div');
+      searchBox.style.cssText = 'display:none;position:absolute;left:24px;right:24px;top:52px;'
+        + 'z-index:5;flex-direction:column;gap:6px;padding:10px;max-height:70%;'
+        + 'background:#0a0a0a;border:3px double #fff;box-shadow:0 6px 24px rgba(0,0,0,.6);';
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.placeholder = '曲名・アーティスト名';
+      searchInput.style.cssText = 'font:900 19px "MS Gothic","ＭＳ ゴシック","Courier New",monospace;'
+        + 'padding:6px 8px;border:1px solid #666;background:#33CC33;color:#2e342e;outline:none;';
+      const searchResults = document.createElement('div');
+      searchResults.style.cssText = 'overflow-y:auto;min-height:0;flex:1;'
+        + 'font:900 17px/1.5 "MS Gothic","ＭＳ ゴシック","Courier New",monospace;color:#33CC33;';
+      searchBox.append(searchInput, searchResults);
+      panel.appendChild(searchBox);
+      let searchHits = [];
+      const pickHit = (idx, play) => {
+        switchControlPanelTab('music');
+        musicSel = idx;
+        musicMenuRefresh();
+        searchBox.style.display = 'none';
+        if (play && playCurrent()) closeMusicMenu();
+      };
+      const renderHits = () => {
+        const words = searchInput.value.trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
+        searchHits = words.length
+          ? musicItems.map((it, i) => ({ it, i }))
+            .filter(({ it }) => it.url && words.every((w) => it.label.toLowerCase().includes(w)))
+          : [];
+        searchResults.replaceChildren(...searchHits.slice(0, 100).map(({ it, i }) => {
+          const row = document.createElement('div');
+          row.textContent = '■ ' + it.label;
+          row.style.cssText = 'padding:1px 6px;white-space:nowrap;overflow:hidden;cursor:pointer;';
+          row.addEventListener('mouseenter', () => { row.style.background = '#2e342e'; });
+          row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+          row.addEventListener('click', () => pickHit(i, false));
+          row.addEventListener('dblclick', () => pickHit(i, true));
+          return row;
+        }));
+        if (words.length && !searchHits.length) searchResults.textContent = '見つかりません';
+      };
+      searchInput.addEventListener('input', renderHits);
+      // 入力中のキーはゲーム側(M・矢印など)へ渡さない。
+      searchInput.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape') searchBox.style.display = 'none';
+        if (event.key === 'Enter' && searchHits.length) pickHit(searchHits[0].i, event.shiftKey);
+      });
+      searchInput.addEventListener('keyup', (event) => event.stopPropagation());
+      toggleMusicSearch = () => {
+        const open = searchBox.style.display === 'none';
+        searchBox.style.display = open ? 'flex' : 'none';
+        if (open) { searchInput.select(); searchInput.focus(); renderHits(); }
+      };
 
       // 音量メーター: 音楽タブでは音量部も曲リストも緑色液晶へ統一。
       const makeSlider = (labelText, value, oninput) => {
