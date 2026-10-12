@@ -3669,9 +3669,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (nearTotal < 0.5 && farTotal < 2.4) return null;
     const drifting = car2SharpTurnAhead(ai) !== 0;
     // ドリフト中の上限はユーザー車がドリフトで抜ける速さより少し低め。
-    if (farTotal >= 2.4) return drifting ? 90 : 110;
-    if (nearTotal >= 1.2) return drifting ? 115 : 150;
-    return drifting ? 130 : 170;
+    // 直線の速い車(S・A)はカーブでさらに遅くし、ユーザー車がカーブで抜けるようにする。
+    const rankScale = CAR2_CPU_CORNER_RANK_SCALE[ai.rank] ?? 1;
+    if (farTotal >= 2.4) return (drifting ? 90 : 110) * rankScale;
+    if (nearTotal >= 1.2) return (drifting ? 115 : 150) * rankScale;
+    return (drifting ? 130 : 170) * rankScale;
   }
 
   // 首都高速のCPU専用ライン。
@@ -4549,11 +4551,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // Sはユーザー車を抜いていく強豪。Aは自動運転の巡航130km/hより遅くして
   // 追いつけるようにしつつ、Bよりは速い位置に置く。
   const CPU_RANK_SPEED_RATIO = { S: 0.9, A: 0.7, B: 0.65, C: 0.55 };
-  // 首都高速だけの比率。ドリフトを楽しむコースなので、最速のSでも
-  // ドリフトを多用するユーザー車とほぼ同じ速さ(直線135km/h)までにし、
-  // 抜きつ抜かれつになるようにする。C(90km/h)は追いついて抜ける遅い車。
-  const CAR2_CPU_RANK_SPEED_RATIO = { S: 0.75, A: 0.67, B: 0.59, C: 0.5 };
+  // 首都高速だけの比率。速い車(S)は直線ならユーザー車と同じ最高速(180km/h)。
+  // カーブはドリフトで減速する(コーナー上限)ので、ドリフトするユーザー車と
+  // 抜きつ抜かれつになる。Aは直線135km/h。C(90km/h)は追いついて抜ける遅い車。
+  const CAR2_CPU_RANK_SPEED_RATIO = { S: 1.0, A: 0.75, B: 0.59, C: 0.5 };
   const CAR2_TRUCK_SPEED_RATIO = 0.44;   // トラック 80km/h
+  // 直線の速い車のカーブ上限の倍率（S: ドリフトでU字72・垂直92・単発104km/h）。
+  const CAR2_CPU_CORNER_RANK_SCALE = { S: 0.8, A: 0.9 };
   const CPU_RANK_DEFAULT = 'B';
   // 読み込む車種数の上限。cpu_car_list.txt は随時書き換わるので、行数にそのまま追従する。
   const CPU_VOX_LIMIT = 30;
