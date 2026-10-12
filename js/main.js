@@ -3629,8 +3629,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
 
   // 走行ライン上で今まさに通過中／これから入るカーブのうち、最も急な曲がり角を返す。
-  // 30度以下なら0（ドリフトしない）。符号は曲がる向き。
-  const CAR2_CPU_DRIFT_TURN = Math.PI / 6;  // 30度
+  // 20度以下なら0（ドリフトしない）。符号は曲がる向き。
+  // 以前は30度で、ドリフトする場面が少なかった。
+  const CAR2_CPU_DRIFT_TURN = Math.PI / 9;  // 20度
   const CAR2_CPU_DRIFT_LOOKAHEAD = 2;       // 何点先まで見てドリフトを構えるか
   function car2SharpTurnAhead(ai) {
     if (!ai.wps || !ai.wps.length) return 0;
@@ -3646,9 +3647,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // 首都高のコーナー上限速度（ユーザー車と同じ旋回性能・絶対値）。
   // 先の数点の曲がり角を合計してカーブの種類を判定する。
-  //   U字(合計約137度以上)    : ドリフトで100km/h以下
-  //   垂直(合計約69度以上)    : グリップ150km/h・ドリフト130km/h以下
-  //   単発の45度など(約29度以上): グリップ170・ドリフト150
+  //   U字(合計約137度以上)    : ドリフトで90km/h以下
+  //   垂直(合計約69度以上)    : グリップ150km/h・ドリフト115km/h以下
+  //   単発の45度など(約29度以上): グリップ170・ドリフト130
   // 上限より遅い車（B・C等）はそのカーブでは減速しない。
   function car2CornerCapKmh(ai) {
     // 近い窓(+4)で垂直/単発を、広い窓(+7)でU字（90度2連の複合区間）を判定する。
@@ -3666,9 +3667,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     if (nearTotal < 0.5 && farTotal < 2.4) return null;
     const drifting = car2SharpTurnAhead(ai) !== 0;
-    if (farTotal >= 2.4) return drifting ? 100 : 110;
-    if (nearTotal >= 1.2) return drifting ? 130 : 150;
-    return drifting ? 150 : 170;
+    // ドリフト中の上限はユーザー車がドリフトで抜ける速さより少し低め。
+    if (farTotal >= 2.4) return drifting ? 90 : 110;
+    if (nearTotal >= 1.2) return drifting ? 115 : 150;
+    return drifting ? 130 : 170;
   }
 
   // 首都高速のCPU専用ライン。
@@ -4271,7 +4273,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         roadCheckIn: Math.random() * 0.25,
         speedKmh,
         rank: cpuRankFor(vehicle.url),
-        // 30度より大きい曲がり角はドリフトで回る。
+        // 20度より大きい曲がり角はドリフトで回る。
         driftOnSharpCurve: true,
         // ドリフトで膨らむ分の余裕。カーブでは専用ラインが中心線へ戻るため、
         // 中心線からの最大距離は従来（右2.4m＋膨らみ2.5m）より小さくなる。
@@ -4539,6 +4541,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // Sはユーザー車を抜いていく強豪。Aは自動運転の巡航130km/hより遅くして
   // 追いつけるようにしつつ、Bよりは速い位置に置く。
   const CPU_RANK_SPEED_RATIO = { S: 0.9, A: 0.7, B: 0.65, C: 0.55 };
+  // 首都高速だけの比率。ドリフトを楽しむコースなので、最速のSでも
+  // ドリフトを多用するユーザー車とほぼ同じ速さ(直線135km/h)までにし、
+  // 抜きつ抜かれつになるようにする。C(90km/h)は追いついて抜ける遅い車。
+  const CAR2_CPU_RANK_SPEED_RATIO = { S: 0.75, A: 0.67, B: 0.59, C: 0.5 };
   const CPU_RANK_DEFAULT = 'B';
   // 読み込む車種数の上限。cpu_car_list.txt は随時書き換わるので、行数にそのまま追従する。
   const CPU_VOX_LIMIT = 30;
@@ -4571,7 +4577,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
   // ランクから決まるCPU車の最高速度(km/h)。
   function cpuTopSpeedKmhFor(url) {
-    return Math.round(PLAYER_TOP_SPEED_KMH * CPU_RANK_SPEED_RATIO[cpuRankFor(url)]);
+    const ratios = CAR2_MODE ? CAR2_CPU_RANK_SPEED_RATIO : CPU_RANK_SPEED_RATIO;
+    return Math.round(PLAYER_TOP_SPEED_KMH * ratios[cpuRankFor(url)]);
   }
 
   function cpuVoxUrls(fileNames, keepOrder = false) {
@@ -9758,7 +9765,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const curveAmount = ai.indyBanked
             ? Math.max(Math.abs(diff), Math.abs(indyCurve))
             : Math.abs(diff);
-          // 首都高速CPUは、走行ラインの曲がり角が30度より大きいカーブだけドリフトで回る。
+          // 首都高速CPUは、走行ラインの曲がり角が20度より大きいカーブをドリフトで回る。
           const sharpTurn = ai.driftOnSharpCurve ? car2SharpTurnAhead(ai) : 0;
           const indyDrifting = ai.indyBanked
             && curveAmount > 0.08 && ai.cornerDrift !== false;
