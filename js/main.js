@@ -6296,12 +6296,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
     // ルート66もぐんまーと同じ強さで、暗い砂漠の道の先まで照らす。
     const gunmaHeadlights = TOUGE_COURSE || COURSE_KEY === 'route66';
-    // 街並みは明るい街中なので、ぐんまーの光量の半分。照らすのは自分の車線くらいの幅だけ。
+    // 街並みはぐんまーと同じ光量。照らす幅は自分の車線より少し広いくらい。
     // 光の円錐(半角 NEO_BEAM)を同じ角度だけ下へ傾け、円錐の上の縁を水平にする。
-    // ライトの高さ(0.75m)より上は照らさない。路面は約4m先から、幅は20m先で約4.5m。
-    const NEO_BEAM = 0.09;
+    // ライトの高さ(0.75m)より上は照らさない。路面は約2m先から、幅は20m先で約8.5m。
+    // (前回の幅の2倍: 半角の正接を2倍にした)
+    const NEO_BEAM = Math.atan(Math.tan(0.09) * 2);
     for (const side of [-1, 1]) {
-      const intensity = NEO_COURSE ? 2.1 : gunmaHeadlights ? 4.2 : 0.42;
+      const intensity = NEO_COURSE ? 4.2 : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
       const angle = NEO_COURSE ? NEO_BEAM
         : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
