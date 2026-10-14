@@ -461,17 +461,20 @@ export const MAP_CONFIGS = {
     drivableMaterialAliases: ['GunmaShoulder'],
     supportSurfaceMode: 'drivable',
     blockOutsideDrivableSurface: true,
-    // ビル・トンネルは地図の外に置いてあり、左右はガードレールと同じ横の制限で止める。
+    // 建物は地図の外に置いてあり、左右は縁石の手前の横の制限で止める。
     ignoreMapWallCollisions: true,
     loopMode: 'none',
     roadMotionStep: 0.15,
+    // 開始位置はコンビニ(x -10〜10、道路の右側)の手前。+x 向き。
     spawnReference: 'fixed',
-    spawnReferenceX: 0,
+    spawnReferenceX: -20,
     spawnReferenceZ: 0,
     spawnExactReference: false,
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI / 2,
-    spawnOffsetRight: 1.68,
+    // 左側通行の左車線。中央線から車線の中央まで2.8m(外側線は5.6m)。
+    // 自動運転・CPU車の車線もこの距離にそろえる。
+    spawnOffsetRight: 2.8,
     spawnSurfaceMode: 'roadSurface',
     autoDriveMode: 'gunmaTouge',
     treePlacement: { ...commonTrees, enabled: false, seed: 20260928 },
