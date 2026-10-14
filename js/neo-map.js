@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js';
+import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js?v=20261014-town-2';
 
 // 街並み(旧NeoTokyo): 日本の街を貫く一直線の二車線道路。
 // 道は z = 0 を中心に +x へ延び、1周(NIHON_LAP_LENGTH)ごとに同じ街並みが繰り返す。
@@ -7,8 +7,13 @@ import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js';
 // ここで作るのは走行判定用の面だけ(見えない)。見た目は nihon-town.js が描く。
 
 const HALF = 6.0;          // 車道の半幅(縁石まで)。中央線 z=0、外側線 |z|=5.6
-const SHOULDER = 3.2;      // 判定面を縁石の外(歩道)まで少し広げておく
+const WALK = 9.2;          // 歩道の外側の端(道路中心から)
+export const NEO_DRIVABLE_HALF = 60;   // 走れる範囲(道路中心から)。歩道・駐車場・敷地まで
 const SPACING = 3;         // 点の間隔(m)の目安
+// 交差点の交わる道(x 69〜87、周ごとに繰り返す)は車道と同じ高さにする。
+const CROSS_X0 = 69, CROSS_X1 = 87;
+// 走行面の高さ(見た目の地図の上面に合わせる)。
+const ROAD_Y = 0.02, WALK_Y = 0.15, LOT_Y = 0.13;
 
 export function buildNeoMap() {
   const x0 = NIHON_INTRO_START;
@@ -51,26 +56,49 @@ export function buildNeoMap() {
   const ringPosition = (px, pz) => (px > seam.endX ? [px - offset.x, pz - offset.z]
     : px < seam.startX ? [px + offset.x, pz + offset.z] : [px, pz]);
 
-  // 走行面: 車道と、その外の路肩(歩道の上)。どちらも見えない板。
+  // 走行面: 車道・歩道・沿道の敷地(駐車場など)。どれも見えない板で、見た目は nihon-town.js。
+  // 建物・塀・電柱・駐車中の車への当たり判定は nihon-town.js の isBlocked で行う。
   const group = new THREE.Group();
   group.name = 'nihon_procedural';
   const first = ext[0].x, last = ext[ext.length - 1].x;
-  const bands = [
-    { name: 'GunmaRoad', z0: -HALF, z1: HALF },
-    { name: 'GunmaShoulder', z0: -HALF - SHOULDER, z1: -HALF },
-    { name: 'GunmaShoulder', z0: HALF, z1: HALF + SHOULDER },
-  ];
-  for (const band of bands) {
+  const quads = { GunmaRoad: [], GunmaShoulder: [] };
+  const quad = (name, x0, x1, z0, z1, y) => {
+    if (x1 - x0 > 1e-6) quads[name].push([x0, x1, z0, z1, y]);
+  };
+  // 交わる道の x 範囲(範囲内に入る周だけ)。
+  const crossings = [];
+  for (let k = -2; k <= 2; k++) {
+    const a = CROSS_X0 + k * period, b = CROSS_X1 + k * period;
+    if (b > first && a < last) crossings.push([Math.max(a, first), Math.min(b, last)]);
+  }
+  // 車道はずっと一続き。
+  quad('GunmaRoad', first, last, -HALF, HALF, ROAD_Y);
+  // 車道の外は、交わる道の所を切り抜いて歩道と敷地を置く。
+  let x = first;
+  for (const [a, b] of [...crossings, [last, last]]) {
+    for (const side of [-1, 1]) {
+      const zs = (z0, z1) => (side > 0 ? [z0, z1] : [-z1, -z0]);
+      quad('GunmaShoulder', x, a, ...zs(HALF, WALK), WALK_Y);
+      quad('GunmaShoulder', x, a, ...zs(WALK, NEO_DRIVABLE_HALF), LOT_Y);
+      quad('GunmaShoulder', a, b, ...zs(HALF, NEO_DRIVABLE_HALF), ROAD_Y);
+    }
+    x = b;
+  }
+  for (const [name, list] of Object.entries(quads)) {
+    const positions = [], indices = [];
+    for (const [x0q, x1q, z0, z1, y] of list) {
+      const base = positions.length / 3;
+      positions.push(x0q, y, z0, x1q, y, z0, x0q, y, z1, x1q, y, z1);
+      indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    }
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-      first, 0, band.z0, last, 0, band.z0, first, 0, band.z1, last, 0, band.z1,
-    ], 3));
-    geometry.setIndex([0, 2, 1, 1, 2, 3]);
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-      name: band.name, color: 0x000000, side: THREE.DoubleSide, visible: false,
+      name, color: 0x000000, side: THREE.DoubleSide, visible: false,
     }));
-    mesh.name = band.name;
+    mesh.name = name;
     group.add(mesh);
   }
 

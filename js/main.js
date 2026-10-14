@@ -11,15 +11,15 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261014-town-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261014-town-2';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap } from './neo-map.js?v=20261014-town-1';
-import { createNeoCity } from './neo-city.js?v=20261014-town-1';
+import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261014-town-2';
+import { createNeoCity } from './neo-city.js?v=20261014-town-2';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -69,6 +69,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let moorFog = null;
   let route66Scenery = null;
   let neoCity = null;
+  let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -2713,8 +2714,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const point = route[closest], normal = gunmaCourse.tangents[closest];
       const lateral = (player.pos.x - point.x) * normal.x
         + (player.pos.z - point.z) * normal.z;
-      // 街並みは縁石(道路中心から6m)の手前で止める。車体の半幅ぶん内側。
-      const limit = NEO_COURSE ? gunmaCourse.halfWidths[closest] - 0.9 : 3.87;
+      // 街並みは歩道・駐車場まで走れる。止めるのは走行面の端(道路中心から±60m)の手前。
+      const limit = NEO_COURSE ? NEO_DRIVABLE_HALF - 2 : 3.87;
       if (Math.abs(lateral) > limit) {
         const side = Math.sign(lateral);
         const correction = lateral - side * limit;
@@ -2731,6 +2732,23 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         document.body.dataset.gunmaGuardrailContacts = String(
           Number(document.body.dataset.gunmaGuardrailContacts || 0) + 1
         );
+      }
+    }
+    if (NEO_COURSE && neoCity) {
+      // 街並み: 建物・塀・電柱・駐車中の車にぶつかったら、ぶつかる前の位置へ戻して止める。
+      // 車体の前・中・後ろの3点を、車体の半幅の円で調べる。
+      const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
+      const hit = [-1.6, 0, 1.6].some((d) => neoCity.isBlocked(
+        player.pos.x + fx * d, player.pos.z + fz * d, 0.85));
+      if (hit && neoLastFreePos) {
+        player.pos.x = neoLastFreePos.x;
+        player.pos.z = neoLastFreePos.z;
+        player.vel.x *= -0.15;
+        player.vel.z *= -0.15;
+        document.body.dataset.neoBuildingContacts = String(
+          Number(document.body.dataset.neoBuildingContacts || 0) + 1);
+      } else {
+        neoLastFreePos = { x: player.pos.x, z: player.pos.z };
       }
     }
     const surface = getMapSurfaceAt(player.pos.x, player.pos.z, player.pos.y);
@@ -4002,7 +4020,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!gunmaCourse?.route.length || !vehicles.length) return;
     // 街並みは車線が広い(中央線から車線中央まで2.8m)。
     const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
-      NEO_COURSE ? MAP_CONFIG.spawnOffsetRight : 2.05, gunmaCourse.seam.offset);
+      NEO_COURSE ? MAP_CONFIG.laneOffset : 2.05, gunmaCourse.seam.offset);
     const anchor = nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z);
     const starts = {
       same: paths.same.distances[anchor] + 95,
@@ -6276,10 +6294,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
     // ルート66もぐんまーと同じ強さで、暗い砂漠の道の先まで照らす。
     const gunmaHeadlights = TOUGE_COURSE || COURSE_KEY === 'route66';
+    // 街並みは明るい街中なので、ぐんまーの光量の半分・照射幅の半分。
     for (const side of [-1, 1]) {
-      const intensity = gunmaHeadlights ? 4.2 : 0.42;
+      const intensity = NEO_COURSE ? 2.1 : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
-      const angle = gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
+      const angle = NEO_COURSE ? Math.atan(Math.tan(0.65) * 1.5)
+        : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
       const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, 0.6, decay);
       light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
@@ -6648,7 +6668,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // The copy of the first 200 m after the end lets the autopilot look
         // across the seam instead of steering back toward the start.
         const gunmaLane = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
-          MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset).same.points;
+          MAP_CONFIG.laneOffset ?? MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset).same.points;
         const gunmaSeam = gunmaCourse.seam.offset;
         car2AutoRoute = gunmaLane.concat(gunmaLane.slice(0, 67).map((point) => ({
           ...point, x: point.x + gunmaSeam.x, z: point.z + gunmaSeam.z,
@@ -7630,10 +7650,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
   // ぐんまー・嵐が丘: 最初にアクセルを踏んだとき、musiclist.txt のコースの曲を流す。
   // すでに別の曲を流していれば邪魔しない。YouTubeの準備中は1秒おきに再試行する。
+  // 街並み(neo)は既定の曲なし。
   const GUNMA_THEME_LABEL = {
     gunma: 'NIKO,Night of Fire (1997)',
     moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
-    neo: 'Daft Punk,TRON Legacy End Titles (2010)',
     route66: 'David Ferguson,The Housebuilding Song (2021)',
   }[COURSE_KEY] ?? null;
   // ルート66はステージ既定の空のまま流す(曲の空色は当てない)。

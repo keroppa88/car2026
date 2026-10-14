@@ -8,7 +8,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 //    入れ替えながら2巡する。最後の区画の先は、次の周のコンビニ区間へつながる。
 //  - 見ている位置の前後だけ区画を組み立て、遠くは消す。コンビニ区間は一番近い周へ動かす。
 //  - 光源(太陽・環境光)・空・霧はゲーム側のものを使う。走る車は入れない。
-//  - 車の当たり判定はゲーム側(道幅の制限)で行うので、建物の当たり判定は持たない。
+//  - 歩道・駐車場・敷地は走れる。建物・塀・電柱・街路樹・駐車中の車は isBlocked でぶつかる。
 export const NIHON_INTRO_START = -65;   // コンビニ区間の始まり(x)
 export const NIHON_INTRO_END = 140;     // コンビニ区間の終わり = 最初の区画の始まり(x)
 export const NIHON_CHUNK_LENGTH = 60;   // 区画1個の長さ(m)
@@ -22,10 +22,14 @@ export function createNihonTown(world, opts={}){
   // コンビニ区間はこのグループにまとめ、一番近い周の位置へ動かす。
   const scene=new THREE.Group(); scene.name='nihon-intro'; world.add(scene);
   // ---- 便利関数 ----
+  const colliders=[];                                  // 車がぶつかる範囲 [x0,z0,x1,z1](コンビニ区間の座標)
   const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
   function box(w,h,d,m,x,y,z,parent=scene){ // yは底の高さ
     const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?mat(m):m);
-    b.position.set(x,y+h/2,z); b.castShadow=b.receiveShadow=true; parent.add(b); return b;
+    b.position.set(x,y+h/2,z); b.castShadow=b.receiveShadow=true; parent.add(b);
+    // コンビニ区間で地面に立つ高さ0.8m以上の箱(壁・塀・建物・自販機など)は車がぶつかる。
+    if(parent===scene && h>=0.8 && y<0.6) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
+    return b;
   }
   function tex(w,h,draw){
     const c=document.createElement('canvas'); c.width=w; c.height=h;
@@ -60,7 +64,6 @@ export function createNihonTown(world, opts={}){
 
   // ---- コンビニ本体（架空のお店「あおばマート」）----
   const S=new THREE.Group(); scene.add(S);
-  const colliders=[];                                  // 歩くときにぶつかる範囲 [x0,z0,x1,z1]
   function solid(w,h,d,m,x,y,z){ colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]); return box(w,h,d,m,x,y,z,S); }
   const wallM=mat(0xe9e5dc);
   const FY=0.15, CH=3.2, D0=-6.5, D1=-3.5;            // 床・天井の高さ、入口の左右端
@@ -256,7 +259,9 @@ export function createNihonTown(world, opts={}){
       const w=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.25,16),wm);
       w.rotation.z=Math.PI/2; w.position.set(a,.35,b); g.add(w);
     }
-    g.position.set(x,0.13,z); g.rotation.y=ry; scene.add(g); return g;
+    g.position.set(x,0.13,z); g.rotation.y=ry; scene.add(g);
+    if(Math.abs(Math.sin(ry))<0.1) colliders.push([x-0.9,z-2.1,x+0.9,z+2.1]);   // 止まっている車(縦向き)
+    return g;
   }
   car(5.5,20,0xf3f3f0,0); car(3,20,0x5d6f84,0);
   const movers=[{c:car(-40,-3,0xb3392f,Math.PI/2),v:7},{c:car(40,3,0x2e2e2e,-Math.PI/2),v:-5}];
@@ -1019,7 +1024,7 @@ export function createNihonTown(world, opts={}){
     const add=(w,h,d,m,x1,y,z1)=>{ const o=new THREE.Mesh(cgeo(w,h,d),cmat(m)); o.position.set(x1,y+h/2,z1); g.add(o); };
     add(1.8,0.7,4.2,c,0,0.35,0); add(1.6,0.6,2.2,c,0,1.05,-0.2); add(1.62,0.45,2.0,0x2b3440,0,1.1,-0.2);
     for(const a of [-0.9,0.9]) for(const b of [-1.3,1.3]) add(0.25,0.7,0.7,0x1d1d1d,a,0,b);
-    g.position.set(x,0.13,z); g.rotation.y=ry; croot.add(g); }
+    g.position.set(x,0.13,z); g.rotation.y=ry; croot.add(g); ccol(x-0.9,z-2.1,x+0.9,z+2.1); }
 
   // ---- 看板のブランド（色と名前を変える）----
   const CVS=[{n:'あおばマート',a:'#e07a2e',b:'#6b4a32'},{n:'ヨツバ24',a:'#1f9a8a',b:'#145a6e'},{n:'マルミ',a:'#d23a3a',b:'#8a1f1f'},
@@ -1047,8 +1052,8 @@ export function createNihonTown(world, opts={}){
     cb(0.15,1.2,D,bm,-W/2,0.1,D/2); cb(W,1.2,0.15,bm,0,0.1,D); ccol(-W/2-0.1,0,-W/2+0.1,D); ccol(-W/2,D-0.1,W/2,D+0.1);
     if(o.lastRight) cb(0.15,1.2,D,bm,W/2,0.1,D/2);
     const cuts=[[px-1.55,px+1.55],[hx-0.6,hx+0.6]].sort((a,b)=>a[0]-b[0]); let st=-W/2;
-    cuts.forEach(([a,b])=>{ if(a>st) cb(a-st,1.2,0.15,bm,(st+a)/2,0.1,0.1); st=Math.max(st,b); });
-    if(W/2>st) cb(W/2-st,1.2,0.15,bm,(st+W/2)/2,0.1,0.1);
+    cuts.forEach(([a,b])=>{ if(a>st){ cb(a-st,1.2,0.15,bm,(st+a)/2,0.1,0.1); ccol(st,0,a,0.2); } st=Math.max(st,b); });
+    if(W/2>st){ cb(W/2-st,1.2,0.15,bm,(st+W/2)/2,0.1,0.1); ccol(st,0,W/2,0.2); }
     cb(3.1,0.04,5.6,0xbdbab3,px,0.1,3); if(RN()<0.7) ccar(px,3.1,0);
   }
   const tGeo=new THREE.CylinderGeometry(.15,.22,2,6), lGeo=new THREE.IcosahedronGeometry(1.5,1), trM=cmat(0x6b4f36), lfM=cmat(0x4f7a3e);
@@ -1289,6 +1294,15 @@ export function createNihonTown(world, opts={}){
   const startX=opts.startX??0;
   for(let i=0;i<10;i++) updateChunks(startX);         // 最初の区間を先に作っておく
 
+  // ---- 当たり判定 ----
+  // x, z は周をまたいだ座標でよい。コンビニ区間の当たり判定は区間の中の座標で調べる。
+  function isBlocked(x,z,R=0.3){
+    if(chunkBlocked(x,z,R)) return true;
+    const lx=x-scene.position.x;
+    if(lx>D0-R && lx<D1+R && Math.abs(z-24)<0.1+R) return true;   // 自動ドア(車では店に入れない)
+    return colliders.some(c=>lx>c[0]-R&&lx<c[2]+R&&z>c[1]-R&&z<c[3]+R);
+  }
+
   // ---- 毎フレームの更新 ----
   // player は見ている位置(カメラ)。周をまたいだ座標でもよい。
   function update(dt,t,player){
@@ -1323,5 +1337,5 @@ export function createNihonTown(world, opts={}){
       d.open+=((nr?1:0)-d.open)*Math.min(1,dt*4); d.p.position.z=(d.z0+d.z1)/2-d.open*(d.z1-d.z0)*0.95; });
   }
 
-  return { update, setNight, group:scene, isNight:()=>night };
+  return { update, setNight, isBlocked, group:scene, isNight:()=>night };
 }
