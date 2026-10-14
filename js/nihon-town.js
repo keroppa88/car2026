@@ -24,8 +24,10 @@ export function createNihonTown(world, opts={}){
   // ---- 便利関数 ----
   const colliders=[];                                  // 車がぶつかる範囲 [x0,z0,x1,z1](コンビニ区間の座標)
   const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
+  // 色だけの材質は同じ色なら使い回す(まとめて描けるように)。
+  const BM={}; const bmat=c=>BM[c]||(BM[c]=mat(c));
   function box(w,h,d,m,x,y,z,parent=scene){ // yは底の高さ
-    const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?mat(m):m);
+    const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?bmat(m):m);
     b.position.set(x,y+h/2,z); parent.add(b);
     // コンビニ区間で地面に立つ高さ0.8m以上の箱(壁・塀・建物・自販機など)は車がぶつかる。
     if(parent===scene && h>=0.8 && y<0.6) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
@@ -230,11 +232,18 @@ export function createNihonTown(world, opts={}){
     const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);
     p.position.set(x,y,zf+f*0.02); p.rotation.y=f<0?Math.PI:0; scene.add(p); return p;
   }
+  // ハリボテ: 正面(道路側)と左右の面だけ。裏と天井・床は作らない。f は正面の向き(z)。
+  function hollow(w,h,d,m,x,y,cz,f){
+    const mm=typeof m==='number'?bmat(m):m, zf=cz+f*d/2;
+    frontPlane(w,h,x,y+h/2,zf-f*0.02,f,mm);
+    for(const s of [-1,1]){ const p=new THREE.Mesh(new THREE.PlaneGeometry(d,h),mm); p.position.set(x+s*w/2,y+h/2,cz); p.rotation.y=s*Math.PI/2; scene.add(p); }
+    colliders.push([x-w/2,cz-d/2,x+w/2,cz+d/2]);
+  }
   let houseNo=0;                                                         // 夜の灯り：1階だけ／2階だけ／全部 を順番に
   function house(x,zf,f,w,wall,fence=true){
     const pat=houseNo++%3, lit=fl=>(pat===2||(pat===0&&fl<2)||(pat===1&&fl>2))?winM:darkWinM;
     const d=6, cz=zf-f*d/2;
-    box(w,5.4,d,wall,x,0,cz);
+    hollow(w,5.4,d,wall,x,0,cz,f);
     // 切妻屋根（三角の断面を横に伸ばす。妻側は壁と同じ色）
     const sh=new THREE.Shape([new THREE.Vector2(-d/2-0.5,0),new THREE.Vector2(d/2+0.5,0),new THREE.Vector2(0,2.2)]);
     const rg=new THREE.ExtrudeGeometry(sh,{depth:w+0.4,bevelEnabled:false}); rg.translate(0,0,-(w+0.4)/2);
@@ -248,7 +257,7 @@ export function createNihonTown(world, opts={}){
   }
   function office(x,zf,f,w,floors,wall){
     const d=7, cz=zf-f*d/2, h=floors*3.2;
-    box(w,h,d,wall,x,0,cz);
+    hollow(w,h,d,wall,x,0,cz,f);
     box(w+0.2,0.5,d+0.2,0x9a9690,x,h,cz);                               // 屋上の縁
     for(let i=0;i<floors;i++){
       if(i===0) continue;                                                // 1階：中央の入口だけ（両脇は壁）
@@ -912,6 +921,13 @@ export function createNihonTown(world, opts={}){
   let croot=null, cchunk=null;
   function cb(w,h,d,m,x,y,z){ const o=new THREE.Mesh(cgeo(w,h,d),typeof m==='number'?cmat(m):m); o.position.set(x,y+h/2,z); croot.add(o); return o; }
   function cplane(w,h,x,y,z,ry,m){ const o=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m); o.position.set(x,y,z); o.rotation.y=ry; croot.add(o); return o; }
+  // ハリボテ(区画の座標): 正面(道路側 -z)と左右の面だけ。裏・天井・床は作らない。
+  // 当たり判定は呼ぶ側で ccol する。
+  function chollow(w,h,d,m,x,y,cz,fm=m,sm=m){
+    const F=typeof fm==='number'?cmat(fm):fm, S2=typeof sm==='number'?cmat(sm):sm;
+    cplane(w,h,x,y+h/2,cz-d/2,Math.PI,F);
+    cplane(d,h,x-w/2,y+h/2,cz,-Math.PI/2,S2); cplane(d,h,x+w/2,y+h/2,cz,Math.PI/2,S2);
+  }
   function cfront(w,h,x,y,zf,m){ return cplane(w,h,x,y,zf-0.02,Math.PI,m); }   // 区画の座標で道路側（-z）を向く面
   function cglow(map,v=.9,extra={}){ const m=new THREE.MeshStandardMaterial({color:0xffffff,map,emissiveMap:map,emissive:0xffffff,emissiveIntensity:night?v:0,roughness:.6,...extra}); cchunk.glows.push([m,v]); return m; }
   function ctex(w,h,draw){ const t=tex(w,h,draw); cchunk.texs.push(t); return t; }
@@ -949,7 +965,7 @@ export function createNihonTown(world, opts={}){
     cb(W,0.05,D,0x8e9a6e,0,0.08,D/2);
     const side=RN()<0.5?-1:1, hw=Math.min(W-4.5,9.5), hd=Math.min(D-10,8.5), hx=-side*1.6, zf=6.5;
     const wm=cmat(pk(HWALL)), pat=Math.floor(RN()*4), lit=f=>(pat===2||(pat===0&&f===0)||(pat===1&&f===1))?cWin:cDark;
-    cb(hw,5.4,hd,wm,hx,0.1,zf+hd/2); ccol(hx-hw/2,zf,hx+hw/2,zf+hd);
+    chollow(hw,5.4,hd,wm,hx,0.1,zf+hd/2); ccol(hx-hw/2,zf,hx+hw/2,zf+hd);
     const sh=new THREE.Shape([new THREE.Vector2(-hd/2-0.5,0),new THREE.Vector2(hd/2+0.5,0),new THREE.Vector2(0,2.1)]);
     const rg=new THREE.ExtrudeGeometry(sh,{depth:hw+0.4,bevelEnabled:false}); rg.translate(0,0,-(hw+0.4)/2);
     const r=new THREE.Mesh(rg,[wm,cmat(pk(HROOF))]); r.rotation.y=Math.PI/2; r.position.set(hx,5.5,zf+hd/2); croot.add(r);
@@ -989,7 +1005,7 @@ export function createNihonTown(world, opts={}){
     const v=Math.floor(RN()*5), style=o.style||pk(['office','tenant','tenant','old']), floors=3+Math.floor(RN()*3);
     const bd=Math.min(D-3,15), zf=1.6, rf=cmat(0x8a8780);
     const mk=(bw,fl,x,st)=>{ const H=fl*3.2, tx=cFacade(st,fl), fm=cFaceMat(tx,bw), sm=cFaceMat(tx,bd);
-      const b=new THREE.Mesh(new THREE.BoxGeometry(bw,H,bd),[sm,sm,rf,rf,fm,fm]); b.position.set(x,0.1+H/2,zf+bd/2); croot.add(b); ccol(x-bw/2,zf,x+bw/2,zf+bd);
+      chollow(bw,H,bd,null,x,0.1,zf+bd/2,fm,sm); ccol(x-bw/2,zf,x+bw/2,zf+bd);   // 屋根は縁の箱がふさぐ
       cb(bw+0.2,0.45,bd+0.2,0x9a968c,x,0.1+H,zf+bd/2); return H; };
     let bw=W-1, mx=0, H;
     if(v===2){                                          // 横に階段室の塔
@@ -1006,9 +1022,8 @@ export function createNihonTown(world, opts={}){
     cfront(2.4,2.5,mx,1.35,zf,cmat(0x8a959c)); cb(3.4,0.18,1.4,0x8e9296,mx,2.75,zf-0.7);
     const nm=ctex(256,40,(g,w,h)=>{ g.fillStyle=pk(['#2f5f7a','#6b4a32','#3a4652','#7a2f2f','#2f6a4a']); g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font='bold 24px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(pk(BNAMES),w/2,h/2+1); });
     cfront(Math.min(bw*0.5,7),0.5,mx,3.3,zf,new THREE.MeshStandardMaterial({map:nm}));
-    for(let i=0;i<2;i++) cb(1.2,0.8,0.8,0xd5d3cc,mx+(RN()-0.5)*(bw-3),0.55+H,zf+2+RN()*(bd-4));
-    if(style==='old'||RN()<0.3){ const tx=mx+bw/2-2.5, t=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1.6,12),cmat(0xb9bdb8)); t.position.set(tx,0.55+H+2,zf+bd/2); croot.add(t);
-      for(const dx of [-0.6,0.6]) for(const dz of [-0.6,0.6]) cb(0.1,1.2,0.1,0x6a6d70,tx+dx,0.55+H,zf+bd/2+dz); }
+    // 屋上の室外機・貯水タンクは道路から見えないので作らない(ハリボテ)。
+    for(let i=0;i<4;i++) RN();                         // 乱数の並びを保つ(以降の色や形を変えない)
   }
   function cConvenience(W,D){
     const B=pk(CVS);
@@ -1083,8 +1098,8 @@ export function createNihonTown(world, opts={}){
   function cApartment(W,D){                            // アパート：形5種類 × 色いろいろ
     cb(W,0.05,D,0x707275,0,0.08,D/2);
     const v=Math.floor(RN()*5), col=pk(APTC), acc=pk(APTA), bw=Math.min(W-5,26), bd=8, zf=5, fl=v===2?2:2+Math.floor(RN()*2), FH=2.9, H=fl*FH, n=Math.max(2,Math.floor(bw/4.2)), cz=zf+bd/2;
-    cb(bw,H,bd,col,0,0.1,cz); ccol(-bw/2,zf,bw/2,zf+bd);
-    if(v===4) cb(bw+0.06,FH,bd+0.06,0x8a5a44,0,0.1,cz);                                   // 1階だけレンガ調
+    chollow(bw,H,bd,col,0,0.1,cz); ccol(-bw/2,zf,bw/2,zf+bd);
+    if(v===4) chollow(bw+0.06,FH,bd+0.06,0x8a5a44,0,0.1,cz);                                   // 1階だけレンガ調
     if(v===2){ const sh=new THREE.Shape([new THREE.Vector2(-bd/2-0.5,0),new THREE.Vector2(bd/2+0.5,0),new THREE.Vector2(0,1.8)]);
       const rg=new THREE.ExtrudeGeometry(sh,{depth:bw+0.4,bevelEnabled:false}); rg.translate(0,0,-(bw+0.4)/2);
       const r=new THREE.Mesh(rg,[cmat(col),cmat(pk(HROOF))]); r.rotation.y=Math.PI/2; r.position.set(0,0.1+H,cz); croot.add(r); }
@@ -1094,7 +1109,7 @@ export function createNihonTown(world, opts={}){
       for(let i=0;i<n;i++){ const x=-bw/2+(i+0.5)*bw/n;
         if(v===1){ cfront(2.2,2,x,y+1.1,zf,RN()<0.5?cWin:cDark); }                          // ベランダ側の掃き出し窓
         else cfront(0.9,2,x,y+1.05,zf,doorM);                                                 // 玄関
-        cplane(1.4,1.1,x,y+1.6,zf+bd+0.02,0,RN()<0.5?cWin:cDark); }                          // 奥側の窓
+        RN(); }                                                                                // 奥側の窓は作らない(乱数の並びは保つ)
       if(f>0){ if(v===1){ cb(bw,0.15,1.2,0xd8d2c6,0,y,zf-0.6); cb(bw,1,0.06,acc,0,y+0.15,zf-1.17); for(let i=1;i<n;i++) cb(0.08,1.1,1.2,0xd8d2c6,-bw/2+i*bw/n,y+0.15,zf-0.6); }
                else { cb(bw,0.15,1.3,0xbab4a8,0,y,zf-0.65); cb(bw,1,0.08,acc,0,y+0.15,zf-1.28); } }
     }
@@ -1160,22 +1175,26 @@ export function createNihonTown(world, opts={}){
     if(night) simplifyGroup(ch.group,true);
     return ch;
   }
-  // 同じ材質の部品を1つにまとめて描く回数を減らす。影を落とすのは建物の大きさのものだけ
-  // (高さ2m以上・幅も奥行きも4m以上)。影を受けるのは全部。
-  const _bb=new THREE.Box3(), _bs=new THREE.Vector3();
-  const isBuilding=b=>{ b.getSize(_bs); return _bs.y>=2 && Math.min(_bs.x,_bs.z)>=4; };
+  // 部品をまとめて描く回数を減らす。
+  //  - 模様も発光もない単色の部品は、色を頂点に持たせて全部まとめて1回で描く。
+  //  - それ以外(模様・発光・半透明)は同じ材質ごとにまとめる。
+  // このステージは影を描かない設定なので、影の有無では分けない。
+  const vcMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85});
+  const plain=m=>m.isMeshStandardMaterial && !m.map && !m.emissiveMap && !m.transparent && !m.vertexColors
+    && m.emissive.getHex()===0 && m.roughness===0.85 && m.metalness===0 && m.side===THREE.FrontSide;
   function mergeChunk(g){
     g.updateMatrixWorld(true);
     const groups=new Map(), rm=[];
     g.traverse(o=>{ if(!o.isMesh||Array.isArray(o.material)||!o.geometry.attributes.uv) return;
       const geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone(); geo.applyMatrix4(o.matrixWorld);
       for(const k of Object.keys(geo.attributes)) if(!['position','normal','uv'].includes(k)) geo.deleteAttribute(k);
-      geo.computeBoundingBox(); const bld=isBuilding(geo.boundingBox);
-      const key=o.material.uuid+(bld?'_b':''); if(!groups.has(key)) groups.set(key,{m:o.material,bld,list:[]}); groups.get(key).list.push(geo); rm.push(o); });
-    // 材質が面ごとに違う部品(ビルの壁・屋根など)はそのまま。影だけ決める。
-    g.traverse(o=>{ if(o.isMesh && !rm.includes(o)){ o.castShadow=isBuilding(_bb.setFromObject(o)); o.receiveShadow=true; } });
+      const m=o.material, vc=plain(m);
+      if(vc){ const n=geo.attributes.position.count, c=new Float32Array(n*3);
+        for(let i=0;i<n;i++){ c[i*3]=m.color.r; c[i*3+1]=m.color.g; c[i*3+2]=m.color.b; }
+        geo.setAttribute('color',new THREE.BufferAttribute(c,3)); }
+      const key=vc?'vc':m.uuid; if(!groups.has(key)) groups.set(key,{m:vc?vcMat:m,list:[]}); groups.get(key).list.push(geo); rm.push(o); });
     rm.forEach(o=>{ o.parent.remove(o); if(!Object.values(CGC).includes(o.geometry)&&o.geometry!==tGeo&&o.geometry!==lGeo) o.geometry.dispose(); });
-    groups.forEach(({m,bld,list})=>{ const mg=mergeGeometries(list); list.forEach(x=>x.dispose()); if(mg){ const ms=new THREE.Mesh(mg,m); ms.matrixAutoUpdate=false; ms.castShadow=bld; ms.receiveShadow=true; g.add(ms); } });
+    groups.forEach(({m,list})=>{ const mg=mergeGeometries(list); list.forEach(x=>x.dispose()); if(mg){ const ms=new THREE.Mesh(mg,m); ms.matrixAutoUpdate=false; g.add(ms); } });
     // ひと固まりにしたので親の変換は単位行列に
   }
   function disposeChunk(ch){
