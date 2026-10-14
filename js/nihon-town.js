@@ -24,11 +24,13 @@ export function createNihonTown(world, opts={}){
   // ---- 便利関数 ----
   const colliders=[];                                  // 車がぶつかる範囲 [x0,z0,x1,z1](コンビニ区間の座標)
   const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
+  // ハリボテにしない建物(コンビニ・ファミレス・ガソリンスタンド・駐車場)を作る間だけ true。
+  let keepSolid=false;
   // 色だけの材質は同じ色なら使い回す(まとめて描けるように)。
   const BM={}; const bmat=c=>BM[c]||(BM[c]=mat(c));
   function box(w,h,d,m,x,y,z,parent=scene){ // yは底の高さ
     const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?bmat(m):m);
-    b.position.set(x,y+h/2,z); parent.add(b);
+    b.position.set(x,y+h/2,z); if(keepSolid) b.userData.keepSolid=true; parent.add(b);
     // コンビニ区間で地面に立つ高さ0.8m以上の箱(壁・塀・建物・自販機など)は車がぶつかる。
     if(parent===scene && h>=0.8 && y<0.6) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
     return b;
@@ -71,6 +73,7 @@ export function createNihonTown(world, opts={}){
   }
 
   // ---- コンビニ本体（架空のお店「あおばマート」）----
+  keepSolid=true;
   const S=new THREE.Group(); scene.add(S);
   function solid(w,h,d,m,x,y,z){ colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]); return box(w,h,d,m,x,y,z,S); }
   const wallM=mat(0xe9e5dc);
@@ -158,6 +161,7 @@ export function createNihonTown(world, opts={}){
   box(1.6,0.9,0.6,0xd0d4d6,-11.2,0.15,23.4);
   box(0.45,1.2,0.4,0xc8302a,-13,0.15,22.5);
 
+  keepSolid=false;
   // ---- 車 ----
   function car(x,z,c,ry){
     const g=new THREE.Group();
@@ -232,10 +236,11 @@ export function createNihonTown(world, opts={}){
     const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);
     p.position.set(x,y,zf+f*0.02); p.rotation.y=f<0?Math.PI:0; scene.add(p); return p;
   }
-  // ハリボテ: 正面(道路側)と左右の面だけ。裏と天井・床は作らない。f は正面の向き(z)。
+  // ハリボテ: 道路に向いた面と左右の面だけ。反対側と天井・床は作らない。
+  // (玄関が道路と反対を向く家もあるので、残す面は玄関の向きではなく道路の側で決める)
   function hollow(w,h,d,m,x,y,cz,f){
-    const mm=typeof m==='number'?bmat(m):m, zf=cz+f*d/2;
-    frontPlane(w,h,x,y+h/2,zf-f*0.02,f,mm);
+    const mm=typeof m==='number'?bmat(m):m, rf=cz>0?-1:1, zf=cz+rf*d/2;
+    frontPlane(w,h,x,y+h/2,zf-rf*0.02,rf,mm);
     for(const s of [-1,1]){ const p=new THREE.Mesh(new THREE.PlaneGeometry(d,h),mm); p.position.set(x+s*w/2,y+h/2,cz); p.rotation.y=s*Math.PI/2; scene.add(p); }
     colliders.push([x-w/2,cz-d/2,x+w/2,cz+d/2]);
   }
@@ -529,6 +534,7 @@ export function createNihonTown(world, opts={}){
 
   let gsLight=null, gsPoolM=null;
   // ---- ガソリンスタンド（茶色ビルの隣、交差点の角）----
+  keepSolid=true;
   {
     const x0=49, x1=69, z0=-9.2, z1=-32, cx=(x0+x1)/2, cz=(z0+z1)/2;
     box(x1-x0,0.06,z0-z1,mat(0x9c9a94),cx,0.1,cz);
@@ -562,6 +568,7 @@ export function createNihonTown(world, opts={}){
     colliders.push([66.7,-11.3,67.3,-10.7]);
   }
 
+  keepSolid=false;
   // ---- ガソリンスタンドの向かい（コンビニ側）：月極駐車場 ----
   {
     const x0=43.2, x1=68.6, z0=9.2, z1=30, cx=(x0+x1)/2;
@@ -632,6 +639,7 @@ export function createNihonTown(world, opts={}){
   drawClock(); setInterval(drawClock,20000);
 
   // ---- ガソリンスタンドの斜め向かい：1階が駐車場、2階が店のファミレス ----
+  keepSolid=true;
   {
     const x0=87, x1=125, cx=(x0+x1)/2, z0=9.2, z1=40;
     box(x1-x0,0.06,z1-z0,mat(0x4a4c4f),cx,0.1,(z0+z1)/2);
@@ -673,6 +681,7 @@ export function createNihonTown(world, opts={}){
     box(0.3,8,0.3,0x777d85,x0+2,0.15,11); const ps=new THREE.Mesh(new THREE.BoxGeometry(3.4,1.6,0.35),[fm,fm,fm,fm,fm,fm]); ps.position.set(x0+2,8.9,11); ps.rotation.y=Math.PI/4; scene.add(ps);
   }
 
+  keepSolid=false;
   // ---- 裏の路地（車1台がぎりぎり通れる幅）----
   // 公園隣の家の脇から奥へ → コンビニ裏を横切る → 工場の脇を折れ曲がって交差する道へ。途中で奥へ分岐。
   {
@@ -919,7 +928,7 @@ export function createNihonTown(world, opts={}){
   const cgeo=(w,h,d)=>{ const k=w.toFixed(2)+'_'+h.toFixed(2)+'_'+d.toFixed(2); return CGC[k]||(CGC[k]=new THREE.BoxGeometry(w,h,d)); };
   const cmat=c=>CMC[c]||(CMC[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85}));
   let croot=null, cchunk=null;
-  function cb(w,h,d,m,x,y,z){ const o=new THREE.Mesh(cgeo(w,h,d),typeof m==='number'?cmat(m):m); o.position.set(x,y+h/2,z); croot.add(o); return o; }
+  function cb(w,h,d,m,x,y,z){ const o=new THREE.Mesh(cgeo(w,h,d),typeof m==='number'?cmat(m):m); o.position.set(x,y+h/2,z); if(keepSolid) o.userData.keepSolid=true; croot.add(o); return o; }
   function cplane(w,h,x,y,z,ry,m){ const o=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m); o.position.set(x,y,z); o.rotation.y=ry; croot.add(o); return o; }
   // ハリボテ(区画の座標): 正面(道路側 -z)と左右の面だけ。裏・天井・床は作らない。
   // 当たり判定は呼ぶ側で ccol する。
@@ -1167,7 +1176,9 @@ export function createNihonTown(world, opts={}){
       while(x<CL-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>CL){ w=CL-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; } lots.push([type,w,x]); x+=w; }
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
+        keepSolid=['conv','famires','gas','parking'].includes(type);
         csub(cx,side*12.4,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1}));
+        keepSolid=false;
       });
     }
     RN=Math.random;
@@ -1182,8 +1193,28 @@ export function createNihonTown(world, opts={}){
   const vcMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85});
   const plain=m=>m.isMeshStandardMaterial && !m.map && !m.emissiveMap && !m.transparent && !m.vertexColors
     && m.emissive.getHex()===0 && m.roughness===0.85 && m.metalness===0 && m.side===THREE.FrontSide;
+  // 建物の大きさの箱(高さ3m以上・幅も奥行きも4m以上)を、道路に向いた面と左右の面だけにする。
+  // 箱の面の並び: +x, -x, +y, -y, +z, -z。どちらの z 面が道路(z=0)を向くかは置き場所で決める。
+  const _wp=new THREE.Vector3(), _wn=new THREE.Vector3(), _ws=new THREE.Vector3();
+  function hollowBoxes(g){
+    g.traverse(o=>{
+      if(!o.isMesh||o.userData.keepSolid||o.geometry.type!=='BoxGeometry') return;
+      for(let p=o; p; p=p.parent) if(p.userData.keepSolid) return;
+      o.getWorldScale(_ws); const P=o.geometry.parameters;
+      if(P.height*_ws.y<3 || Math.min(P.width*_ws.x,P.depth*_ws.z)<4) return;
+      o.getWorldPosition(_wp);
+      _wn.set(0,0,1).transformDirection(o.matrixWorld);
+      const road=_wp.z>0?-1:1, keepZ=Math.sign(_wn.z)===road?4:5;
+      const src=o.geometry, idx=src.index.array, out=[], geo=new THREE.BufferGeometry();
+      for(const k of ['position','normal','uv']) geo.setAttribute(k,src.attributes[k]);
+      src.groups.forEach(gr=>{ if(gr.materialIndex===0||gr.materialIndex===1||gr.materialIndex===keepZ){
+        geo.addGroup(out.length,gr.count,gr.materialIndex); for(let i=gr.start;i<gr.start+gr.count;i++) out.push(idx[i]); } });
+      geo.setIndex(out); o.geometry=geo;
+    });
+  }
   function mergeChunk(g){
     g.updateMatrixWorld(true);
+    hollowBoxes(g);
     const groups=new Map(), rm=[];
     g.traverse(o=>{ if(!o.isMesh||Array.isArray(o.material)||!o.geometry.attributes.uv) return;
       const geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone(); geo.applyMatrix4(o.matrixWorld);

@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js?v=20261015-town-5';
+import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js?v=20261015-town-8';
 
 // 街並み(旧NeoTokyo): 日本の街を貫く一直線の二車線道路。
 // 道は z = 0 を中心に +x へ延び、1周(NIHON_LAP_LENGTH)ごとに同じ街並みが繰り返す。
