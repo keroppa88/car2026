@@ -23,7 +23,10 @@ export function createNihonTown(world, opts={}){
   const scene=new THREE.Group(); scene.name='nihon-intro'; world.add(scene);
   // ---- 便利関数 ----
   const colliders=[];                                  // 車がぶつかる範囲 [x0,z0,x1,z1](コンビニ区間の座標)
-  const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
+  // 街の材質は簡単な光の計算(ランバート: 拡散光だけ。つや・金属感の計算をしない)で軽くする。
+  // 元の地図の roughness / metalness の指定は使わないので捨てる。
+  const LAM=(o)=>{ const {roughness,metalness,...rest}=o; return new THREE.MeshLambertMaterial(rest); };
+  const mat=(c,o={})=>LAM({color:c,...o});
   // 木の葉: 一色で陰影なし(光の計算をしない)。夜は暗い緑にする(setNight)。
   const LEAF_DAY=0x4f7a3e, LEAF_NIGHT=0x0f1a0c;
   const leafM=new THREE.MeshBasicMaterial({color:LEAF_DAY});
@@ -284,7 +287,6 @@ export function createNihonTown(world, opts={}){
     box(0.08,2.5,0.06,0x6e7378,x,0.15,zf+f*0.04);                        // ドアの合わせ目
     box(3.4,0.18,1.4,0x8e9296,x,2.75,zf+f*0.7);                          // 入口のひさし
     box(3,0.15,0.8,0xbdbab3,x,0,zf+f*0.4);                               // 入口の段
-    frontPlane(w*0.5,0.5,x,3.35,zf,f,mat(0x2f5f7a));                     // ビル名の看板
   }
   // 木・ベンチ・街灯
   function tree(x,z,s=1){
@@ -938,7 +940,7 @@ export function createNihonTown(world, opts={}){
   const chunkMap=new Map();
   const CGC={}, CMC={};
   const cgeo=(w,h,d)=>{ const k=w.toFixed(2)+'_'+h.toFixed(2)+'_'+d.toFixed(2); return CGC[k]||(CGC[k]=new THREE.BoxGeometry(w,h,d)); };
-  const cmat=c=>CMC[c]||(CMC[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85}));
+  const cmat=c=>CMC[c]||(CMC[c]=LAM({color:c}));
   let croot=null, cchunk=null;
   function cb(w,h,d,m,x,y,z){ const o=new THREE.Mesh(cgeo(w,h,d),typeof m==='number'?cmat(m):m); o.position.set(x,y+h/2,z); if(keepSolid) o.userData.keepSolid=true; croot.add(o); return o; }
   function cplane(w,h,x,y,z,ry,m){ const o=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m); o.position.set(x,y,z); o.rotation.y=ry; croot.add(o); return o; }
@@ -950,7 +952,7 @@ export function createNihonTown(world, opts={}){
     cplane(d,h,x-w/2,y+h/2,cz,-Math.PI/2,S2); cplane(d,h,x+w/2,y+h/2,cz,Math.PI/2,S2);
   }
   function cfront(w,h,x,y,zf,m){ return cplane(w,h,x,y,zf-0.02,Math.PI,m); }   // 区画の座標で道路側（-z）を向く面
-  function cglow(map,v=.9,extra={}){ const m=new THREE.MeshStandardMaterial({color:0xffffff,map,emissiveMap:map,emissive:0xffffff,emissiveIntensity:night?v:0,roughness:.6,...extra}); cchunk.glows.push([m,v]); return m; }
+  function cglow(map,v=.9,extra={}){ const m=LAM({color:0xffffff,map,emissiveMap:map,emissive:0xffffff,emissiveIntensity:night?v:0,roughness:.6,...extra}); cchunk.glows.push([m,v]); return m; }
   function ctex(w,h,draw){ const t=tex(w,h,draw); cchunk.texs.push(t); return t; }
   const _cv=new THREE.Vector3();
   function ccol(x0,z0,x1,z1){ croot.updateMatrixWorld(true); _cv.set(x0,0,z0).applyMatrix4(croot.matrixWorld); const ax=_cv.x, az=_cv.z;
@@ -1004,29 +1006,57 @@ export function createNihonTown(world, opts={}){
   const tGeo=new THREE.CylinderGeometry(.15,.22,2,6), lGeo=new THREE.IcosahedronGeometry(1.5,1), trM=cmat(0x6b4f36), lfM=leafM;
   function ctree(x,z,s=1){ const t=new THREE.Mesh(tGeo,trM); t.scale.setScalar(s); t.position.set(x,0.1+s,z); croot.add(t);
     const l=new THREE.Mesh(lGeo,lfM); l.scale.setScalar(s); l.position.set(x,0.1+2.6*s,z); croot.add(l); }
-  function cFacade(style,floors){
-    const W=256, FH=64, H=FH*floors, wall=style==='old'?'#a8a193':style==='office'?pk(['#c9cfd3','#b9c0c4','#d6d2c8','#a9b0b6']):pk(['#d8d0c0','#cfc2ae','#e2dccd','#bfb6a5','#ece9e2']);
-    const t1=ctex(W,H,(g)=>{ g.fillStyle=wall; g.fillRect(0,0,W,H);
-      for(let f=0;f<floors;f++){ const y=H-(f+1)*FH; g.fillStyle='rgba(0,0,0,.12)'; g.fillRect(0,y,W,2);
-        if(f===0){ g.fillStyle=style==='old'?'#8d877a':'#3d4a55'; g.fillRect(6,y+12,W-12,FH-12); continue; }
-        if(style==='office'){ g.fillStyle='#3f5566'; g.fillRect(4,y+16,W-8,30); g.fillStyle='#8a949c'; for(let x=4;x<W;x+=32) g.fillRect(x,y+16,3,30); }
-        else for(let i=0;i<4;i++){ g.fillStyle='#2d3440'; g.fillRect(8+i*64+6,y+14,44,32); } }
-      if(style==='old') for(let i=0;i<60;i++){ g.fillStyle='rgba(60,55,45,.08)'; g.fillRect(RN()*W,RN()*H*0.7,2,40+RN()*90); } });
-    const t2=ctex(W,H,(g)=>{ g.fillStyle='#000'; g.fillRect(0,0,W,H);
-      for(let f=1;f<floors;f++){ const y=H-(f+1)*FH;
-        if(style==='office'){ if(RN()<0.35){ g.fillStyle='#ffe6b0'; g.fillRect(4,y+16,W-8,30); } }
-        else for(let i=0;i<4;i++) if(RN()<0.4){ g.fillStyle='#ffdca0'; g.fillRect(8+i*64+6,y+14,44,32); } } });
-    return [t1,t2];
+  // ビルの壁の絵は1枚の大きな画像(4×4枚の絵)にまとめ、全部のビルで同じ材質を使う。
+  // 1枚の絵は幅256px(12m分)・高さ5階分(1階64px)。低いビルは絵の下の方だけ使う。
+  // 壁は12mごとに板を分けて絵を並べる(元は絵の繰り返しで並べていた)。
+  const FA_COLS=4, FA_ROWS=4, FA_W=256, FA_FH=64, FA_FL=5, FA_TH=FA_FH*FA_FL;
+  const FA_STYLES=['office','tenant','tenant','old'];
+  const faTiles=[];                                     // [{style}] 絵の番号 = 配列の番号
+  const faColor=document.createElement('canvas'), faGlow=document.createElement('canvas');
+  faColor.width=faGlow.width=FA_W*FA_COLS; faColor.height=faGlow.height=FA_TH*FA_ROWS;
+  {
+    const R=seeded(4242), pick=a=>a[Math.floor(R()*a.length)], g=faColor.getContext('2d'), e=faGlow.getContext('2d');
+    e.fillStyle='#000'; e.fillRect(0,0,faGlow.width,faGlow.height);
+    for(let n=0;n<FA_COLS*FA_ROWS;n++){
+      const style=FA_STYLES[n%FA_STYLES.length], ox=(n%FA_COLS)*FA_W, oy=Math.floor(n/FA_COLS)*FA_TH, W=FA_W, H=FA_TH;
+      const wall=style==='old'?'#a8a193':style==='office'?pick(['#c9cfd3','#b9c0c4','#d6d2c8','#a9b0b6']):pick(['#d8d0c0','#cfc2ae','#e2dccd','#bfb6a5','#ece9e2']);
+      g.fillStyle=wall; g.fillRect(ox,oy,W,H);
+      for(let f=0;f<FA_FL;f++){ const y=oy+H-(f+1)*FA_FH; g.fillStyle='rgba(0,0,0,.12)'; g.fillRect(ox,y,W,2);
+        if(f===0){ g.fillStyle=style==='old'?'#8d877a':'#3d4a55'; g.fillRect(ox+6,y+12,W-12,FA_FH-12); continue; }
+        if(style==='office'){ g.fillStyle='#3f5566'; g.fillRect(ox+4,y+16,W-8,30); g.fillStyle='#8a949c'; for(let x=4;x<W;x+=32) g.fillRect(ox+x,y+16,3,30);
+          if(R()<0.35){ e.fillStyle='#ffe6b0'; e.fillRect(ox+4,y+16,W-8,30); } }
+        else for(let i=0;i<4;i++){ g.fillStyle='#2d3440'; g.fillRect(ox+8+i*64+6,y+14,44,32);
+          if(R()<0.4){ e.fillStyle='#ffdca0'; e.fillRect(ox+8+i*64+6,y+14,44,32); } } }
+      if(style==='old') for(let i=0;i<60;i++){ g.fillStyle='rgba(60,55,45,.08)'; g.fillRect(ox+R()*W,oy+R()*H*0.7,2,40+R()*90); }
+      faTiles.push({style});
+    }
   }
-  function cFaceMat(tx,w){ const a=tx[0].clone(), b=tx[1].clone(); [a,b].forEach(t=>{ t.wrapS=THREE.RepeatWrapping; t.repeat.set(Math.max(1,Math.round(w/12)),1); t.needsUpdate=true; cchunk.texs.push(t); });
-    return cglow(a,.9,{emissiveMap:b,map:a}); }
-  const BNAMES=['第一ヤマトビル','サンライズビル','丸富ビル','KMビル','光ビル','中央ビル','すずらんビル','大和ビル','東和ビル','松本ビル'];
+  const toTex=(c)=>{ const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return t; };
+  const faColorT=toTex(faColor), faGlowT=toTex(faGlow);
+  { const one=document.createElement('canvas'); one.width=one.height=1; const og=one.getContext('2d'); og.drawImage(faColor,0,0,1,1);
+    const [r,gg,b]=og.getImageData(0,0,1,1).data, avg=new THREE.Color(`rgb(${r},${gg},${b})`); faColorT.userData.average={r:avg.r,g:avg.g,b:avg.b}; }
+  const facadeM=LAM({color:0xffffff,map:faColorT,emissiveMap:faGlowT,emissive:0xffffff,emissiveIntensity:0}); glowMats.push([facadeM,.9]);
+  const pickTile=st=>{ const c=faTiles.map((t,n)=>t.style===st?n:-1).filter(n=>n>=0); return c[Math.floor(RN()*c.length)]; };
+  // 壁1面(幅 width・高さ H・fl 階)を絵の番号 tile で貼る。中心 (cx,cy,cz)、向き ry(区画の座標)。
+  function atlasWall(width,H,fl,tile,cx,cy,cz,ry){
+    const n=Math.max(1,Math.round(width/12)), qw=width/n;
+    const u0=(tile%FA_COLS)/FA_COLS, u1=u0+1/FA_COLS;
+    const v0=1-(Math.floor(tile/FA_COLS)+1)*FA_TH/faColor.height, v1=v0+Math.min(fl,FA_FL)*FA_FH/faColor.height;
+    for(let i=0;i<n;i++){
+      const off=-width/2+qw*(i+0.5), geo=new THREE.PlaneGeometry(qw,H);
+      geo.setAttribute('uv',new THREE.Float32BufferAttribute([u0,v1,u1,v1,u0,v0,u1,v0],2));
+      const o=new THREE.Mesh(geo,facadeM); o.position.set(cx+off*Math.cos(ry),cy,cz-off*Math.sin(ry)); o.rotation.y=ry; croot.add(o);
+    }
+  }
   function cBuilding(W,D,o={}){                       // ビル：形5種類 × 色いろいろ
     cb(W,0.05,D,0x707275,0,0.08,D/2);
     const v=Math.floor(RN()*5), style=o.style||pk(['office','tenant','tenant','old']), floors=3+Math.floor(RN()*3);
     const bd=Math.min(D-3,15), zf=1.6, rf=cmat(0x8a8780);
-    const mk=(bw,fl,x,st)=>{ const H=fl*3.2, tx=cFacade(st,fl), fm=cFaceMat(tx,bw), sm=cFaceMat(tx,bd);
-      chollow(bw,H,bd,null,x,0.1,zf+bd/2,fm,sm); ccol(x-bw/2,zf,x+bw/2,zf+bd);   // 屋根は縁の箱がふさぐ
+    // ハリボテ: 正面と左右の壁だけ(屋根は縁の箱がふさぐ)。壁の絵はまとめた画像から選ぶ。
+    const mk=(bw,fl,x,st)=>{ const H=fl*3.2, tile=pickTile(st), cy=0.1+H/2, zc=zf+bd/2;
+      atlasWall(bw,H,fl,tile,x,cy,zf,Math.PI);
+      atlasWall(bd,H,fl,tile,x-bw/2,cy,zc,-Math.PI/2); atlasWall(bd,H,fl,tile,x+bw/2,cy,zc,Math.PI/2);
+      ccol(x-bw/2,zf,x+bw/2,zf+bd);
       cb(bw+0.2,0.45,bd+0.2,0x9a968c,x,0.1+H,zf+bd/2); return H; };
     let bw=W-1, mx=0, H;
     if(v===2){                                          // 横に階段室の塔
@@ -1041,8 +1071,7 @@ export function createNihonTown(world, opts={}){
     if(v===3){ const rc=pk([0x8e9296,0xd8d2c6,0x5a5f66]);                                                    // 正面にバルコニー
       for(let f=1;f<floors;f++){ const y=0.1+f*3.2; cb(bw-1,0.15,1.2,0xd8d2c6,mx,y,zf-0.6); cb(bw-1,0.9,0.06,rc,mx,y+0.15,zf-1.17); } }
     cfront(2.4,2.5,mx,1.35,zf,cmat(0x8a959c)); cb(3.4,0.18,1.4,0x8e9296,mx,2.75,zf-0.7);
-    const nm=ctex(256,40,(g,w,h)=>{ g.fillStyle=pk(['#2f5f7a','#6b4a32','#3a4652','#7a2f2f','#2f6a4a']); g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font='bold 24px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(pk(BNAMES),w/2,h/2+1); });
-    cfront(Math.min(bw*0.5,7),0.5,mx,3.3,zf,new THREE.MeshStandardMaterial({map:nm}));
+    // ビルの名前の看板は作らない。
     // 屋上の室外機・貯水タンクは道路から見えないので作らない(ハリボテ)。
     for(let i=0;i<4;i++) RN();                         // 乱数の並びを保つ(以降の色や形を変えない)
   }
@@ -1205,9 +1234,9 @@ export function createNihonTown(world, opts={}){
   //  - 模様も発光もない単色の部品は、色を頂点に持たせて全部まとめて1回で描く。
   //  - それ以外(模様・発光・半透明)は同じ材質ごとにまとめる。
   // このステージは影を描かない設定なので、影の有無では分けない。
-  const vcMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85});
-  const plain=m=>m.isMeshStandardMaterial && !m.map && !m.emissiveMap && !m.transparent && !m.vertexColors
-    && m.emissive.getHex()===0 && m.roughness===0.85 && m.metalness===0 && m.side===THREE.FrontSide;
+  const vcMat=LAM({vertexColors:true});
+  const plain=m=>m.isMeshLambertMaterial && !m.map && !m.emissiveMap && !m.transparent && !m.vertexColors
+    && m.emissive.getHex()===0 && m.side===THREE.FrontSide;
   // 建物の大きさの箱(高さ3m以上・幅も奥行きも4m以上)を、道路に向いた面と左右の面だけにする。
   // 箱の面の並び: +x, -x, +y, -y, +z, -z。どちらの z 面が道路(z=0)を向くかは置き場所で決める。
   const _wp=new THREE.Vector3(), _wn=new THREE.Vector3(), _ws=new THREE.Vector3();
@@ -1296,7 +1325,7 @@ export function createNihonTown(world, opts={}){
   // ---- 昼夜 ----
   // 夜は模様(色の画像)を外し、その平均の単色にする。光る窓・看板(発光の画像)は残す。
   function simplify(m,on){
-    if(!m||!m.isMeshStandardMaterial) return;
+    if(!m||!m.isMeshLambertMaterial) return;
     if(on){ if(!m.map||m.userData.dayMap) return;
       m.userData.dayMap=m.map; m.userData.dayColor=m.color.clone();
       const a=m.map.userData.average; if(a) m.color.setRGB(a.r,a.g,a.b).multiply(m.userData.dayColor);

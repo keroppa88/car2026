@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-15';
-import { createNeoCity } from './neo-city.js?v=20261015-town-15';
+import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-16';
+import { createNeoCity } from './neo-city.js?v=20261015-town-16';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -71,6 +71,34 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let neoCity = null;
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
+  const NEO_CPU_DETAIL_DISTANCE = 50;  // 街並み: これより遠いCPU車は箱で描く(m)
+  // 街並み: 遠くのCPU車の代わりの箱。車体の長さ・幅に合わせ、色は車体の色の平均。
+  function makeNeoCarProxy(ai) {
+    const body = ai.tilt.children[0];
+    const sum = new THREE.Color(0, 0, 0);
+    let count = 0;
+    body.traverse((o) => {
+      if (!o.isMesh) return;
+      const colors = o.geometry.attributes.color;
+      if (colors) {
+        const step = Math.max(1, Math.floor(colors.count / 400));
+        for (let i = 0; i < colors.count; i += step) {
+          sum.r += colors.getX(i); sum.g += colors.getY(i); sum.b += colors.getZ(i); count++;
+        }
+      } else if (o.material?.color) {
+        sum.add(o.material.color); count++;
+      }
+    });
+    const color = count ? sum.multiplyScalar(1 / count) : new THREE.Color(0x777777);
+    const length = (ai.group.userData.collideHalfLength ?? 2.1) * 2;
+    const width = (ai.group.userData.collideHalfWidth ?? 0.9) * 2;
+    const box = new THREE.Mesh(new THREE.BoxGeometry(width, 1.4, length),
+      new THREE.MeshLambertMaterial({ color }));
+    box.position.y = 0.7 - CAR_SINK;
+    box.visible = false;
+    ai.group.add(box);
+    return { box, body };
+  }
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -373,8 +401,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // ------------------------------------------------------------- scene ----
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  // 街並みは建物が多くて重いので、画面の細かさの上限を1.5倍にする。
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, NEO_COURSE ? 1.5 : 2));
+  // 街並みは建物が多くて重いので、画面の細かさの上限を1倍(高解像度画面でも等倍)にする。
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, NEO_COURSE ? 1 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = MAP_CONFIG.renderShadows !== false;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -10683,10 +10711,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       neoCity?.update(camera, topView, nightMode, dt);
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
+        // 50mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。
         for (const ai of aiCars) {
           const dx = ai.group.position.x - camera.position.x;
           const dz = ai.group.position.z - camera.position.z;
-          ai.group.visible = topView || dx * dx + dz * dz < NEO_CPU_VIEW_DISTANCE ** 2;
+          const d2 = dx * dx + dz * dz;
+          ai.group.visible = topView || d2 < NEO_CPU_VIEW_DISTANCE ** 2;
+          if (!ai.group.visible) continue;
+          const proxy = ai.neoProxy || (ai.neoProxy = makeNeoCarProxy(ai));
+          const far = !topView && d2 > NEO_CPU_DETAIL_DISTANCE ** 2;
+          proxy.box.visible = far;
+          proxy.body.visible = !far;
         }
       }
       if (gunmaAtmosphere) {
