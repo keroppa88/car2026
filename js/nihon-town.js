@@ -913,7 +913,8 @@ export function createNihonTown(world, opts={}){
       const pl=new THREE.Mesh(poolG,poolM); pl.rotation.x=-Math.PI/2; pl.position.set(x+dx*4.5,0.2,z+dz*4.5);   // 灯具の斜め前（車道側）を中心に照らす scene.add(pl);
     }
     const inX=x=>x>66&&x<90;
-    for(let x=-60;x<=135;x+=25){ if(!inX(x)) streetLamp(x,-6.6,0,1); const x2=x+12.5; if(x2<138&&!inX(x2)) streetLamp(x2,6.6,0,-1); }   // 幹線道路（両側、互い違い）
+    // 幹線道路（両側、互い違い）。片側50mおき(元の25mおきの倍)。
+    for(let x=-60;x<=135;x+=50){ if(!inX(x)) streetLamp(x,-6.6,0,1); const x2=x+25; if(x2<138&&!inX(x2)) streetLamp(x2,6.6,0,-1); }
     for(const z of [15,40,65,-15,-40,-65]){ streetLamp(X0-6.6,z,1,0); const z2=z+(z>0?12.5:-12.5); streetLamp(X0+6.6,z2,-1,0); }      // 交差する道（両側、互い違い）
   }
 
@@ -1158,7 +1159,8 @@ export function createNihonTown(world, opts={}){
     for(const z of [-7.7,7.7]) cb(CL,0.15,3,cWalk,x0+CL/2,0,z);
     for(const z of [-10.8,10.8]) cb(CL,0.05,3.2,0x707275,x0+CL/2,0.05,z);
     // 街灯（両側・互い違い）と光だまり
-    for(const [x,z,d] of [[x0+10,-6.6,1],[x0+40,-6.6,1],[x0+25,6.6,-1],[x0+55,6.6,-1]]){
+    // 片側60mおき(元の30mおきの倍)。両側で互い違い。
+    for(const [x,z,d] of [[x0+10,-6.6,1],[x0+40,6.6,-1]]){
       cb(0.18,7,0.18,0x9aa0a6,x,0.15,z); cb(0.08,0.08,1.6,0x9aa0a6,x,7.05,z+d*0.8); cb(0.3,0.15,0.8,cLampHead,x,6.95,z+d*1.55);
       const pl=new THREE.Mesh(new THREE.PlaneGeometry(16,16),roadPoolM); pl.rotation.x=-Math.PI/2; pl.position.set(x,0.2,z+d*4.5); ch.group.add(pl); ch.cols.push([x-0.15,z-0.15,x+0.15,z+0.15]);
     }
