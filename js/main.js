@@ -11,15 +11,15 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261014-town-2';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261015-town-3';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261014-town-2';
-import { createNeoCity } from './neo-city.js?v=20261014-town-2';
+import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-3';
+import { createNeoCity } from './neo-city.js?v=20261015-town-3';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -372,7 +372,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // ------------------------------------------------------------- scene ----
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // 街並みは建物が多くて重いので、画面の細かさの上限を1.5倍にする。
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, NEO_COURSE ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = MAP_CONFIG.renderShadows !== false;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -399,8 +400,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   scene.background = new THREE.Color(SKY);
   scene.fog = COURSE_KEY === 'route66'
     ? new THREE.FogExp2(0xc0aa8a, 0.003)
-    // 街並みは前後300mほどしか街を組み立てないので、その手前で霞ませる。
-    : NEO_COURSE ? new THREE.Fog(SKY, 70, 300)
+    // 街並みは前方約400mまで街を組み立てるので、そこで見えなくなるよう霞ませる。
+    : NEO_COURSE ? new THREE.Fog(SKY, 150, 400)
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers

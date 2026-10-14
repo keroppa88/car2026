@@ -453,7 +453,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '街並み',
     file: 'procedural:neo',
-    preview: 'picture/neotokyo.png',
+    preview: 'picture/japan.png',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],

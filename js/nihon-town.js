@@ -26,14 +26,19 @@ export function createNihonTown(world, opts={}){
   const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
   function box(w,h,d,m,x,y,z,parent=scene){ // yは底の高さ
     const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?mat(m):m);
-    b.position.set(x,y+h/2,z); b.castShadow=b.receiveShadow=true; parent.add(b);
+    b.position.set(x,y+h/2,z); parent.add(b);
     // コンビニ区間で地面に立つ高さ0.8m以上の箱(壁・塀・建物・自販機など)は車がぶつかる。
     if(parent===scene && h>=0.8 && y<0.6) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
     return b;
   }
   function tex(w,h,draw){
     const c=document.createElement('canvas'); c.width=w; c.height=h;
-    draw(c.getContext('2d'),w,h); const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return t;
+    draw(c.getContext('2d'),w,h); const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4;
+    // 夜は模様を外して単色にするので、その色(画像の平均色)を覚えておく。
+    const one=document.createElement('canvas'); one.width=one.height=1; const og=one.getContext('2d');
+    og.drawImage(c,0,0,1,1); const [r,gg,b]=og.getImageData(0,0,1,1).data;
+    // 模様を複製しても残るよう、ただの数の組で持つ(Color のままだと複製で数値1個に変わる)。
+    const avg=new THREE.Color(`rgb(${r},${gg},${b})`); t.userData.average={r:avg.r,g:avg.g,b:avg.b}; return t;
   }
   const glowMats=[]; // 夜に光るもの
 
@@ -67,31 +72,24 @@ export function createNihonTown(world, opts={}){
   function solid(w,h,d,m,x,y,z){ colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]); return box(w,h,d,m,x,y,z,S); }
   const wallM=mat(0xe9e5dc);
   const FY=0.15, CH=3.2, D0=-6.5, D1=-3.5;            // 床・天井の高さ、入口の左右端
-  // 床（タイル）
-  const floorT=tex(256,256,(g,w,h)=>{
-    g.fillStyle='#eeede8'; g.fillRect(0,0,w,h); g.strokeStyle='#d3d1c8'; g.lineWidth=3;
-    for(let i=0;i<=4;i++){ g.beginPath(); g.moveTo(i*64,0); g.lineTo(i*64,h); g.moveTo(0,i*64); g.lineTo(w,i*64); g.stroke(); }
-  });
-  floorT.wrapS=floorT.wrapT=THREE.RepeatWrapping; floorT.repeat.set(10,5);
-  box(19.8,0.04,9.8,mat(0xffffff,{map:floorT,roughness:.3}),0,0.13,29,S);
-  // 壁・屋根・天井
+  // 壁・屋根(店内は作らない)
   solid(0.2,4.4,10,wallM,-10,FY,29); solid(0.2,4.4,10,wallM,10,FY,29); solid(20,4.4,0.2,wallM,0,FY,34);
   box(20.4,0.3,10.4,0xcfcac0,0,4.55,29,S);
   box(20,4.4-CH,0.2,wallM,0,FY+CH,24,S);
-  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(19.8,9.8),mat(0xf6f6f4));
-  ceil.rotation.x=Math.PI/2; ceil.position.set(0,FY+CH,29); S.add(ceil);
   // 正面：腰壁＋ガラス（入口だけ空ける）
   solid(D0+10,0.5,0.2,0x7a6a5c,(D0-10)/2,FY,24); solid(10-D1,0.5,0.2,0x7a6a5c,(D1+10)/2,FY,24);
-  const glassM=new THREE.MeshStandardMaterial({color:0xd4e8ee,transparent:true,opacity:.2,roughness:.05,side:THREE.DoubleSide,depthWrite:false});
-  function pane(x0,x1,y0,y1,z){ const p=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,y1-y0),glassM); p.position.set((x0+x1)/2,(y0+y1)/2,z); S.add(p); return p; }
-  pane(-10,D0,FY+0.5,FY+CH,24); pane(D1,6,FY+0.5,FY+CH,24);
+  // 店内は作らない。ガラスの代わりに、商品棚が透けて見える絵を貼る(夜は光る)。
+  const shopT=tex(512,128,(g,w,h)=>{ g.fillStyle='#eef1ee'; g.fillRect(0,0,w,h);
+    for(let r=0;r<3;r++) for(let x=6;x<w;x+=9){ g.fillStyle=['#d24a3c','#3f7cc0','#e3b23c','#5aa66a','#8a5ab8'][(x+r*3)%5]; g.fillRect(x,40+r*28,6,18); } });
+  const shopM=mat(0xffffff,{map:shopT,emissiveMap:shopT,emissive:0xffffff,emissiveIntensity:0}); glowMats.push([shopM,1]);
+  const doorM=mat(0x55626a,{roughness:.2});
+  function pane(x0,x1,y0,y1,z,m=shopM){ const p=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,y1-y0),m); p.position.set((x0+x1)/2,(y0+y1)/2,z); p.rotation.y=Math.PI; S.add(p); return p; }
+  pane(-10,D0,FY+0.5,FY+CH,23.99); pane(D1,6,FY+0.5,FY+CH,23.99);
   box(4,CH-0.5,0.2,wallM,8,FY+0.5,24,S);                // トイレ前は壁 pane(D0,D1,FY+2.4,FY+CH,24);
   [-10,-8.25,D0,D1,-1.5,0.5,2.5,4.5,6].forEach(x=>box(0.1,CH,0.14,0x8e9296,x,FY,24,S));
   box(20,0.1,0.14,0x8e9296,0,FY+2.4,24,S);
-  // 自動ドア
-  const doorL=pane(D0,-5,FY,FY+2.4,23.92), doorR=pane(-5,D1,FY,FY+2.4,23.92);
-  for(const d of [doorL,doorR]) box(1.5,0.08,0.05,0x8e9296,0,1.2,0,d).position.set(0,0,0.02);
-  let doorOpen=0;
+  // 自動ドア(閉まったまま)
+  pane(D0,D1,FY,FY+2.4,23.92,doorM); box(0.06,2.4,0.06,0x8e9296,-5,FY,23.9,S);
 
   // 帯看板
   const fasciaT=tex(1024,96,(g,w,h)=>{
@@ -109,97 +107,6 @@ export function createNihonTown(world, opts={}){
   fascia.position.set(0,3.9,23.59); fascia.rotation.y=Math.PI; S.add(fascia);
 
   box(3.6,0.03,1.4,0x55595e,-5,0.15,23.2,S);   // 入口マット（外）
-  box(3,0.02,1.2,0x55595e,-5,0.17,24.8,S);     // 入口マット（中）
-
-  // ---- 店内 ----
-  // 天井の蛍光灯と照明
-  const tubeM=mat(0xffffff,{emissive:0xffffff,emissiveIntensity:1});
-  for(const x of [-7,-3.5,0,3.5,7]) for(const z of [26,29,32]) box(0.3,0.05,2.2,tubeM,x,FY+CH-0.06,z,S);
-  for(const x of [-5,5]){ const L=new THREE.PointLight(0xf6f9ff,1.1,16,1.5); L.position.set(x,FY+CH-0.4,29); scene.add(L); }
-
-  // 商品が並んだ棚のテクスチャ
-  const goodsCols=['#d24a3c','#3f7cc0','#e3b23c','#5aa66a','#8a5ab8','#e07a2e','#f2efe6','#c9476e'];
-  function goodsTex(seed,rows,rep,bg='#f2f2ef'){
-    const t=tex(256,256,(g,w,h)=>{
-      g.fillStyle=bg; g.fillRect(0,0,w,h); const rh=h/rows;
-      for(let r=0;r<rows;r++){
-        g.fillStyle='#c4c7c3'; g.fillRect(0,(r+1)*rh-7,w,7);
-        for(let x=3;x<w-8;){ const bw=8+((x*seed+r)%5), bh=rh*0.45+((x*seed*3+r*11)%Math.floor(rh*0.35));
-          g.fillStyle=goodsCols[(x*seed+r*5)%goodsCols.length]; g.fillRect(x,(r+1)*rh-7-bh,bw,bh); x+=bw+3; }
-      }
-    });
-    t.wrapS=THREE.RepeatWrapping; t.repeat.set(rep,1); return t;
-  }
-  const plainM=mat(0xe8e8e4);
-  function shelfMesh(w,h,d,x,y,z,faces){ // faces: {px,nx,pz,nz} にテクスチャ
-    const ms=['px','nx','py','ny','pz','nz'].map(k=>faces[k]?mat(0xffffff,{map:faces[k],roughness:.6}):plainM);
-    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),ms); m.position.set(x,y+h/2,z); m.castShadow=m.receiveShadow=true; S.add(m);
-    colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]); return m;
-  }
-  // ---- 間取り（左奥：バックルーム、左手前：トイレ、右：L字レジ）----
-  // 仕切り壁（x=6）とドア2か所、バックルームとトイレの境（z=27）
-  const inDoors=[];
-  function partWallZ(x,z0,z1,gaps){ let s=z0;
-    gaps.forEach(([g0,g1])=>{ solid(0.15,CH,g0-s,wallM,x,FY,(s+g0)/2); box(0.15,CH-2.1,g1-g0,wallM,x,FY+2.1,(g0+g1)/2,S); s=g1; });
-    solid(0.15,CH,z1-s,wallM,x,FY,(s+z1)/2); }
-  partWallZ(6,24.1,33.9,[[25.25,26.15],[32.3,33.2]]);
-  solid(4,CH,0.15,wallM,8,FY,27);
-  function signTex(txt,bg){ return tex(128,64,(g,w,h)=>{g.fillStyle=bg;g.fillRect(0,0,w,h);g.fillStyle='#fff';g.font='bold 26px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,w/2,h/2);}); }
-  function inDoor(z0,z1,txt,bg){                       // 近づくと横に開くドア
-    const p=box(0.05,2.05,z1-z0,0xd8d2c6,5.9,FY,(z0+z1)/2,S);
-    const sg=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.25),mat(0xffffff,{map:signTex(txt,bg)}));
-    sg.rotation.y=-Math.PI/2; sg.position.set(-0.03,0.6,0); p.add(sg);
-    inDoors.push({p,z0,z1,open:0});
-  }
-  inDoor(25.25,26.15,'WC','#2f5f9e'); inDoor(32.3,33.2,'STAFF','#6b4a32');
-
-  // 奥の壁：ドリンクの冷蔵ケース（光る）
-  const drinkT=tex(512,128,(g,w,h)=>{
-    g.fillStyle='#dfe8ec'; g.fillRect(0,0,w,h);
-    for(let x=0;x<w;x+=6){ for(let r=0;r<4;r++){ g.fillStyle=goodsCols[(x*7+r*3)%goodsCols.length]; g.fillRect(x+1,r*32+8,4,20); } }
-    g.fillStyle='#8e9296'; for(let x=0;x<=w;x+=64) g.fillRect(x-2,0,4,h); g.fillRect(0,0,w,4); g.fillRect(0,h-4,w,4);
-  });
-  drinkT.wrapS=THREE.RepeatWrapping; drinkT.repeat.set(1.3,1);
-  const drinkM=mat(0xffffff,{map:drinkT,emissiveMap:drinkT,emissive:0xffffff,emissiveIntensity:.35,roughness:.2});
-  const dc=new THREE.Mesh(new THREE.BoxGeometry(9.6,2.3,0.8),[plainM,plainM,plainM,plainM,plainM,drinkM]);
-  dc.position.set(0.8,0.17+1.15,33.5); S.add(dc); colliders.push([-4,33.1,5.6,33.9]);
-  // 中央：ゴンドラ棚3列（横向き）
-  [31.35,29.25,27.15].forEach((z,i)=>{
-    shelfMesh(7,1.5,0.9,0.2,0.17,z,{pz:goodsTex(3+i,4,3),nz:goodsTex(7+i,4,3),px:goodsTex(11+i,4,0.4),nx:goodsTex(13+i,4,0.4)});
-  });
-  // 左の壁際：お弁当・おにぎりの棚
-  shelfMesh(0.8,1.9,4.3,5.5,0.17,29.45,{nx:goodsTex(5,3,3,'#fafaf6')});
-  // 手前：雑誌ラック、ATM（左手前）、コピー機（右手前）
-  shelfMesh(6,1.2,0.5,0.6,0.17,24.45,{nz:goodsTex(17,2,3,'#f6f4ee'),pz:goodsTex(19,2,3,'#f6f4ee')});
-  solid(0.9,1.6,0.7,0x5e7f9a,5.3,0.17,24.6);       // ATM
-  solid(1.1,1.2,0.8,0xd9dbdc,-8.3,0.17,26.2);      // コピー機
-  box(1.0,0.05,0.7,0x3a4250,-8.3,1.37,26.2,S);
-  // 右：L字のレジカウンター（レジ2台）
-  const woodM=mat(0x9b7a55), topM=mat(0xe6dfd2);
-  solid(0.8,1.0,4.4,woodM,-5.4,0.17,30.4);  box(0.85,0.04,4.45,topM,-5.4,1.17,30.4,S);   // 縦の部分
-  solid(4.1,1.0,0.8,woodM,-7.85,0.17,28.6); box(4.15,0.04,0.85,topM,-7.85,1.17,28.6,S);  // 横の部分
-  for(const z of [31.5,29.8]){ box(0.4,0.3,0.4,0x2b2f35,-5.5,1.21,z,S); box(0.05,0.25,0.35,mat(0x0d3550,{emissive:0x4fb8ff,emissiveIntensity:.5}),-5.27,1.3,z,S); } // レジ
-  const hotM=mat(0xffd9a0,{emissive:0xffb050,emissiveIntensity:.5,transparent:true,opacity:.8});
-  box(1.1,0.55,0.6,hotM,-7.2,1.21,28.6,S);         // ホットスナックのケース
-  // レジ奥の壁際：電子レンジとタバコの陳列
-  box(0.6,0.9,4.2,0xd5d0c6,-9.6,0.17,31.6,S); colliders.push([-9.9,29.5,-9.3,33.7]);
-  for(const z of [30.4,31.2,32.0]){ box(0.45,0.3,0.5,0xeceae4,-9.6,1.07,z,S); box(0.02,0.2,0.32,0x1d2229,-9.36,1.11,z-0.04,S); } // 電子レンジ
-  const tobaccoT=tex(256,256,(g,w,h)=>{ g.fillStyle='#e9e6df'; g.fillRect(0,0,w,h);
-    for(let r=0;r<8;r++){ g.fillStyle='#b9b5ad'; g.fillRect(0,r*32+28,w,4);
-      for(let x=4;x<w-6;x+=9){ g.fillStyle=goodsCols[(x*5+r*3)%goodsCols.length]; g.fillRect(x,r*32+8,7,20); g.fillStyle='#fff'; g.fillRect(x+1,r*32+10,5,4); } } });
-  tobaccoT.wrapS=THREE.RepeatWrapping; tobaccoT.repeat.set(2,1);
-  shelfMesh(0.3,1.2,4.2,-9.8,1.45,31.6,{px:tobaccoT});
-
-  // ---- バックルーム（左奥）----
-  for(const z of [28,30.2]){ box(3.4,1.9,0.5,0x9aa0a6,8.1,0.17,z,S); for(let k=0;k<4;k++) box(0.6,0.45,0.4,0xb88a55,6.8+k*0.85,0.17+(k%2)*0.6+0.1,z,S); }
-  colliders.push([6.4,27.75,9.8,28.25],[6.4,29.95,9.8,30.45]);
-  box(1.2,0.75,0.6,0xe2e4df,9.2,0.17,32.8,S);      // 事務机
-  box(0.05,0.3,0.45,0x23282e,9.45,0.92,32.8,S);
-  for(const [x,z,s] of [[7.2,33.4,0.6],[7.2,33.4,0.45],[8.0,33.5,0.55]]) box(s,s*0.8,s,0xb88a55,x,0.17+(s<0.5?0.48:0),z,S);
-  // ---- トイレ（左手前）----
-  box(0.45,0.4,0.6,0xf4f4f2,9.3,0.17,25.3,S); box(0.2,0.45,0.55,0xf4f4f2,9.65,0.5,25.3,S); // 便器
-  box(0.45,0.1,0.5,0xf4f4f2,8.2,0.85,26.6,S); box(0.08,0.85,0.12,0xd0d0cc,8.2,0.17,26.7,S); // 手洗い
-  const mirror=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.6),mat(0xdbe6ec,{metalness:.6,roughness:.1})); mirror.rotation.y=Math.PI; mirror.position.set(8.2,1.55,26.91); S.add(mirror);
 
   // ポール看板（駐車場の角）
   {
@@ -220,9 +127,9 @@ export function createNihonTown(world, opts={}){
     });
     const face=t=>{const m=mat(0xffffff,{map:t,emissiveMap:t,emissive:0xffffff,emissiveIntensity:0}); glowMats.push([m,.9]); return m;};
     const sx=11, sz=12.4, sm=face(signT), bm=face(subT), edge=mat(0xd8d8d4);
-    const pole=new THREE.Mesh(new THREE.CylinderGeometry(.17,.2,7.6,16),mat(0xf2f2f0)); pole.position.set(sx,0.15+3.8,sz); pole.castShadow=true; scene.add(pole);
-    const s1=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,0.45),[edge,edge,edge,edge,sm,sm]); s1.position.set(sx,8.9,sz); s1.castShadow=true; scene.add(s1);
-    const s2=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.6,0.4),[edge,edge,edge,edge,bm,bm]); s2.position.set(sx,7.35,sz); s2.castShadow=true; scene.add(s2);
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(.17,.2,7.6,16),mat(0xf2f2f0)); pole.position.set(sx,0.15+3.8,sz); scene.add(pole);
+    const s1=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,0.45),[edge,edge,edge,edge,sm,sm]); s1.position.set(sx,8.9,sz); scene.add(s1);
+    const s2=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.6,0.4),[edge,edge,edge,edge,bm,bm]); s2.position.set(sx,7.35,sz); scene.add(s2);
     s1.rotation.y=s2.rotation.y=Math.PI/2;   // 道路沿いの両方向から見えるように
     box(0.8,0.25,0.8,0xbdbab3,sx,0.13,sz);  // 根元
   }
@@ -300,7 +207,7 @@ export function createNihonTown(world, opts={}){
   const pM=mat(0xb9b6ae);
   poleXs.forEach(x=>{
     const p=new THREE.Mesh(new THREE.CylinderGeometry(.14,.2,9.5,10),pM);
-    p.position.set(x,4.9,9.4); p.castShadow=true; scene.add(p);
+    p.position.set(x,4.9,9.4); scene.add(p);
     box(2.2,0.12,0.12,0x8a8a86,x,8.8,9.4);
     box(0.6,0.15,0.5,0x777,x+0.4,6.3,9.1); // 街灯
     const L=new THREE.PointLight(0xffe2b0,0,22,2); L.position.set(x+0.4,6.1,8.9); scene.add(L); lamps.push(L);
@@ -331,7 +238,7 @@ export function createNihonTown(world, opts={}){
     const sh=new THREE.Shape([new THREE.Vector2(-d/2-0.5,0),new THREE.Vector2(d/2+0.5,0),new THREE.Vector2(0,2.2)]);
     const rg=new THREE.ExtrudeGeometry(sh,{depth:w+0.4,bevelEnabled:false}); rg.translate(0,0,-(w+0.4)/2);
     const r=new THREE.Mesh(rg,[mat(wall),mat(0x4b5057)]);
-    r.rotation.y=Math.PI/2; r.position.set(x,5.4,cz); r.castShadow=r.receiveShadow=true; scene.add(r);
+    r.rotation.y=Math.PI/2; r.position.set(x,5.4,cz); scene.add(r);
     box(w+0.4,0.15,0.6,0x5a5f66,x,2.8,zf+f*0.3);                     // 1階の小屋根
     for(const fl of [0.9,3.4]) for(const dx of [-w/4,w/4])
       frontPlane(1.6,1.2,x+dx,fl+0.8,zf,f,lit(fl));                     // 窓
@@ -356,9 +263,9 @@ export function createNihonTown(world, opts={}){
   // 木・ベンチ・街灯
   function tree(x,z,s=1){
     const t=new THREE.Mesh(new THREE.CylinderGeometry(.15*s,.22*s,2*s,8),mat(0x6b4f36));
-    t.position.set(x,0.15+s,z); t.castShadow=true; scene.add(t);
+    t.position.set(x,0.15+s,z); scene.add(t);
     const l=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5*s,1),mat(0x4f7a3e,{flatShading:true}));
-    l.position.set(x,0.15+2.6*s,z); l.castShadow=true; scene.add(l);
+    l.position.set(x,0.15+2.6*s,z); scene.add(l);
   }
   function bench(x,z,ry){
     const g=new THREE.Group();
@@ -477,7 +384,7 @@ export function createNihonTown(world, opts={}){
     }
     // 屋上の貯水タンク
     for(const dx of [-0.6,0.6]) for(const dz of [-0.6,0.6]) box(0.1,1.2,0.1,0x6a6d70,cx+2+dx,0.5+H,cz+dz);
-    const tank=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1.6,16),mat(0xb9bdb8)); tank.position.set(cx+2,0.5+H+2,cz); tank.castShadow=true; scene.add(tank);
+    const tank=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1.6,16),mat(0xb9bdb8)); tank.position.set(cx+2,0.5+H+2,cz); scene.add(tank);
     box(1.6,0.9,1.6,0x9a9488,cx-2.5,0.5+H,cz+1);                                    // 階段室
   }
 
@@ -1249,17 +1156,25 @@ export function createNihonTown(world, opts={}){
     }
     RN=Math.random;
     mergeChunk(ch.group);
+    if(night) simplifyGroup(ch.group,true);
     return ch;
   }
+  // 同じ材質の部品を1つにまとめて描く回数を減らす。影を落とすのは建物の大きさのものだけ
+  // (高さ2m以上・幅も奥行きも4m以上)。影を受けるのは全部。
+  const _bb=new THREE.Box3(), _bs=new THREE.Vector3();
+  const isBuilding=b=>{ b.getSize(_bs); return _bs.y>=2 && Math.min(_bs.x,_bs.z)>=4; };
   function mergeChunk(g){
     g.updateMatrixWorld(true);
     const groups=new Map(), rm=[];
     g.traverse(o=>{ if(!o.isMesh||Array.isArray(o.material)||!o.geometry.attributes.uv) return;
       const geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone(); geo.applyMatrix4(o.matrixWorld);
       for(const k of Object.keys(geo.attributes)) if(!['position','normal','uv'].includes(k)) geo.deleteAttribute(k);
-      const key=o.material.uuid; if(!groups.has(key)) groups.set(key,{m:o.material,list:[]}); groups.get(key).list.push(geo); rm.push(o); });
+      geo.computeBoundingBox(); const bld=isBuilding(geo.boundingBox);
+      const key=o.material.uuid+(bld?'_b':''); if(!groups.has(key)) groups.set(key,{m:o.material,bld,list:[]}); groups.get(key).list.push(geo); rm.push(o); });
+    // 材質が面ごとに違う部品(ビルの壁・屋根など)はそのまま。影だけ決める。
+    g.traverse(o=>{ if(o.isMesh && !rm.includes(o)){ o.castShadow=isBuilding(_bb.setFromObject(o)); o.receiveShadow=true; } });
     rm.forEach(o=>{ o.parent.remove(o); if(!Object.values(CGC).includes(o.geometry)&&o.geometry!==tGeo&&o.geometry!==lGeo) o.geometry.dispose(); });
-    groups.forEach(({m,list})=>{ const mg=mergeGeometries(list); list.forEach(x=>x.dispose()); if(mg){ const ms=new THREE.Mesh(mg,m); ms.matrixAutoUpdate=false; g.add(ms); } });
+    groups.forEach(({m,bld,list})=>{ const mg=mergeGeometries(list); list.forEach(x=>x.dispose()); if(mg){ const ms=new THREE.Mesh(mg,m); ms.matrixAutoUpdate=false; ms.castShadow=bld; ms.receiveShadow=true; g.add(ms); } });
     // ひと固まりにしたので親の変換は単位行列に
   }
   function disposeChunk(ch){
@@ -1269,7 +1184,8 @@ export function createNihonTown(world, opts={}){
   }
   function updateChunks(fx){
     const lap=Math.floor((fx-IA)/LAP), local=fx-IA-lap*LAP-(RX0-IA);
-    const cur=lap*NCH+Math.floor(local/CL), lo=cur-3, hi=cur+6;
+    // 前は約400m先まで(霞で見えなくなる距離)、後ろは約120m。
+    const cur=lap*NCH+Math.floor(local/CL), lo=cur-2, hi=cur+7;
     for(const [k,ch] of chunkMap) if(k<lo||k>hi){ disposeChunk(ch); chunkMap.delete(k); }
     for(let k=lo;k<=hi;k++) if(!chunkMap.has(k)){ chunkMap.set(k,buildChunk(k)); break; }   // 1フレームに1つずつ作る（カクつき防止）
   }
@@ -1278,17 +1194,29 @@ export function createNihonTown(world, opts={}){
 
   // ---- 走る車は入れない（駐車中の車は残す）----
   if(!traffic){ movers.forEach(m=>scene.remove(m.c)); crossCars.forEach(k=>scene.remove(k.c)); }
+  mergeChunk(scene);                                  // コンビニ区間もまとめて描く
 
   // ---- 昼夜 ----
-  const storeLight=new THREE.PointLight(0xf4f8ff,0,24,2); storeLight.position.set(0,3,21); scene.add(storeLight);
+  // 夜は模様(色の画像)を外し、その平均の単色にする。光る窓・看板(発光の画像)は残す。
+  function simplify(m,on){
+    if(!m||!m.isMeshStandardMaterial) return;
+    if(on){ if(!m.map||m.userData.dayMap) return;
+      m.userData.dayMap=m.map; m.userData.dayColor=m.color.clone();
+      const a=m.map.userData.average; if(a) m.color.setRGB(a.r,a.g,a.b).multiply(m.userData.dayColor);
+      m.map=null; m.needsUpdate=true; }
+    else if(m.userData.dayMap){ m.map=m.userData.dayMap; m.color.copy(m.userData.dayColor);
+      delete m.userData.dayMap; delete m.userData.dayColor; m.needsUpdate=true; }
+  }
+  function simplifyGroup(g,on){ g.traverse(o=>{ if(o.isMesh) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>simplify(m,on)); }); }
   function setNight(n){
     night=n;
+    simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
     chunkMap.forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
-    lamps.forEach(L=>L.intensity=n?1.6:0);
-    storeLight.intensity=n?2.2:0;
+    // 電球(点光源)は夜だけ置く。昼は明るさ0でも全部の面で計算されて重いので外す。
+    lamps.forEach(L=>{ L.intensity=n?1.6:0; L.visible=n; });
     lampPools.forEach(m=>m.opacity=n?0.7:0);
-    if(gsLight){ gsLight.intensity=n?3:0; gsPoolM.opacity=n?0.85:0; }
+    if(gsLight){ gsLight.intensity=n?3:0; gsLight.visible=n; gsPoolM.opacity=n?0.85:0; }
   }
   setNight(false);
   const startX=opts.startX??0;
@@ -1308,9 +1236,8 @@ export function createNihonTown(world, opts={}){
   function update(dt,t,player){
     const px=player?player.x:0;
     updateChunks(px);
-    // コンビニ区間を一番近い周へ。ドアは区間の中の座標で判定する。
+    // コンビニ区間を一番近い周へ。
     scene.position.x=Math.round((px-(IA+RX0)/2)/LAP)*LAP;
-    if(player) player={x:px-scene.position.x,z:player.z};
     updateSignals(t);
     if(traffic){
       crossCars.forEach(k=>{ const z=k.c.position.z, nz=z+k.dir*7*dt;
@@ -1330,11 +1257,6 @@ export function createNihonTown(world, opts={}){
         m.c.position.x+=m.v*dt; if(m.c.position.x>45)m.c.position.x=-45; if(m.c.position.x<-45)m.c.position.x=45;
       });
     }
-    const near=!!player && Math.hypot(player.x+5,player.z-24)<3;
-    doorOpen+=((near?1:0)-doorOpen)*Math.min(1,dt*4);
-    doorL.position.x=-5.75-doorOpen*1.45; doorR.position.x=-4.25+doorOpen*1.45;
-    inDoors.forEach(d=>{ const nr=!!player && Math.hypot(player.x-6,player.z-(d.z0+d.z1)/2)<1.8;
-      d.open+=((nr?1:0)-d.open)*Math.min(1,dt*4); d.p.position.z=(d.z0+d.z1)/2-d.open*(d.z1-d.z0)*0.95; });
   }
 
   return { update, setNight, isBlocked, group:scene, isNight:()=>night };
