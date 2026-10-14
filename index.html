@@ -867,7 +867,7 @@
       window.addEventListener('keydown', () => { location.href = location.pathname; });
     }
   } else if (hasGameSelection && requestedCourse === 'neo') {
-    // NeoTokyo はコース廃止中。黒地に白文字の案内だけ出す。
+    // 街並み(旧NeoTokyo)はコース準備中。黒地に白文字の案内だけ出す。
     document.body.replaceChildren();
     document.body.style.cssText = 'margin:0;background:#000;';
     const notice = document.createElement('div');

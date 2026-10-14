@@ -451,7 +451,7 @@ export const MAP_CONFIGS = {
   },
   neo: {
     ...commonMap,
-    label: 'NeoTokyo',
+    label: '街並み',
     file: 'procedural:neo',
     preview: 'picture/neotokyo.png',
     scale: 1,
