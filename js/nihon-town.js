@@ -1334,10 +1334,19 @@ export function createNihonTown(world, opts={}){
       delete m.userData.dayMap; delete m.userData.dayColor; m.needsUpdate=true; }
   }
   function simplifyGroup(g,on){ g.traverse(o=>{ if(o.isMesh) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>simplify(m,on)); }); }
+  // 光の計算をしない色(木の葉・書き割り)は、夕暮れの度合い dusk(昼0〜夜1)で昼の色から夜の色へ寄せる。
+  // 地表や建物と同じ暗さになり、薄暗い時に木だけ明るく浮かない。灯りが点いている間は夜の色。
+  let dusk=0;
+  const _c1=new THREE.Color(), _c2=new THREE.Color();
+  function applyShade(){
+    const d=night?1:dusk;
+    leafM.color.copy(_c1.setHex(LEAF_DAY)).lerp(_c2.setHex(LEAF_NIGHT),d);
+    backdrops.forEach(p=>p.material.color.copy(_c1.setHex(p.material.userData.day)).lerp(_c2.setHex(p.material.userData.night),d));
+  }
+  function setDusk(d){ if(Math.abs(d-dusk)<0.005) return; dusk=d; applyShade(); }
   function setNight(n){
     night=n;
-    leafM.color.setHex(n?LEAF_NIGHT:LEAF_DAY);
-    backdrops.forEach(p=>p.material.color.setHex(n?p.material.userData.night:p.material.userData.day));
+    applyShade();
     simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
     chunkMap.forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
@@ -1389,5 +1398,5 @@ export function createNihonTown(world, opts={}){
     }
   }
 
-  return { update, setNight, isBlocked, group:scene, isNight:()=>night };
+  return { update, setNight, setDusk, isBlocked, group:scene, isNight:()=>night };
 }

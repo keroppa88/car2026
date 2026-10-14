@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-16';
-import { createNeoCity } from './neo-city.js?v=20261015-town-16';
+import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-20';
+import { createNeoCity } from './neo-city.js?v=20261015-town-20';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -10713,7 +10713,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       // 建物の窓・看板・街灯を点ける。
       const neoLampsOn = nightMode
         || clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1) <= NEO_LAMPS_ON_METER;
-      neoCity?.update(camera, topView, neoLampsOn, dt);
+      neoCity?.update(camera, topView, neoLampsOn, dt, weatherDuskLevel());
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
         // 80mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。
