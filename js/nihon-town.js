@@ -1167,7 +1167,9 @@ export function createNihonTown(world, opts={}){
     for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,9.4+dz), B=new THREE.Vector3(x0+15,8.95,9.4+dz), C=new THREE.Vector3(x0+45,8.95,9.4+dz);
       for(const [p,q] of [[A,B],[B,C]]){ const m=p.clone().lerp(q,.5); m.y-=0.7; ch.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(p,m,q).getPoints(12)),wireM)); } }
     // 街路樹の区画
-    if(zone==='trees') for(let x=x0+5;x<x0+CL;x+=10) for(const z of [-8.2,8.2]){ cb(1.4,0.2,1.4,0x8a7a62,x+(z>0?5:0),0.15,z); ctree(x+(z>0?5:0),z,0.9); ch.cols.push([x-0.4+(z>0?5:0),z-0.4,x+0.4+(z>0?5:0),z+0.4]); }
+    // 並木の区画: 元は10mおきに両側(1区画12本)。重いので4本に1本だけ植える(1区画3本、両側に互い違い)。
+    if(zone==='trees'){ let i=0; for(let x=x0+5;x<x0+CL;x+=10,i++) for(const z of [-8.2,8.2]){ if(i%2 || (z>0)!==((i/2)%2===1)) continue;
+      cb(1.4,0.2,1.4,0x8a7a62,x+(z>0?5:0),0.15,z); ctree(x+(z>0?5:0),z,0.9); ch.cols.push([x-0.4+(z>0?5:0),z-0.4,x+0.4+(z>0?5:0),z+0.4]); } }
     // 両側の敷地（同じ区画は毎回同じ中身。左右入れ替えは mirror）
     for(const logical of [1,-1]){
       RN=seeded(ZONES.indexOf(zone)*1000+ci*10+(logical>0?1:2));
@@ -1247,6 +1249,37 @@ export function createNihonTown(world, opts={}){
   if(!traffic){ movers.forEach(m=>scene.remove(m.c)); crossCars.forEach(k=>scene.remove(k.c)); }
   mergeChunk(scene);                                  // コンビニ区間もまとめて描く
 
+  // ---- 書き割り(建物の隙間から奥の荒野が見えないよう、街並みの影絵を立てる) ----
+  // 家の屋根やビルが連なる形のグレーの板。手前(道路中心から64m)と奥(110m)の2枚ずつ。
+  // 板は車について動くが、模様の周期(200m)ごとにしか動かさないので、絵は地面に固定されて見える。
+  const BD_PERIOD=200, BD_LEN=1000;
+  function skylineTex(seed,maxH,tall){
+    const R=seeded(seed), W=1024, H=128, ppm=W/BD_PERIOD, py=H/32;    // 横 5.12px/m、縦 4px/m(高さ32m)
+    const t=tex(W,H,(g)=>{ g.clearRect(0,0,W,H); g.fillStyle='#fff';
+      let x=0;
+      while(x<W){
+        const kind=R();
+        if(kind<(tall?0.25:0.55)){                                   // 切妻屋根の家
+          const w=(8+R()*5)*ppm, h=(5+R()*2)*py, rh=(2+R()*1.2)*py;
+          g.fillRect(x,H-h,w,h); g.beginPath(); g.moveTo(x-2,H-h); g.lineTo(x+w/2,H-h-rh); g.lineTo(x+w+2,H-h); g.fill(); x+=w+R()*2*ppm;
+        } else {                                                      // ビル・アパート(屋上に小さな出っ張り)
+          const w=(10+R()*14)*ppm, h=Math.min(maxH,(8+R()*(tall?22:12)))*py;
+          g.fillRect(x,H-h,w,h); if(R()<0.5) g.fillRect(x+w*(0.2+R()*0.5),H-h-1.5*py,2.5*ppm,1.5*py); x+=w+R()*1.5*ppm;
+        }
+      } });
+    t.wrapS=THREE.RepeatWrapping; t.repeat.set(BD_LEN/BD_PERIOD,1); return t;
+  }
+  const backdrops=[];
+  for(const [dist,seed,maxH,tall,day,nightC] of [[64,11,14,false,0x9aa1a8,0x1b1f27],[110,23,28,true,0xb4bcc4,0x141820]]){
+    const map=skylineTex(seed,maxH,tall), H=32;
+    const m=new THREE.MeshBasicMaterial({color:day,alphaMap:map,alphaTest:0.5,side:THREE.DoubleSide});
+    m.userData.day=day; m.userData.night=nightC;
+    for(const side of [-1,1]){
+      const p=new THREE.Mesh(new THREE.PlaneGeometry(BD_LEN,H),m);
+      p.position.set(0,H/2-0.5,side*dist); p.rotation.y=side>0?Math.PI:0; p.name='skyline'; world.add(p); backdrops.push(p);
+    }
+  }
+
   // ---- 昼夜 ----
   // 夜は模様(色の画像)を外し、その平均の単色にする。光る窓・看板(発光の画像)は残す。
   function simplify(m,on){
@@ -1261,6 +1294,7 @@ export function createNihonTown(world, opts={}){
   function simplifyGroup(g,on){ g.traverse(o=>{ if(o.isMesh) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>simplify(m,on)); }); }
   function setNight(n){
     night=n;
+    backdrops.forEach(p=>p.material.color.setHex(n?p.material.userData.night:p.material.userData.day));
     simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
     chunkMap.forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
@@ -1288,6 +1322,7 @@ export function createNihonTown(world, opts={}){
   function update(dt,t,player){
     const px=player?player.x:0;
     updateChunks(px);
+    backdrops.forEach(p=>{ p.position.x=Math.round(px/BD_PERIOD)*BD_PERIOD; });
     // コンビニ区間を一番近い周へ。
     scene.position.x=Math.round((px-(IA+RX0)/2)/LAP)*LAP;
     updateSignals(t);
