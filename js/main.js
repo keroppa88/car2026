@@ -70,6 +70,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let route66Scenery = null;
   let neoCity = null;
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
+  const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
   let gunmaRoadsideForest = null;
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
@@ -6295,17 +6296,25 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
     // ルート66もぐんまーと同じ強さで、暗い砂漠の道の先まで照らす。
     const gunmaHeadlights = TOUGE_COURSE || COURSE_KEY === 'route66';
-    // 街並みは明るい街中なので、ぐんまーの光量の半分・照射幅の半分。
+    // 街並みは明るい街中なので、ぐんまーの光量の半分。照らすのは自分の車線くらいの幅だけ。
+    // 光の円錐(半角 NEO_BEAM)を同じ角度だけ下へ傾け、円錐の上の縁を水平にする。
+    // ライトの高さ(0.75m)より上は照らさない。路面は約4m先から、幅は20m先で約4.5m。
+    const NEO_BEAM = 0.09;
     for (const side of [-1, 1]) {
       const intensity = NEO_COURSE ? 2.1 : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
-      const angle = NEO_COURSE ? Math.atan(Math.tan(0.65) * 1.5)
+      const angle = NEO_COURSE ? NEO_BEAM
         : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
       const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, 0.6, decay);
       light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
       light.visible = vehicleLightsShouldBeVisible();
-      light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
+      if (NEO_COURSE) {
+        // まっすぐ前、24m先で NEO_BEAM だけ下向き。
+        light.target.position.set(side * HEADLIGHT_OFFSET_X, 0.75 - Math.tan(NEO_BEAM) * 24, 2.55 + 24);
+      } else {
+        light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
+      }
       player.tilt.add(light);
       player.tilt.add(light.target);
       playerHeadlights.push(light);
@@ -10672,6 +10681,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       updateWeatherEffects(dt);
       route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView, route66DesertShade());
       neoCity?.update(camera, topView, nightMode, dt);
+      if (NEO_COURSE) {
+        // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
+        for (const ai of aiCars) {
+          const dx = ai.group.position.x - camera.position.x;
+          const dz = ai.group.position.z - camera.position.z;
+          ai.group.visible = topView || dx * dx + dz * dz < NEO_CPU_VIEW_DISTANCE ** 2;
+        }
+      }
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
         gunmaCanopy?.update(dt, weatherDuskLevel());
