@@ -556,9 +556,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     weatherSkyUniforms.topColor.value.copy(top);
     weatherSkyUniforms.horizonColor.value.copy(horizon);
-    weatherSkyUniforms.horizonBandColor.value.copy(
-      TOUGE_COURSE ? gunmaHaze : horizon
-    );
+    // 街並みは地表のモヤを使わず、道路の奥も地平線の色(パネルで変えた色・夜の暗さ)に合わせる。
+    const hazeForCourse = TOUGE_COURSE && !NEO_COURSE ? gunmaHaze : horizon;
+    weatherSkyUniforms.horizonBandColor.value.copy(hazeForCourse);
     weatherSkyUniforms.flatSky.value = weatherFlatSky ? 1 : 0;
     // 選んでいる側(空/地平線)の色をそのまま16進で見せる。夜の減光は反映しない。
     const pickedColor = weatherColorTarget === 'horizon'
@@ -572,7 +572,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (fog && COURSE_KEY === 'route66') {
       // 砂漠と同じ色。夜は同じ色相のまま暗くする。
       fog.color.setHex(0xc0aa8a).multiplyScalar(route66DesertShade());
-    } else if (fog) fog.color.copy(TOUGE_COURSE ? gunmaHaze : horizon);
+    } else if (fog) fog.color.copy(hazeForCourse);
     cloudUniforms.uSkyColor.value.copy(top);
     cloudUniforms.uSkyHor.value.copy(horizon);
     document.body.dataset.weatherSkyTarget = weatherColorTarget;
