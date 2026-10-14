@@ -24,6 +24,9 @@ export function createNihonTown(world, opts={}){
   // ---- 便利関数 ----
   const colliders=[];                                  // 車がぶつかる範囲 [x0,z0,x1,z1](コンビニ区間の座標)
   const mat=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,...o});
+  // 木の葉: 一色で陰影なし(光の計算をしない)。夜は暗い緑にする(setNight)。
+  const LEAF_DAY=0x4f7a3e, LEAF_NIGHT=0x0f1a0c;
+  const leafM=new THREE.MeshBasicMaterial({color:LEAF_DAY});
   // ハリボテにしない建物(コンビニ・ファミレス・ガソリンスタンド・駐車場)を作る間だけ true。
   let keepSolid=false;
   // 色だけの材質は同じ色なら使い回す(まとめて描けるように)。
@@ -279,7 +282,7 @@ export function createNihonTown(world, opts={}){
   function tree(x,z,s=1){
     const t=new THREE.Mesh(new THREE.CylinderGeometry(.15*s,.22*s,2*s,8),mat(0x6b4f36));
     t.position.set(x,0.15+s,z); scene.add(t);
-    const l=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5*s,1),mat(0x4f7a3e,{flatShading:true}));
+    const l=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5*s,1),leafM);
     l.position.set(x,0.15+2.6*s,z); scene.add(l);
   }
   function bench(x,z,ry){
@@ -990,7 +993,7 @@ export function createNihonTown(world, opts={}){
     if(W/2>st){ cb(W/2-st,1.2,0.15,bm,(st+W/2)/2,0.1,0.1); ccol(st,0,W/2,0.2); }
     cb(3.1,0.04,5.6,0xbdbab3,px,0.1,3); if(RN()<0.7) ccar(px,3.1,0);
   }
-  const tGeo=new THREE.CylinderGeometry(.15,.22,2,6), lGeo=new THREE.IcosahedronGeometry(1.5,1), trM=cmat(0x6b4f36), lfM=cmat(0x4f7a3e);
+  const tGeo=new THREE.CylinderGeometry(.15,.22,2,6), lGeo=new THREE.IcosahedronGeometry(1.5,1), trM=cmat(0x6b4f36), lfM=leafM;
   function ctree(x,z,s=1){ const t=new THREE.Mesh(tGeo,trM); t.scale.setScalar(s); t.position.set(x,0.1+s,z); croot.add(t);
     const l=new THREE.Mesh(lGeo,lfM); l.scale.setScalar(s); l.position.set(x,0.1+2.6*s,z); croot.add(l); }
   function cFacade(style,floors){
@@ -1169,9 +1172,7 @@ export function createNihonTown(world, opts={}){
     for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,9.4+dz), B=new THREE.Vector3(x0+15,8.95,9.4+dz), C=new THREE.Vector3(x0+45,8.95,9.4+dz);
       for(const [p,q] of [[A,B],[B,C]]){ const m=p.clone().lerp(q,.5); m.y-=0.7; ch.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(p,m,q).getPoints(12)),wireM)); } }
     // 街路樹の区画
-    // 並木の区画: 元は10mおきに両側(1区画12本)。重いので4本に1本だけ植える(1区画3本、両側に互い違い)。
-    if(zone==='trees'){ let i=0; for(let x=x0+5;x<x0+CL;x+=10,i++) for(const z of [-8.2,8.2]){ if(i%2 || (z>0)!==((i/2)%2===1)) continue;
-      cb(1.4,0.2,1.4,0x8a7a62,x+(z>0?5:0),0.15,z); ctree(x+(z>0?5:0),z,0.9); ch.cols.push([x-0.4+(z>0?5:0),z-0.4,x+0.4+(z>0?5:0),z+0.4]); } }
+    // 歩道の街路樹は植えない(重いので)。「並木」の区画も、敷地の家並みは住宅の区画と同じ。
     // 両側の敷地（同じ区画は毎回同じ中身。左右入れ替えは mirror）
     for(const logical of [1,-1]){
       RN=seeded(ZONES.indexOf(zone)*1000+ci*10+(logical>0?1:2));
@@ -1296,6 +1297,7 @@ export function createNihonTown(world, opts={}){
   function simplifyGroup(g,on){ g.traverse(o=>{ if(o.isMesh) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>simplify(m,on)); }); }
   function setNight(n){
     night=n;
+    leafM.color.setHex(n?LEAF_NIGHT:LEAF_DAY);
     backdrops.forEach(p=>p.material.color.setHex(n?p.material.userData.night:p.material.userData.day));
     simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
