@@ -44,12 +44,13 @@ export function createNihonTown(world, opts={}){
 
   // ---- 地面・道路 ----
   box(205,0.02,300,0x6d7a55,37.5,-0.03,0);                // 草地(コンビニ区間の分だけ)
-  const roadGlowM=mat(0x3b3d40,{emissive:0x8a8f9a,emissiveIntensity:0}); glowMats.push([roadGlowM,0.22]);   // 夜は路面がぼんやり光る
+  // 夜も路面全体は光らせない。明るいのは街灯の光だまり(加算合成の円)の所だけ。
+  const roadGlowM=mat(0x3b3d40);
   box(130,0.02,12,roadGlowM,0,0,0);                        // 車道
   box(130,0.02,0.15,0xd9b23a,0,0.02,0);                  // 中央線(黄)
   [-5.6,5.6].forEach(z=>box(130,0.02,0.12,0xeeeeee,0,0.02,z)); // 外側線
   for(const z of [-6.1,6.1]) box(130,0.18,0.2,0x9d9a94,0,0,z);  // 縁石
-  const walk=mat(0x5d5f62,{emissive:0x8a8f9a,emissiveIntensity:0}); glowMats.push([walk,0.18]);                               // 歩道：駐車場より少し薄いアスファルト
+  const walk=mat(0x5d5f62);                               // 歩道：駐車場より少し薄いアスファルト
   box(130,0.15,3,walk,0,0,7.7);   // 手前歩道
   box(130,0.15,3,walk,0,0,-7.7);  // 向かい歩道
   // 歩道と建物の間は草地ではなく薄いアスファルト（両側）
@@ -1213,10 +1214,11 @@ export function createNihonTown(world, opts={}){
     simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
     chunkMap.forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
-    // 電球(点光源)は夜だけ置く。昼は明るさ0でも全部の面で計算されて重いので外す。
-    lamps.forEach(L=>{ L.intensity=n?1.6:0; L.visible=n; });
+    // 街灯の電球(灯具)は夜に光るが、点光源での照明計算はしない(昼も夜も外す)。
+    // 道路が明るいのは光だまりの円の所だけ。
+    lamps.forEach(L=>{ L.intensity=0; L.visible=false; });
     lampPools.forEach(m=>m.opacity=n?0.7:0);
-    if(gsLight){ gsLight.intensity=n?3:0; gsLight.visible=n; gsPoolM.opacity=n?0.85:0; }
+    if(gsLight){ gsLight.intensity=0; gsLight.visible=false; gsPoolM.opacity=n?0.85:0; }   // スタンドの屋根下も光だまりだけ
   }
   setNight(false);
   const startX=opts.startX??0;
