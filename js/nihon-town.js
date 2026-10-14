@@ -222,12 +222,20 @@ export function createNihonTown(world, opts={}){
     box(0.6,0.15,0.5,0x777,x+0.4,6.3,9.1); // 街灯
     const L=new THREE.PointLight(0xffe2b0,0,22,2); L.position.set(x+0.4,6.1,8.9); scene.add(L); lamps.push(L);
   });
+  // 電線は線(1ピクセル)。まとめて1回で描けるよう、全部を1つの線分の集まりにする。
   const wireM=new THREE.LineBasicMaterial({color:0x2a2a2a});
-  for(let i=0;i<poleXs.length-1;i++) for(const dx of [-0.9,0.9]){
-    const a=new THREE.Vector3(poleXs[i]+dx,8.95,9.4), b=new THREE.Vector3(poleXs[i+1]+dx,8.95,9.4);
-    const m=a.clone().lerp(b,.5); m.y-=0.6;
-    const pts=new THREE.QuadraticBezierCurve3(a,m,b).getPoints(20);
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),wireM));
+  const WIRE_STEPS=6;                                    // たるみの曲線の分割数
+  function wireSegments(spans,out){                      // spans: [[始点,終点,たるみ(m)], ...]
+    for(const [a,b,sag] of spans){ const m=a.clone().lerp(b,.5); m.y-=sag;
+      const pts=new THREE.QuadraticBezierCurve3(a,m,b).getPoints(WIRE_STEPS);
+      for(let k=0;k<pts.length-1;k++) out.push(pts[k],pts[k+1]); }
+    return out;
+  }
+  {
+    const spans=[];
+    for(let i=0;i<poleXs.length-1;i++) for(const dx of [-0.9,0.9])
+      spans.push([new THREE.Vector3(poleXs[i]+dx,8.95,9.4),new THREE.Vector3(poleXs[i+1]+dx,8.95,9.4),0.6]);
+    scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wireSegments(spans,[])),wireM));
   }
 
   // ---- 道路沿いの家とオフィスビル（映画セット式：道路側だけ作る）----
@@ -1169,8 +1177,10 @@ export function createNihonTown(world, opts={}){
     }
     // 電柱と電線（手前側）
     for(const x of [x0+15,x0+45]){ cb(0.34,9.5,0.34,0xb9b6ae,x,0.15,9.4); cb(0.12,0.12,2.2,0x8a8a86,x,8.8,9.4); ch.cols.push([x-0.25,9.15,x+0.25,9.65]); }
-    for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,9.4+dz), B=new THREE.Vector3(x0+15,8.95,9.4+dz), C=new THREE.Vector3(x0+45,8.95,9.4+dz);
-      for(const [p,q] of [[A,B],[B,C]]){ const m=p.clone().lerp(q,.5); m.y-=0.7; ch.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(p,m,q).getPoints(12)),wireM)); } }
+    { const spans=[];                                   // 区画の電線4本をまとめて1回で描く
+      for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,9.4+dz), B=new THREE.Vector3(x0+15,8.95,9.4+dz), C=new THREE.Vector3(x0+45,8.95,9.4+dz);
+        spans.push([A,B,0.7],[B,C,0.7]); }
+      ch.group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wireSegments(spans,[])),wireM)); }
     // 街路樹の区画
     // 歩道の街路樹は植えない(重いので)。「並木」の区画も、敷地の家並みは住宅の区画と同じ。
     // 両側の敷地（同じ区画は毎回同じ中身。左右入れ替えは mirror）
