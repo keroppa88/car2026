@@ -71,7 +71,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let neoCity = null;
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
-  const NEO_CPU_DETAIL_DISTANCE = 50;  // 街並み: これより遠いCPU車は箱で描く(m)
+  const NEO_CPU_DETAIL_DISTANCE = 80;  // 街並み: これより遠いCPU車は箱で描く(m)
   // 街並み: 遠くのCPU車の代わりの箱。車体の長さ・幅に合わせ、色は車体の色の平均。
   function makeNeoCarProxy(ai) {
     const body = ai.tilt.children[0];
@@ -10711,7 +10711,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       neoCity?.update(camera, topView, nightMode, dt);
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
-        // 50mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。
+        // 80mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。
         for (const ai of aiCars) {
           const dx = ai.group.position.x - camera.position.x;
           const dz = ai.group.position.z - camera.position.z;
