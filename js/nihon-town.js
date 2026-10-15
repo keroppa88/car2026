@@ -32,13 +32,15 @@ export function createNihonTown(world, opts={}){
   const leafM=new THREE.MeshBasicMaterial({color:LEAF_DAY});
   // ハリボテにしない建物(コンビニ・ファミレス・ガソリンスタンド・駐車場)を作る間だけ true。
   let keepSolid=false;
+  // 街灯・信号の柱を作る間だけ true(車はすり抜ける)。
+  let noCol=false;
   // 色だけの材質は同じ色なら使い回す(まとめて描けるように)。
   const BM={}; const bmat=c=>BM[c]||(BM[c]=mat(c));
   function box(w,h,d,m,x,y,z,parent=scene){ // yは底の高さ
     const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof m==='number'?bmat(m):m);
     b.position.set(x,y+h/2,z); if(keepSolid) b.userData.keepSolid=true; parent.add(b);
     // コンビニ区間で地面に立つ高さ0.8m以上の箱(壁・塀・建物・自販機など)は車がぶつかる。
-    if(parent===scene && h>=0.8 && y<0.6) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
+    if(parent===scene && h>=0.8 && y<0.6 && !noCol) colliders.push([x-w/2,z-d/2,x+w/2,z+d/2]);
     return b;
   }
   function tex(w,h,draw){
@@ -303,7 +305,7 @@ export function createNihonTown(world, opts={}){
     g.position.set(x,0.15,z); g.rotation.y=ry; scene.add(g);
   }
   function parkLamp(x,z){
-    box(0.1,3.6,0.1,0x3c4046,x,0.15,z);
+    noCol=true; box(0.1,3.6,0.1,0x3c4046,x,0.15,z); noCol=false;   // 公園灯も当たり判定なし
     const m=mat(0xf5f0e0,{emissive:0xfff0c8,emissiveIntensity:0}); glowMats.push([m,1.2]);
     const b=new THREE.Mesh(new THREE.SphereGeometry(0.25,12,8),m); b.position.set(x,3.9,z); scene.add(b);
     const L=new THREE.PointLight(0xffe8c0,0,12,2); L.position.set(x,3.7,z); scene.add(L); lamps.push(L);
@@ -513,7 +515,8 @@ export function createNihonTown(world, opts={}){
       pedHeads.push({grp,lamps});
     }
     const corners=[[70.5,-7.7],[85.5,-7.7],[70.5,7.7],[85.5,7.7]];
-    corners.forEach(([x,z])=>{ box(0.18,5.6,0.18,poleM,x,0.15,z); colliders.push([x-0.2,z-0.2,x+0.2,z+0.2]); });
+    // 信号の柱は当たり判定なし(車はすり抜ける)。
+    noCol=true; corners.forEach(([x,z])=>{ box(0.18,5.6,0.18,poleM,x,0.15,z); }); noCol=false;
     // 車両用：各方向とも交差点の向こう側に設置
     box(0.1,0.1,3.7,poleM,85.5,5.35,-5.85); head(85.5,-4.0,-Math.PI/2,'main');   // 東行き（-z 側の車線）を見る
     box(0.1,0.1,3.7,poleM,70.5,5.35,5.85);  head(70.5,4.0,Math.PI/2,'main');     // 西行き
@@ -922,7 +925,7 @@ export function createNihonTown(world, opts={}){
       const ax=x+dx*0.8, az=z+dz*0.8;
       box(Math.abs(dx)*1.6+0.08,0.08,Math.abs(dz)*1.6+0.08,poleM,ax,7.05,az);
       box(Math.abs(dx)*0.5+0.3,0.15,Math.abs(dz)*0.5+0.3,headM,x+dx*1.55,6.95,z+dz*1.55);
-      colliders.push([x-0.15,z-0.15,x+0.15,z+0.15]);
+      // 街灯は当たり判定なし(車はすり抜ける)。
       const pl=new THREE.Mesh(poolG,poolM); pl.rotation.x=-Math.PI/2; pl.position.set(x+dx*4.5,0.2,z+dz*4.5);   // 灯具の斜め前（車道側）を中心に照らす scene.add(pl);
     }
     const inX=x=>x>66&&x<90;
@@ -1202,7 +1205,7 @@ export function createNihonTown(world, opts={}){
     // 片側60mおき(元の30mおきの倍)。両側で互い違い。
     for(const [x,z,d] of [[x0+10,-6.6,1],[x0+40,6.6,-1]]){
       cb(0.18,7,0.18,0x9aa0a6,x,0.15,z); cb(0.08,0.08,1.6,0x9aa0a6,x,7.05,z+d*0.8); cb(0.3,0.15,0.8,cLampHead,x,6.95,z+d*1.55);
-      const pl=new THREE.Mesh(new THREE.PlaneGeometry(16,16),roadPoolM); pl.rotation.x=-Math.PI/2; pl.position.set(x,0.2,z+d*4.5); ch.group.add(pl); ch.cols.push([x-0.15,z-0.15,x+0.15,z+0.15]);
+      const pl=new THREE.Mesh(new THREE.PlaneGeometry(16,16),roadPoolM); pl.rotation.x=-Math.PI/2; pl.position.set(x,0.2,z+d*4.5); ch.group.add(pl);   // 街灯は当たり判定なし
     }
     // 電柱と電線（手前側）
     for(const x of [x0+15,x0+45]){ cb(0.34,9.5,0.34,0xb9b6ae,x,0.15,9.4); cb(0.12,0.12,2.2,0x8a8a86,x,8.8,9.4); ch.cols.push([x-0.25,9.15,x+0.25,9.65]); }

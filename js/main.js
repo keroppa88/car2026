@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-20';
-import { createNeoCity } from './neo-city.js?v=20261015-town-20';
+import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261015-town-21';
+import { createNeoCity } from './neo-city.js?v=20261015-town-21';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -4071,6 +4071,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const ahead = sampleGunmaTrafficPath(path, distance + 4);
         const vehicle = vehicles[created % vehicles.length];
         const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
+        // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
+        // 色を強めても変わらないので、光球の大きさを2倍にして光る量を増やす。
+        if (NEO_COURSE && direction === 'oncoming') {
+          for (const sprite of car.group.userData.nightLights?.userData.headSprites ?? []) {
+            sprite.material.color.multiplyScalar(2);
+            sprite.scale.multiplyScalar(2);
+          }
+        }
         const speedKmh = speeds[i % speeds.length];
         const ai = {
           group: car.group,
