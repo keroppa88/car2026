@@ -6336,64 +6336,24 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 街並みはぐんまーの半分の光量。照らす幅は20m先で10m(左右2灯の円の外側どうし)。
     // 光の円錐(半角 NEO_BEAM)を同じ角度だけ下へ傾け、円錐の上の縁を水平にする。
     // ライトの高さ(0.75m)より上は照らさない。路面は約1.6m先から。
-    // 街並みのライトは車体の両端(中心から左右0.9m)に置く。照らす形は模様の画像で決める:
-    // 地面(ライトの0.75m下)の上で、2本の光の帯が車の両端から出る。帯は手前(4m先)で
-    // ライトより2.2m外側へ広がり、そこから内側へ斜めに進んで約18m先の中央で交差し、
-    // 反対側へ抜ける(X字)。帯の幅は手前で約2.4m、遠くで約5m。帯の外は暗いまま。
-    // ライトの高さより上は照らさない。
-    const NEO_LAMP_X = 0.9, NEO_LAMP_H = 0.75;
-    const NEO_CONE = 0.9, NEO_TILT = 0.45;     // 光の円錐の半角と、下向きの傾き(rad)
-    function neoBeamMap(side) {
-      const N = 512, c = document.createElement('canvas');
-      c.width = c.height = N;
-      const g = c.getContext('2d'), img = g.createImageData(N, N), T = Math.tan(NEO_CONE);
-      const cp = Math.cos(NEO_TILT), sp = Math.sin(NEO_TILT);
-      for (let j = 0; j < N; j++) {
-        for (let i = 0; i < N; i++) {
-          const sx = ((i + 0.5) / N * 2 - 1) * T, ty = (1 - (j + 0.5) / N * 2) * T;
-          // 向き = 前 + 右*sx + 上*ty(前と上は NEO_TILT だけ下へ傾いている)
-          const dy = -sp + ty * cp, dz = cp + ty * sp, dx = sx;
-          let v = 0;
-          if (dy < -1e-4 && dz > 0) {
-            const l = NEO_LAMP_H / -dy, z = l * dz, x = l * dx;     // 地面に当たる所(ライトから前へ z、右へ x)
-            // 帯の中心(ライトから外側へ測った距離)。模様の画像の右は車の左(-x)なので、
-            // 外側はこの座標で -side の向き。
-            const out = z < 4 ? 2.2 * z / 4 : 2.2 - 0.22 * (z - 4);
-            const center = -side * out;
-            // 帯の幅は前方ほど広がる(前方ほどぼやっとさせる)。20m先で約±6m。
-            const half = z < 4 ? 0.5 + 0.7 * z / 4 : 1.2 + 0.25 * (z - 4);
-            // 輪郭はぼかす: 帯の中心から外へなだらかに暗くする(光の出どころをはっきりさせない)。
-            const d = Math.abs(x - center) / (half * 1.3);
-            const edge = Math.exp(-d * d * 2.2);
-            // 光の上の縁(ライトの高さに近い向き)はなだらかに消す。壁に当たっても横一線の縁にならない。
-            const dip = -dy / Math.hypot(dx, dy, dz), top = Math.min(1, dip / 0.07);
-            // 車のすぐ前は急に明るくせず、0〜6mでゆっくり明るくする。
-            const t = Math.min(1, z / 6), nearFade = t * t * (3 - 2 * t);
-            v = edge * top * top * Math.max(0.15, nearFade) * Math.min(1, Math.max(0.35, z / 7));
-          }
-          const o = (j * N + i) * 4;
-          img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.round(v * 255);
-          img.data[o + 3] = 255;
-        }
-      }
-      g.putImageData(img, 0, 0);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    }
+    // 街並みのライトはシンプルな柔らかい光。
+    //  - 車体の両端近く(中心から左右0.8m)から真っすぐ前へ。
+    //  - 出た瞬間から広がる(広い円錐・縁は一番柔らかく)。サーチライトにしない。
+    //  - 1灯ずつは控えめにし、2灯が重なる前方の中央が主に明るくなるようにする(配分は後で調整)。
+    //  - 円錐の上の縁が水平になるよう半角と同じだけ下へ向け、ライトの高さより上は照らさない。
+    const NEO_LAMP_X = 0.8, NEO_CONE = 0.45, NEO_LAMP_INTENSITY = 1.6;
     for (const side of [-1, 1]) {
-      const intensity = NEO_COURSE ? 2.1 : gunmaHeadlights ? 4.2 : 0.42;
+      const intensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
       const angle = NEO_COURSE ? NEO_CONE
         : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
-      const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, NEO_COURSE ? 0 : 0.6, decay);
-      if (NEO_COURSE) light.map = neoBeamMap(side);
+      const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, NEO_COURSE ? 1 : 0.6, decay);
       light.position.set(side * (NEO_COURSE ? NEO_LAMP_X : HEADLIGHT_OFFSET_X), 0.75, 2.55);
       light.visible = vehicleLightsShouldBeVisible();
       if (NEO_COURSE) {
-        // まっすぐ前へ、NEO_TILT だけ下向き。照らす形は模様の画像(neoBeamMap)で決める。
-        light.target.position.set(side * NEO_LAMP_X, 0.75 - Math.tan(NEO_TILT) * 10, 2.55 + 10);
+        // まっすぐ前へ、NEO_CONE だけ下向き。
+        light.target.position.set(side * NEO_LAMP_X, 0.75 - Math.tan(NEO_CONE) * 10, 2.55 + 10);
       } else {
         light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
       }
