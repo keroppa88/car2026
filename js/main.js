@@ -1159,11 +1159,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     [0.30, 0], [0.29, 0.1], [0.25, 0.2], [0.225, 0.3],
     [0.20, 0.4], [0.17, 0.5], [0.15, 0.75], [0.10, 1], [0, 1],
   ];
+  // 地平線の明るさ(0〜1)。ふつうはパネルの「明暗」メーターの値。
+  // 街並みは地平線の色の見た目どおりの明るさで測る。メーターの値は色を内部の形(リニア)に
+  // 直してから測っているので見た目よりずっと暗く出て、曲の色で昼でも夜扱いになっていた。
+  const horizonSrgbHsl = { h: 0, s: 0, l: 0 };
+  function horizonMeter() {
+    if (NEO_COURSE) {
+      weatherHorizonColor.getHSL(horizonSrgbHsl, THREE.SRGBColorSpace);
+      return clamp((horizonSrgbHsl.l - 0.1) / 0.88, 0, 1);
+    }
+    return clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1);
+  }
   function weatherDuskLevel() {
     if (nightMode) return 1;
     // パネルの「明暗」メーターの表示値(0〜1)で判定する。HSLのlは0.10〜0.98へ
     // 割り当てられているので、生のlで比べるとメーターの%とずれる。
-    const meter = clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1);
+    const meter = horizonMeter();
     if (meter >= DUSK_BY_METER[0][0]) return 0;
     for (let i = 1; i < DUSK_BY_METER.length; i++) {
       const [highMeter, highDusk] = DUSK_BY_METER[i - 1];
@@ -10739,8 +10750,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       route66Scenery?.update(camera, weatherHorizonColor, nightMode, topView, route66DesertShade());
       // 街並み: 夜間モードのほか、地平線の色の明暗(パネルのメーター)が16%以下でも
       // 建物の窓・看板・街灯を点ける。
-      const neoLampsOn = nightMode
-        || clamp((weatherHorizonHsl.l - 0.1) / 0.88, 0, 1) <= NEO_LAMPS_ON_METER;
+      const neoLampsOn = nightMode || horizonMeter() <= NEO_LAMPS_ON_METER;
       neoCity?.update(camera, topView, neoLampsOn, dt, weatherDuskLevel());
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
