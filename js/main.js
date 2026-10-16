@@ -91,7 +91,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
     });
     const color = count ? sum.multiplyScalar(1 / count) : new THREE.Color(0x777777);
-    const length = (ai.group.userData.collideHalfLength ?? 2.1) * 2;
+    // 前後のランプ(車体の前端・後端の光)を箱で隠さないよう、箱は車体より短くする。
+    const length = (ai.group.userData.collideHalfLength ?? 2.1) * 2 * 0.8;
     const width = (ai.group.userData.collideHalfWidth ?? 0.9) * 2;
     const box = new THREE.Mesh(new THREE.BoxGeometry(width, 1.4, length),
       new THREE.MeshLambertMaterial({ color }));
@@ -4576,6 +4577,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 灯火を車体傾斜グループへ入れ、坂・バンク・荷重移動へ追随させる。
     addCarLights(tilt, bike, lightProfile, mesh.userData.lampLayout);
     group.userData.nightLights = tilt.userData.nightLights;
+    // 車体が長い車種では、決まった位置のランプの光が車体の中に埋まって隠れる。
+    // 車体の前端・後端を測り、光をその少し外側へ出す。
+    if (!bike && group.userData.nightLights) {
+      const box = new THREE.Box3().setFromObject(mesh);
+      tilt.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(tilt.matrixWorld).invert();
+      box.applyMatrix4(inv);
+      for (const sprite of group.userData.nightLights.children) {
+        if (sprite.position.z < 0) sprite.position.z = Math.min(sprite.position.z, box.min.z - 0.06);
+        else sprite.position.z = Math.max(sprite.position.z, box.max.z + 0.06);
+      }
+    }
     scene.add(group);
     return { group, tilt };
   }
