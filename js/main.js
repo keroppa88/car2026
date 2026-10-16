@@ -4076,8 +4076,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 色を強めても変わらないので、光球の大きさを2倍にして光る量を増やす。
         if (NEO_COURSE && direction === 'oncoming') {
           for (const sprite of car.group.userData.nightLights?.userData.headSprites ?? []) {
-            sprite.material.color.multiplyScalar(2);
-            sprite.scale.multiplyScalar(2);
+            // さらに1.3倍(合わせて2.6倍)。
+            sprite.material.color.multiplyScalar(2 * 1.3);
+            sprite.scale.multiplyScalar(2 * 1.3);
           }
         }
         const speedKmh = speeds[i % speeds.length];
