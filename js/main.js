@@ -6342,6 +6342,33 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     //  - 1灯ずつは控えめにし、2灯が重なる前方の中央が主に明るくなるようにする(配分は後で調整)。
     //  - 円錐の上の縁が水平になるよう半角と同じだけ下へ向け、ライトの高さより上は照らさない。
     const NEO_LAMP_X = 0.8, NEO_CONE = 0.45, NEO_LAMP_INTENSITY = 1.6;
+    let neoPoolMat = null;
+    function neoHeadPoolMaterial() {
+      if (neoPoolMat) return neoPoolMat;
+      // 縦長の画像: 下端(ライト側)は細く明るく、前へ行くほど広く淡くなる。
+      const W = 128, H = 256, c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d'), img = g.createImageData(W, H);
+      for (let j = 0; j < H; j++) {
+        // 画像の上の行は地面では車側になる(板を寝かせると上が後ろを向く)。
+        const t = (j + 0.5) / H;                        // 0=ライト側 1=前の端
+        const half = 0.5 + 0.5 * Math.sqrt(t);           // 横の広がり(画像の幅に対する割合)。手前から幅広
+        const along = Math.min(1, t / 0.05) * Math.pow(1 - t, 1.4);
+        for (let i = 0; i < W; i++) {
+          const u = Math.abs((i + 0.5) / W * 2 - 1) / half;
+          const v = along * Math.exp(-u * u * 2.5);
+          const o = (j * W + i) * 4;
+          img.data[o] = 255; img.data[o + 1] = 236; img.data[o + 2] = 200;
+          img.data[o + 3] = Math.round(Math.min(1, v) * 255);
+        }
+      }
+      g.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      neoPoolMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending, depthWrite: false });
+      return neoPoolMat;
+    }
     for (const side of [-1, 1]) {
       const intensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
@@ -6360,6 +6387,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       player.tilt.add(light);
       player.tilt.add(light.target);
       playerHeadlights.push(light);
+      if (NEO_COURSE) {
+        // 地面の光だまり: ライトのすぐ前から前へ広がる柔らかい明るさ(照明の計算はしない)。
+        // ボンネットに隠れない所から、車の前の左右の角に光の出どころが見えるようにする。
+        // 夜にライトを点けたときだけ出る(playerHeadlights と一緒に表示を切り替える)。
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 9), neoHeadPoolMaterial());
+        pool.rotation.x = -Math.PI / 2;
+        pool.position.set(side * (NEO_LAMP_X + 0.5), 0.05, 2.55 + 4.5);   // 少し外側へ広げる
+        pool.renderOrder = 2;
+        pool.visible = light.visible;
+        player.group.add(pool);
+        playerHeadlights.push(pool);
+      }
     }
 
     if (MAP_GLTF) {
