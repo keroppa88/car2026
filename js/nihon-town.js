@@ -1168,10 +1168,11 @@ export function createNihonTown(world, opts={}){
     cb(0.06,0.8,D,0x9aa0a6,-W/2+0.1,0.1,D/2); cb(W,0.8,0.06,0x9aa0a6,0,0.1,D-0.1);
     const pt=ctex(256,256,(g,w,h)=>{ g.fillStyle='#f4c21a'; g.fillRect(0,0,w,h); g.fillStyle='#1d1d1d'; g.font='bold 170px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('P',w/2,105);
       g.font='bold 28px sans-serif'; g.fillText(P.n,w/2,200); g.font='bold 22px sans-serif'; g.fillText('24H 30分¥200',w/2,234); });
-    // P看板(位置で決める)。7割は看板なし。残りは高さ3通り(低い1.6m・ふつう3.4m・高い6m)と
-    // 向き2通り(道路に面する・道路に垂直)の組み合わせ。色は黄色だけ。
+    // P看板(位置で決める)。7割は看板なし。残りの9割は低い(1.6m)、1割はふつう(3.4m)か高い(6m)。
+    // 向きは2通り(道路に面する・道路に垂直)。色は黄色だけ。
     const h=o&&o.bi!=null?(Math.imul((o.bi>>>0)+97,2654435761)>>>0):0;
-    const kind=o&&o.bi!=null?(h%10<7?0:1+((h>>>8)%3)):2;
+    const hk=(h>>>8)%20;
+    const kind=o&&o.bi!=null?(h%10<7?0:hk<18?1:hk<19?2:3):2;
     if(kind>0){
       const pole=[0,1.6,3.4,6][kind], size=[0,1.0,1.3,1.8][kind], turn=[0,Math.PI/2][(h>>>16)%2];
       const pm=cglow(pt,.8), mm=cmat(0x444a50);
@@ -1360,13 +1361,18 @@ export function createNihonTown(world, opts={}){
     // 街路樹の区画
     // 歩道の街路樹は植えない(重いので)。「並木」の区画も、敷地の家並みは住宅の区画と同じ。
     // 両側の敷地（同じ区画は毎回同じ中身。左右入れ替えは mirror）
+    const superRanges=[];                                // 先に作った側のスーパーの x 範囲(向かい合わせにしない)
     for(const logical of [1,-1]){
       RN=seeded(ZONES.indexOf(zone)*1000+ci*10+(logical>0?1:2));
       const side=mirror?-logical:logical, D=26;
       const lots=[];
       // 交差点の区画は、交わる道の両側(0〜21m と 39〜60m)にだけ敷地を並べる。
       for(const [s0,s1] of cross?[[0,CROSS_A],[CROSS_B,CL]]:[[0,CL]]){ let x=s0;
-        while(x<s1-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>s1){ w=s1-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; } lots.push([type,w,x]); x+=w; } }
+        while(x<s1-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>s1){ w=s1-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; }
+          if(type==='super'){                            // 向かいにスーパーがあれば(前後20mの余裕)、駐車場にする
+            const a=side>0?x0+x:x0+CL-(x+w), b=a+w;
+            if(superRanges.some(([p,q])=>a<q+20&&b>p-20)) type='parking'; else superRanges.push([a,b]); }
+          lots.push([type,w,x]); x+=w; } }
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
         keepSolid=['conv','famires','gas','parking','super','koban'].includes(type);
