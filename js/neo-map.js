@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { NIHON_INTRO_START, NIHON_LAP_LENGTH } from './nihon-town.js?v=20261016-town-26';
+import { NIHON_INTRO_START, NIHON_LAP_LENGTH, NIHON_CROSSINGS } from './nihon-town.js?v=20261016-town-27';
 
 // 街並み(旧NeoTokyo): 日本の街を貫く一直線の二車線道路。
 // 道は z = 0 を中心に +x へ延び、1周(NIHON_LAP_LENGTH)ごとに同じ街並みが繰り返す。
@@ -10,8 +10,7 @@ const HALF = 6.0;          // 車道の半幅(縁石まで)。中央線 z=0、�
 const WALK = 9.2;          // 歩道の外側の端(道路中心から)
 export const NEO_DRIVABLE_HALF = 60;   // 走れる範囲(道路中心から)。歩道・駐車場・敷地まで
 const SPACING = 3;         // 点の間隔(m)の目安
-// 交差点の交わる道(x 69〜87、周ごとに繰り返す)は車道と同じ高さにする。
-const CROSS_X0 = 69, CROSS_X1 = 87;
+// 交差点の交わる道(NIHON_CROSSINGS、周ごとに繰り返す)は車道と同じ高さにする。
 // 走行面の高さ(見た目の地図の上面に合わせる)。
 const ROAD_Y = 0.02, WALK_Y = 0.15, LOT_Y = 0.13;
 
@@ -68,9 +67,12 @@ export function buildNeoMap() {
   // 交わる道の x 範囲(範囲内に入る周だけ)。
   const crossings = [];
   for (let k = -2; k <= 2; k++) {
-    const a = CROSS_X0 + k * period, b = CROSS_X1 + k * period;
-    if (b > first && a < last) crossings.push([Math.max(a, first), Math.min(b, last)]);
+    for (const [ca, cb] of NIHON_CROSSINGS) {
+      const a = ca + k * period, b = cb + k * period;
+      if (b > first && a < last) crossings.push([Math.max(a, first), Math.min(b, last)]);
+    }
   }
+  crossings.sort((p, q) => p[0] - q[0]);
   // 車道はずっと一続き。
   quad('GunmaRoad', first, last, -HALF, HALF, ROAD_Y);
   // 車道の外は、交わる道の所を切り抜いて歩道と敷地を置く。

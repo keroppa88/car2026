@@ -15,6 +15,14 @@ export const NIHON_CHUNK_LENGTH = 60;   // 区画1個の長さ(m)
 export const NIHON_CHUNKS_PER_LAP = 40; // 1周の区画数(5種類 × 4個 × 2巡)
 export const NIHON_LAP_LENGTH = NIHON_INTRO_END - NIHON_INTRO_START
   + NIHON_CHUNK_LENGTH * NIHON_CHUNKS_PER_LAP;
+// 交差点のある区画(周の中の番号)。区画の中央に交わる道を通す(歩道の端から端まで区画の21〜39m)。
+// コンビニ区間の交差点(x 69〜87)と合わせて1周に3か所、約800〜900mおき。
+export const NIHON_CROSS_CHUNKS = [12, 27];
+const CROSS_A = 21, CROSS_B = 39;          // 区画の中の、交わる道の歩道の外側の端どうし
+// 交差点の x 範囲(歩道の外側の端どうし、周の中の座標)。走行面(neo-map.js)で使う。
+export const NIHON_CROSSINGS = [[69, 87],
+  ...NIHON_CROSS_CHUNKS.map((k) => [NIHON_INTRO_END + k * NIHON_CHUNK_LENGTH + CROSS_A,
+    NIHON_INTRO_END + k * NIHON_CHUNK_LENGTH + CROSS_B])];
 
 export function createNihonTown(world, opts={}){
   const traffic=false;
@@ -969,6 +977,7 @@ export function createNihonTown(world, opts={}){
   const cLampHead=mat(0xf5f0e0,{emissive:0xfff0c8,emissiveIntensity:0}); glowMats.push([cLampHead,2]);
   const cWin=mat(0x2d3440,{emissive:0xffdca0,emissiveIntensity:0}); glowMats.push([cWin,.85]);
   const cDark=mat(0x2d3440);
+  const sigOnM={green:new THREE.MeshBasicMaterial({color:0x2fd28a}),red:new THREE.MeshBasicMaterial({color:0xff3a2a})}, sigOffM=mat(0x2b2f35);
   const cRoad=roadGlowM, cWalk=walk;
   const carColors=[0xf3f3f0,0x5d6f84,0xb3392f,0x2e2e2e,0x8c9a7a,0xe8e4da,0x3d4a63,0x9aa0a6];
   function ccar(x,z,ry){ const g=new THREE.Group(), c=pk(carColors);
@@ -1291,10 +1300,42 @@ export function createNihonTown(world, opts={}){
     const ch={k:g,group:new THREE.Group(),cols:[],glows:[],texs:[]}; cchunk=ch; croot=ch.group; world.add(ch.group);
     // 地面・道路・歩道・線
     cb(CL,0.02,300,0x6d7a55,x0+CL/2,-0.03,0);
-    cb(CL,0.02,12,cRoad,x0+CL/2,0,0); cb(CL,0.02,0.15,0xd9b23a,x0+CL/2,0.02,0);
-    for(const z of [-5.6,5.6]) cb(CL,0.02,0.12,0xeeeeee,x0+CL/2,0.02,z);
-    for(const z of [-6.1,6.1]) cb(CL,0.18,0.2,0x9d9a94,x0+CL/2,0,z);
-    for(const z of [-7.7,7.7]) cb(CL,0.15,3,cWalk,x0+CL/2,0,z);
+    cb(CL,0.02,12,cRoad,x0+CL/2,0,0);
+    const cross=NIHON_CROSS_CHUNKS.includes(k);
+    // 交差点の区画は、交わる道(車道 24〜36m、歩道 21〜24m・36〜39m)の所で幹線の線・縁石・歩道を切る。
+    const runs=(a,b)=>cross?[[0,a],[CL-a,CL]]:[[0,CL]];
+    const seg=(runList,fn)=>runList.forEach(([a,b])=>{ if(b-a>0.01) fn(x0+(a+b)/2,b-a); });
+    seg(runs(19),(c,l)=>{ cb(l,0.02,0.15,0xd9b23a,c,0.02,0); for(const z of [-5.6,5.6]) cb(l,0.02,0.12,0xeeeeee,c,0.02,z); });
+    seg(runs(24),(c,l)=>{ for(const z of [-6.1,6.1]) cb(l,0.18,0.2,0x9d9a94,c,0,z); for(const z of [-7.7,7.7]) cb(l,0.15,3,cWalk,c,0,z); });
+    if(cross){
+      const cx=x0+CL/2, L=140;                                                // 交わる道は幹線から両側へ140m
+      for(const sd of [-1,1]){
+        const zc=sd*(6+L/2);
+        cb(12,0.02,L,cRoad,cx,0,zc);                                           // 車道
+        cb(0.15,0.02,L-8,0xd9b23a,cx,0.02,sd*(14+(L-8)/2));                    // 中央線(横断歩道の先から)
+        for(const x of [cx-5.6,cx+5.6]) cb(0.12,0.02,L-8,0xeeeeee,x,0.02,sd*(14+(L-8)/2));
+        for(const x of [cx-6.1,cx+6.1]) cb(0.2,0.18,L-3.2,0x9d9a94,x,0,sd*(9.2+(L-3.2)/2));   // 縁石
+        for(const x of [cx-7.5,cx+7.5]) cb(3,0.15,L-3.2,cWalk,x,0,sd*(9.2+(L-3.2)/2));         // 歩道
+        for(let x=cx-5.4;x<=cx+5.4;x+=0.9) cb(0.45,0.01,3,0xeeeeee,x,0.03,sd*11.5);            // 横断歩道(交わる道)
+        cb(6,0.01,0.4,0xeeeeee,cx-sd*3,0.03,sd*13.6);                                           // 停止線(交わる道)
+      }
+      for(const sd of [-1,1]){
+        const xw=cx+sd*10.5;                                                     // 横断歩道(幹線)
+        for(let z=-5.4;z<=5.4;z+=0.9) cb(3,0.01,0.45,0xeeeeee,xw,0.03,z);
+        cb(0.4,0.01,6,0xeeeeee,cx-sd*12.6,0.03,-sd*3);                          // 停止線(幹線、左側通行の手前)
+      }
+      // 信号機(飾り。幹線は青、交わる道は赤で点いたまま)。柱は当たり判定なし。
+      for(const [px,pz,ry] of [[cx+7.5,-7.7,-Math.PI/2],[cx-7.5,7.7,Math.PI/2]]){
+        cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
+        csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
+          cb(0.3,0.3,0.05,sigOnM.green,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,4.12,5.16,0.17); });
+      }
+      for(const [px,pz,ry] of [[cx+7.5,7.7,Math.PI],[cx-7.5,-7.7,0]]){
+        cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
+        csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
+          cb(0.3,0.3,0.05,sigOffM,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOnM.red,4.12,5.16,0.17); });
+      }
+    }
     // 歩道のすぐ外から敷地(薄いグレーの帯は置かない)。
     // 街灯（両側・互い違い）と光だまり
     // 片側60mおき(元の30mおきの倍)。両側で互い違い。
@@ -1315,8 +1356,10 @@ export function createNihonTown(world, opts={}){
     for(const logical of [1,-1]){
       RN=seeded(ZONES.indexOf(zone)*1000+ci*10+(logical>0?1:2));
       const side=mirror?-logical:logical, D=26;
-      let x=0; const lots=[];
-      while(x<CL-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>CL){ w=CL-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; } lots.push([type,w,x]); x+=w; }
+      const lots=[];
+      // 交差点の区画は、交わる道の両側(0〜21m と 39〜60m)にだけ敷地を並べる。
+      for(const [s0,s1] of cross?[[0,CROSS_A],[CROSS_B,CL]]:[[0,CL]]){ let x=s0;
+        while(x<s1-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>s1){ w=s1-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; } lots.push([type,w,x]); x+=w; } }
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
         keepSolid=['conv','famires','gas','parking','super','koban'].includes(type);
