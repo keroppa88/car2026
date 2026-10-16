@@ -6341,7 +6341,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     //  - 出た瞬間から広がる(広い円錐・縁は一番柔らかく)。サーチライトにしない。
     //  - 1灯ずつは控えめにし、2灯が重なる前方の中央が主に明るくなるようにする(配分は後で調整)。
     //  - 円錐の上の縁が水平になるよう半角と同じだけ下へ向け、ライトの高さより上は照らさない。
-    const NEO_LAMP_X = 0.8, NEO_CONE = 0.45, NEO_LAMP_INTENSITY = 1.6;
+    const NEO_LAMP_X = 0.8, NEO_CONE = 0.45, NEO_LAMP_INTENSITY = 3.2;
     for (const side of [-1, 1]) {
       const intensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
