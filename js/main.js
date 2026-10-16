@@ -6336,19 +6336,23 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 街並みはぐんまーの半分の光量。照らす幅は20m先で10m(左右2灯の円の外側どうし)。
     // 光の円錐(半角 NEO_BEAM)を同じ角度だけ下へ傾け、円錐の上の縁を水平にする。
     // ライトの高さ(0.75m)より上は照らさない。路面は約1.6m先から。
-    const NEO_BEAM = Math.atan((10 - HEADLIGHT_OFFSET_X * 2) / 2 / 20);
+    // 街並みのライトは車体の両端(中心から左右0.9m)に置き、内向きにして
+    // 20m先の中央で光の中心が重なるようにする。光の縁はくっきりめ。
+    const NEO_LAMP_X = 0.9, NEO_MEET = 20;
+    const NEO_BEAM = Math.atan((10 - NEO_LAMP_X * 2) / 2 / 20);
     for (const side of [-1, 1]) {
       const intensity = NEO_COURSE ? 2.1 : gunmaHeadlights ? 4.2 : 0.42;
       const distance = gunmaHeadlights ? 56 : 7;
       const angle = NEO_COURSE ? NEO_BEAM
         : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
-      const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, 0.6, decay);
-      light.position.set(side * HEADLIGHT_OFFSET_X, 0.75, 2.55);
+      const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, NEO_COURSE ? 0.3 : 0.6, decay);
+      light.position.set(side * (NEO_COURSE ? NEO_LAMP_X : HEADLIGHT_OFFSET_X), 0.75, 2.55);
       light.visible = vehicleLightsShouldBeVisible();
       if (NEO_COURSE) {
-        // まっすぐ前、24m先で NEO_BEAM だけ下向き。
-        light.target.position.set(side * HEADLIGHT_OFFSET_X, 0.75 - Math.tan(NEO_BEAM) * 24, 2.55 + 24);
+        // 24m先の中央へ向け、NEO_BEAM だけ下向き(円錐の上の縁が水平)。
+        const reach = Math.hypot(NEO_LAMP_X, NEO_MEET);
+        light.target.position.set(0, 0.75 - Math.tan(NEO_BEAM) * reach, 2.55 + NEO_MEET);
       } else {
         light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
       }
