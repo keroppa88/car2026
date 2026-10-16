@@ -982,8 +982,10 @@ export function createNihonTown(world, opts={}){
              {n:'すずらんマート',a:'#7a4fb0',b:'#9bc23a'},{n:'デイリーかもめ',a:'#2f6fc0',b:'#e8b21f'},{n:'ハッピーストア',a:'#e85a8a',b:'#3a3a3a'}];
   const FAMI=[{n:'ダイニング さくら',c:'#8a3b2e'},{n:'グリル ひまわり',c:'#d9a21f'},{n:'カフェレスト もみじ',c:'#3f7a4a'},
               {n:'ファミリーレストラン こむぎ',c:'#d9622b'},{n:'洋食 あおぞら',c:'#2f5f9e'},{n:'和食 ささの',c:'#3a3f46'}];
-  const OIL=[{n:'あおば石油',c:'#1f8a4c'},{n:'ひかり石油',c:'#e05a1a'},{n:'みなと石油',c:'#2a5fae'},{n:'EKO OIL',c:'#c2262e'}];
-  const PARK=[{n:'コインパーク',bg:'#f4c21a',fg:'#1d1d1d'},{n:'パーク24',bg:'#2a6fc0',fg:'#ffffff'},{n:'みどりパーキング',bg:'#2f8a4a',fg:'#ffffff'}];
+  const OIL=[{n:'あおば石油',c:'#1f8a4c'},{n:'ひかり石油',c:'#e05a1a'},{n:'みなと石油',c:'#2a5fae'},{n:'EKO OIL',c:'#c2262e'},
+             {n:'さくら石油',c:'#c93f86'},{n:'やまびこ石油',c:'#6a4fb0'}];
+  const PARK=[{n:'コインパーク',bg:'#f4c21a',fg:'#1d1d1d'},{n:'パーク24',bg:'#2a6fc0',fg:'#ffffff'},{n:'みどりパーキング',bg:'#2f8a4a',fg:'#ffffff'},
+              {n:'タイムP',bg:'#e8572a',fg:'#ffffff'},{n:'ハッピーパーク',bg:'#8a4fb0',fg:'#ffffff'},{n:'月極パーキング',bg:'#2f2f2f',fg:'#f4c21a'}];
 
   // ---- 区画の中身（区画の座標：道路側が z=0、奥が +z、幅は x）----
   const HWALL=[0xe2dccd,0xd6cfbe,0xd9d3c4,0xcfc6b2,0xcac2ad,0xeae6de,0xbfb7a8];
@@ -1079,8 +1081,10 @@ export function createNihonTown(world, opts={}){
     // 屋上の室外機・貯水タンクは道路から見えないので作らない(ハリボテ)。
     for(let i=0;i<4;i++) RN();                         // 乱数の並びを保つ(以降の色や形を変えない)
   }
-  function cConvenience(W,D){
-    const B=pk(CVS);
+  // 店のブランド(看板の色)は、道路沿いの位置で決める番号 o.bi で選ぶ。隣どうしの店は必ず違う番号になる。
+  const brand=(list,o)=>o&&o.bi!=null?list[((o.bi%list.length)+list.length)%list.length]:pk(list);
+  function cConvenience(W,D,o){
+    const B=brand(CVS,o);
     cb(W,0.05,D,0x4a4c4f,0,0.08,D/2);
     const bw=Math.min(W-4,20), zf=D-11, cz=zf+5;
     cb(bw,4.4,10,0xe9e5dc,0,0.1,cz); cb(bw+0.4,0.3,10.4,0xcfcac0,0,4.5,cz); ccol(-bw/2,zf,bw/2,zf+10);
@@ -1099,8 +1103,8 @@ export function createNihonTown(world, opts={}){
     ccol(W/2-1.7,1.8,W/2-1.3,2.2);
     cb(1,1.8,0.8,0xd8dfe6,bw/2-1,0.1,zf-0.6); cb(1,1.8,0.8,pk([0xc23b2e,0x2f5f9e,0xe3b23c]),bw/2-2.2,0.1,zf-0.6);
   }
-  function cFamires(W,D){
-    const F=pk(FAMI);
+  function cFamires(W,D,o){
+    const F=brand(FAMI,o);
     cb(W,0.05,D,0x4a4c4f,0,0.08,D/2);
     const bw=Math.min(W-6,30), bd=12, zf=D-13, cz=zf+bd/2, H=4.6, pil=RN()<0.4;
     const t=ctex(512,64,(g,w,h)=>{ g.fillStyle=F.c; g.fillRect(0,0,w,h); g.fillStyle='#fff8ec'; g.font='bold 34px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(F.n,w/2,34); });
@@ -1115,8 +1119,8 @@ export function createNihonTown(world, opts={}){
     for(let i=0;i<14;i++){ const x=-W/2+2+i*2.6; if(x>W/2-2) break; cb(0.12,0.01,5,0xf0f0f0,x,0.11,zf-4); if(RN()<0.45) ccar(x+1.3,zf-4,0); }
     const pm=cglow(t,.9); cb(0.25,8,0.25,0x777d85,-W/2+1.5,0.1,1.5); const ps=new THREE.Mesh(new THREE.BoxGeometry(3.2,1.6,0.35),[pm,pm,pm,pm,pm,pm]); ps.position.set(-W/2+1.5,8.5,1.5); ps.rotation.y=Math.PI/2; croot.add(ps);
   }
-  function cParking(W,D){
-    const P=pk(PARK);
+  function cParking(W,D,o){
+    const P=brand(PARK,o);
     cb(W,0.05,D,0x4a4c4f,0,0.08,D/2);
     const n=Math.floor((W-1.6)/2.5), x0=-n*2.5/2;
     for(const [a,b,ry] of [[0.6,5.6,0],[D-5.6,D-0.6,Math.PI]]){
@@ -1130,8 +1134,8 @@ export function createNihonTown(world, opts={}){
     cb(0.12,3.4,0.12,0x444a50,W/2-0.8,0.1,0.4); const s=new THREE.Mesh(cgeo(1.3,1.3,0.12),[mm,mm,mm,mm,pm,pm]); s.position.set(W/2-0.8,4.1,0.4); croot.add(s);
     cb(0.55,1.4,0.45,0x5a6068,W/2-2.1,0.1,1);
   }
-  function cGas(W,D){
-    const O=pk(OIL);
+  function cGas(W,D,o){
+    const O=brand(OIL,o);
     cb(W,0.05,D,0x9c9a94,0,0.08,D/2);
     const ct=ctex(512,64,(g,w,h)=>{ g.fillStyle='#fff'; g.fillRect(0,0,w,h); g.fillStyle=O.c; g.fillRect(0,h-18,w,18); g.fillRect(0,0,w,8); g.font='bold 34px sans-serif'; g.textBaseline='middle'; g.fillText(O.n+'  SELF',20,30); });
     const cm=cglow(ct,.6), cw=cmat(0xf4f4f2);
@@ -1226,7 +1230,10 @@ export function createNihonTown(world, opts={}){
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
         keepSolid=['conv','famires','gas','parking'].includes(type);
-        csub(cx,side*LOT_Z,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1}));
+        // ブランド番号 = 周の中での店の中心の位置を9mごとに数えた番号。隣り合う店の中心は9.25m以上
+        // 40m以下離れているので番号の差は1〜5。どの店もブランドが6種類あるので、隣どうしは必ず違う。
+        const bi=Math.floor((cx-lap*LAP-RX0)/9);
+        csub(cx,side*LOT_Z,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1,bi}));
         keepSolid=false;
       });
     }

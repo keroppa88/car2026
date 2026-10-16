@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { createNihonTown } from './nihon-town.js?v=20261016-town-23';
+import { createNihonTown } from './nihon-town.js?v=20261016-town-24';
 
 // 街並み(旧NeoTokyo)の見た目。中身は nihon-town.js(日本の街並み)。
 // 地図グループの外に置き、車のレイキャストの対象にしない。
