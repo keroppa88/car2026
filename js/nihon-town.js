@@ -1020,8 +1020,10 @@ export function createNihonTown(world, opts={}){
   // ビルの壁の絵は1枚の大きな画像(4×4枚の絵)にまとめ、全部のビルで同じ材質を使う。
   // 1枚の絵は幅256px(12m分)・高さ5階分(1階64px)。低いビルは絵の下の方だけ使う。
   // 壁は12mごとに板を分けて絵を並べる(元は絵の繰り返しで並べていた)。
-  const FA_COLS=4, FA_ROWS=4, FA_W=256, FA_FH=64, FA_FL=5, FA_TH=FA_FH*FA_FL;
-  const FA_STYLES=['office','tenant','tenant','old'];
+  // 種類: office オフィス / tenant テナント / old 古いビル / retro レンガのレトロ(アーチ窓) /
+  //       pastel 黄・ベージュの雑居ビル(横長窓) / dark 暗い灰色(帯状の窓) / brick 赤レンガ(細い窓)
+  const FA_COLS=4, FA_ROWS=7, FA_W=256, FA_FH=64, FA_FL=5, FA_TH=FA_FH*FA_FL;
+  const FA_STYLES=['office','tenant','old','retro','pastel','dark','brick'];
   const faTiles=[];                                     // [{style}] 絵の番号 = 配列の番号
   const faColor=document.createElement('canvas'), faGlow=document.createElement('canvas');
   faColor.width=faGlow.width=FA_W*FA_COLS; faColor.height=faGlow.height=FA_TH*FA_ROWS;
@@ -1030,12 +1032,27 @@ export function createNihonTown(world, opts={}){
     e.fillStyle='#000'; e.fillRect(0,0,faGlow.width,faGlow.height);
     for(let n=0;n<FA_COLS*FA_ROWS;n++){
       const style=FA_STYLES[n%FA_STYLES.length], ox=(n%FA_COLS)*FA_W, oy=Math.floor(n/FA_COLS)*FA_TH, W=FA_W, H=FA_TH;
-      const wall=style==='old'?'#a8a193':style==='office'?pick(['#c9cfd3','#b9c0c4','#d6d2c8','#a9b0b6']):pick(['#d8d0c0','#cfc2ae','#e2dccd','#bfb6a5','#ece9e2']);
+      const wall=style==='old'?'#a8a193':style==='office'?pick(['#c9cfd3','#b9c0c4','#d6d2c8','#a9b0b6'])
+        :style==='retro'?pick(['#b98a6a','#c49a78','#a87a5c']):style==='pastel'?pick(['#e3c25a','#d9b77a','#e6d3a3','#c9a46a'])
+        :style==='dark'?pick(['#4a5058','#3e444b','#565d66']):style==='brick'?pick(['#8a3f2e','#9a4a36','#7e3a2a']):pick(['#d8d0c0','#cfc2ae','#e2dccd','#bfb6a5','#ece9e2']);
       g.fillStyle=wall; g.fillRect(ox,oy,W,H);
+      if(style==='retro'||style==='brick'){                                    // レンガの目地
+        g.fillStyle='rgba(0,0,0,.10)'; for(let y=0;y<H;y+=6) g.fillRect(ox,oy+y,W,1);
+        for(let y=0;y<H;y+=6) for(let x=(y/6)%2?0:8;x<W;x+=16) g.fillRect(ox+x,oy+y,1,6); }
+      const win=(x,y,w,h,lit)=>{ g.fillStyle='#2d3440'; g.fillRect(ox+x,y,w,h); if(R()<lit){ e.fillStyle='#ffdca0'; e.fillRect(ox+x,y,w,h); } };
       for(let f=0;f<FA_FL;f++){ const y=oy+H-(f+1)*FA_FH; g.fillStyle='rgba(0,0,0,.12)'; g.fillRect(ox,y,W,2);
         if(f===0){ g.fillStyle=style==='old'?'#8d877a':'#3d4a55'; g.fillRect(ox+6,y+12,W-12,FA_FH-12); continue; }
         if(style==='office'){ g.fillStyle='#3f5566'; g.fillRect(ox+4,y+16,W-8,30); g.fillStyle='#8a949c'; for(let x=4;x<W;x+=32) g.fillRect(ox+x,y+16,3,30);
           if(R()<0.35){ e.fillStyle='#ffe6b0'; e.fillRect(ox+4,y+16,W-8,30); } }
+        else if(style==='retro'){                                                // アーチ窓と白い窓枠・水切り
+          for(let i=0;i<3;i++){ const x=ox+22+i*80; g.fillStyle='#efe6d4'; g.fillRect(x-4,y+10,48,46);
+            g.fillStyle='#2d3440'; g.fillRect(x,y+22,40,30); g.beginPath(); g.arc(x+20,y+22,20,Math.PI,0); g.fill();
+            if(R()<0.4){ e.fillStyle='#ffdca0'; e.fillRect(x,y+22,40,30); e.beginPath(); e.arc(x+20,y+22,20,Math.PI,0); e.fill(); }
+            g.fillStyle='#efe6d4'; g.fillRect(x+19,y+8,2,44); }
+          g.fillStyle='rgba(255,255,255,.35)'; g.fillRect(ox,y+58,W,3); }
+        else if(style==='pastel'){ win(10,y+16,W-20,30,0.4); g.fillStyle='rgba(255,255,255,.5)'; for(let x=10;x<W-10;x+=59) g.fillRect(ox+x,y+16,3,30); }
+        else if(style==='dark'){ win(0,y+14,W,34,0.35); g.fillStyle='#6e757d'; for(let x=0;x<W;x+=42) g.fillRect(ox+x,y+14,3,34); }
+        else if(style==='brick'){ for(let i=0;i<6;i++) win(12+i*42,y+10,18,44,0.35); }
         else for(let i=0;i<4;i++){ g.fillStyle='#2d3440'; g.fillRect(ox+8+i*64+6,y+14,44,32);
           if(R()<0.4){ e.fillStyle='#ffdca0'; e.fillRect(ox+8+i*64+6,y+14,44,32); } } }
       if(style==='old') for(let i=0;i<60;i++){ g.fillStyle='rgba(60,55,45,.08)'; g.fillRect(ox+R()*W,oy+R()*H*0.7,2,40+R()*90); }
@@ -1061,14 +1078,15 @@ export function createNihonTown(world, opts={}){
   }
   function cBuilding(W,D,o={}){                       // ビル：形5種類 × 色いろいろ
     cb(W,0.05,D,0x707275,0,0.08,D/2);
-    const v=Math.floor(RN()*5), style=o.style||pk(['office','tenant','tenant','old']), floors=3+Math.floor(RN()*3);
+    const v=Math.floor(RN()*5), style=o.style||pk(['office','tenant','old','retro','pastel','dark','brick','tenant']), floors=3+Math.floor(RN()*3);
     const bd=Math.min(D-3,15), zf=1.6, rf=cmat(0x8a8780);
     // ハリボテ: 正面と左右の壁だけ(屋根は縁の箱がふさぐ)。壁の絵はまとめた画像から選ぶ。
     const mk=(bw,fl,x,st)=>{ const H=fl*3.2, tile=pickTile(st), cy=0.1+H/2, zc=zf+bd/2;
       atlasWall(bw,H,fl,tile,x,cy,zf,Math.PI);
       atlasWall(bd,H,fl,tile,x-bw/2,cy,zc,-Math.PI/2); atlasWall(bd,H,fl,tile,x+bw/2,cy,zc,Math.PI/2);
       ccol(x-bw/2,zf,x+bw/2,zf+bd);
-      cb(bw+0.2,0.45,bd+0.2,0x9a968c,x,0.1+H,zf+bd/2); return H; };
+      // 屋上の縁。レトロなビルは緑青色の高い縁(写真の銅の飾り屋根の代わり)。
+      if(st==='retro') cb(bw+0.5,0.9,bd+0.5,0x5f9e86,x,0.1+H,zf+bd/2); else cb(bw+0.2,0.45,bd+0.2,0x9a968c,x,0.1+H,zf+bd/2); return H; };
     let bw=W-1, mx=0, H;
     if(v===2){                                          // 横に階段室の塔
       bw=W-4.5; mx=1.75; H=mk(bw,floors,mx,style);
@@ -1076,7 +1094,7 @@ export function createNihonTown(world, opts={}){
       for(let f=1;f<floors;f++) cfront(0.5,1.2,-W/2+2.2,0.1+f*3.2+1.5,zf,cDark);
     } else if(v===4){                                   // 高い棟と低い棟の2つ
       const w1=Math.max(8,Math.round((W-1)*0.58)), w2=W-1-w1; mx=-(W-1)/2+w1/2; bw=w1;
-      H=mk(w1,floors,mx,style); if(w2>3) mk(w2,2,(W-1)/2-w2/2,pk(['tenant','old']));
+      H=mk(w1,floors,mx,style); if(w2>3) mk(w2,2,(W-1)/2-w2/2,pk(['tenant','old','pastel','brick']));
     } else H=mk(bw,floors,0,style);
     if(v===1) cb(bw*0.55,3,bd*0.55,pk([0xd8d2c6,0xc9cfd3,0xe2dccd,0xb5a1a1]),mx+bw*0.15,0.55+H,zf+bd*0.4);   // 上に一回り小さい階
     if(v===3){ const rc=pk([0x8e9296,0xd8d2c6,0x5a5f66]);                                                    // 正面にバルコニー
@@ -1189,15 +1207,76 @@ export function createNihonTown(world, opts={}){
       cb(0.08,FH,0.08,0x5a5f66,bw/2-0.5,0.1,zf-1.4); ccol(bw/2-5.6,zf-2.5,bw/2,zf-1.3); }
     for(let i=0;i<3;i++) cb(0.06,0.7,1.6,0x2b2f35,-bw/2+1.2+i*1.1,0.12,2.5);              // 自転車
   }
+  // スーパー(店名は架空)。倉庫型: クリーム色の壁に色帯と屋上の看板塔 / ガラス張り型: 白い壁と大きなガラスの正面。
+  // 敷地は幅44m固定。隣り合うスーパーの中心は44m離れるので、44mごとの番号で選べば必ず違う店になる。
+  const SUPER=[
+    {n:'まんぷくスーパー',kind:'warehouse',band:'#2f8a4a',line:'#c23a5a',wall:0xe9e2c8},
+    {n:'マリン食品館',kind:'glass',accent:'#1f4fa8',wall:0xf4f4f2},
+    {n:'やさいの森',kind:'warehouse',band:'#e07a2e',line:'#2f5f9e',wall:0xece4d0},
+    {n:'さくらフーズ',kind:'glass',accent:'#c23a5a',wall:0xf4f4f2},
+  ];
+  function cSuper(W,D,o){
+    const S=o&&o.cx!=null?SUPER[((Math.floor(o.cx/44)%SUPER.length)+SUPER.length)%SUPER.length]:pk(SUPER);
+    cb(W,0.05,D,0x4a4c4f,0,0.08,D/2);
+    const bw=Math.min(W-6,34), bd=15, zf=D-bd-1, cz=zf+bd/2, H=6.2;
+    cb(bw,H,bd,S.wall,0,0.1,cz); ccol(-bw/2,zf,bw/2,zf+bd);
+    // 手前の駐車場(1列)。
+    for(let i=0;i<=Math.floor((W-4)/2.6);i++){ const x=-W/2+2+i*2.6; if(x>W/2-2) break; cb(0.12,0.01,5,0xf0f0f0,x,0.11,zf-4.5); if(x+2.6<W/2-2&&RN()<0.5) ccar(x+1.3,zf-4.5,0); }
+    const glassT=ctex(64,64,(g,w,h)=>{ g.fillStyle='#d6e6ee'; g.fillRect(0,0,w,h); g.fillStyle='rgba(60,90,110,.35)'; for(let x=0;x<w;x+=16) g.fillRect(x,0,2,h); });
+    glassT.wrapS=THREE.RepeatWrapping; glassT.repeat.set(Math.round(bw/4),1);
+    if(S.kind==='warehouse'){
+      cb(bw+0.2,0.7,bd+0.2,new THREE.Color(S.band).getHex(),0,H-0.6,cz);          // 上の色帯
+      cb(bw+0.2,0.25,bd+0.2,new THREE.Color(S.line).getHex(),0,2.9,cz);           // 中ほどの細い線
+      cb(bw+0.2,0.35,bd+0.2,new THREE.Color(S.band).getHex(),0,3.15,cz);          // 中ほどの色帯
+      cfront(bw-4,2.4,0,1.4,zf,cglow(glassT,.8));                                   // 1階の窓
+      const nt=ctex(512,96,(g,w,h)=>{ g.fillStyle='#f6f2e4'; g.fillRect(0,0,w,h); g.fillStyle=S.band; g.font='bold 56px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(S.n,w/2,h/2+2); });
+      cfront(Math.min(16,bw*0.5),1.6,bw*0.15,4.5,zf,cglow(nt,.9));                 // 壁の店名
+      // 屋上の看板塔(鉄骨の台の上に店名の箱)
+      const tx=-bw/2+5, tz=zf+3;
+      for(const dx of [-1.6,1.6]) for(const dz of [-0.6,0.6]) cb(0.15,2.2,0.15,0x8e9296,tx+dx,H+0.1,tz+dz);
+      const bt=ctex(256,256,(g,w,h)=>{ g.fillStyle=S.band; g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font='bold 52px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+        const n=S.n.replace('スーパー',''); g.fillText(n.slice(0,Math.ceil(n.length/2)),w/2,h*0.36); g.fillText(n.slice(Math.ceil(n.length/2)),w/2,h*0.66); g.fillStyle=S.line; g.fillRect(0,h-18,w,18); });
+      const bm=cglow(bt,.9), em=cmat(new THREE.Color(S.band).getHex());
+      const box=new THREE.Mesh(new THREE.BoxGeometry(4,3.2,1.6),[em,em,em,em,bm,bm]); box.position.set(tx,H+0.1+2.2+1.6,tz); box.rotation.y=Math.PI; croot.add(box);
+    } else {
+      cfront(bw-2,4.0,0,2.1,zf,cglow(glassT,.9));                                   // 大きなガラスの正面
+      const acc=new THREE.Color(S.accent).getHex();
+      cb(bw+0.2,0.3,0.3,acc,0,4.1,zf-0.15); cb(bw+0.2,0.25,0.3,acc,0,0.1,zf-0.15);   // ガラスの上下の色線
+      const nt=ctex(512,128,(g,w,h)=>{ g.fillStyle='#ffffff'; g.fillRect(0,0,w,h); g.fillStyle=S.accent; g.font='bold 64px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(S.n,w/2,h/2+3); });
+      cfront(Math.min(18,bw*0.6),1.7,0,5.25,zf,cglow(nt,.9));                       // 白い壁の大きな店名
+      cb(bw+0.3,0.3,bd+0.3,acc,0,H+0.1,cz);                                          // 屋根の縁
+    }
+  }
+  // 交番: 灰色の小さな建物。正面は半円のアーチ、黒い帯に KOBAN、赤いランプ、ガラス戸。両脇に植え込み。
+  function cKoban(W,D){
+    cb(W,0.05,D,0x707275,0,0.08,D/2);
+    const bw=Math.min(W-4,7), bd=6, zf=3.5, cz=zf+bd/2, H=4.6;
+    cb(bw,H,bd,0xb4b8bc,0,0.1,cz); cb(bw+0.3,0.3,bd+0.3,0x55595e,0,H+0.1,cz); ccol(-bw/2,zf,bw/2,zf+bd);
+    const draw=(glow)=>(g,w,h)=>{ // 幅256・高さ168 (7m × 4.6m)
+      g.fillStyle=glow?'#000':'#b4b8bc'; g.fillRect(0,0,w,h);
+      if(!glow){ g.fillStyle='#8e9398'; g.beginPath(); g.arc(w/2,78,82,Math.PI,0); g.fill();            // アーチ
+        g.strokeStyle='#6e7378'; g.lineWidth=3; for(const a of [0.25,0.5,0.75]){ g.beginPath(); g.moveTo(w/2,78); g.lineTo(w/2-82*Math.cos(Math.PI*a),78-82*Math.sin(Math.PI*a)); g.stroke(); }
+        g.fillStyle='#e0b43a'; g.beginPath(); g.arc(w/2,44,10,0,Math.PI*2); g.fill();                    // 金色の丸(紋章の代わり)
+        g.fillStyle='#2f3338'; g.fillRect(14,78,w-28,28);                                                 // 黒い帯
+        g.fillStyle='#fff'; g.font='bold 22px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('KOBAN',w/2,93); }
+      g.fillStyle='#d8262e'; g.fillRect(26,89,18,6); g.fillRect(w-44,89,18,6);                            // 赤いランプ
+      g.fillStyle=glow?'#cfe6f0':'#a9d4e6'; g.fillRect(84,118,88,50);                                       // ガラス戸
+      g.fillRect(30,124,36,20); g.fillRect(w-66,124,36,20);                                                 // 窓
+      if(!glow){ g.fillStyle='#6e7378'; g.fillRect(127,118,2,50); }
+    };
+    const ct=ctex(256,168,draw(false)), et=ctex(256,168,draw(true));
+    cfront(bw,H,0,0.1+H/2,zf,cglow(ct,1,{emissiveMap:et}));
+    for(const x of [-bw/2-0.9,bw/2+0.9]) cb(1.4,0.9,1.2,0x4f7a3e,x,0.1,zf+0.7);                        // 植え込み
+  }
   // 区画の種類ごとの敷地の選び方
   function pickLot(zone){
     const r=RN();
-    if(zone==='houses'||zone==='trees') return r<0.82?['house',12+RN()*3]:['apartment',20+RN()*6];
+    if(zone==='houses'||zone==='trees') return r<0.012?['koban',11]:r<0.82?['house',12+RN()*3]:['apartment',20+RN()*6];
     if(zone==='buildings') return r<0.88?['building',13+RN()*8]:['parking',18];
-    if(zone==='roadside') return r<0.3?['famires',40]:r<0.55?['parking',22]:r<0.78?['gas',32]:['conv',28];
-    return r<0.3?['building',14+RN()*7]:r<0.43?['conv',28]:r<0.52?['famires',40]:r<0.62?['apartment',22]:r<0.84?['house',13]:['parking',20];
+    if(zone==='roadside') return r<0.25?['famires',40]:r<0.43?['parking',22]:r<0.6?['gas',32]:r<0.8?['conv',28]:['super',44];
+    return r<0.3?['building',14+RN()*7]:r<0.43?['conv',28]:r<0.52?['famires',40]:r<0.62?['apartment',22]:r<0.82?['house',13]:r<0.88?['super',44]:r<0.895?['koban',11]:['parking',20];
   }
-  const BUILD={house:cHouse,building:cBuilding,conv:cConvenience,famires:cFamires,parking:cParking,gas:cGas,apartment:cApartment};
+  const BUILD={house:cHouse,building:cBuilding,conv:cConvenience,famires:cFamires,parking:cParking,gas:cGas,apartment:cApartment,super:cSuper,koban:cKoban};
 
   // 区画の並び：5種類を区画ごとに並べ替えてループ、左右は1周ごとに入れ替える
   function sectionInfo(s){
@@ -1240,7 +1319,7 @@ export function createNihonTown(world, opts={}){
       while(x<CL-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>CL){ w=CL-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; } lots.push([type,w,x]); x+=w; }
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
-        keepSolid=['conv','famires','gas','parking'].includes(type);
+        keepSolid=['conv','famires','gas','parking','super','koban'].includes(type);
         // ブランド番号 = 周の中での店の中心の位置を9mごとに数えた番号。隣り合う店の中心は9.25m以上
         // 40m以下離れているので番号の差は1〜5。どの店もブランドが6種類あるので、隣どうしは必ず違う。
         const bi=Math.floor((cx-lap*LAP-RX0)/9);
