@@ -978,8 +978,13 @@ export function createNihonTown(world, opts={}){
     g.position.set(x,0.13,z); g.rotation.y=ry; croot.add(g); ccol(x-0.9,z-2.1,x+0.9,z+2.1); }
 
   // ---- 看板のブランド（色と名前を変える）----
-  const CVS=[{n:'あおばマート',a:'#e07a2e',b:'#6b4a32'},{n:'ヨツバ24',a:'#1f9a8a',b:'#145a6e'},{n:'マルミ',a:'#d23a3a',b:'#8a1f1f'},
-             {n:'すずらんマート',a:'#7a4fb0',b:'#9bc23a'},{n:'デイリーかもめ',a:'#2f6fc0',b:'#e8b21f'},{n:'ハッピーストア',a:'#e85a8a',b:'#3a3a3a'}];
+  // コンビニは3種類の色(店名は架空)。stripes は看板の上から順の帯 [色, 高さpx]、name は店名の色、wall は外壁の色。
+  //   青: 青い帯 / 緑: 緑と青の帯 / 茶緑赤: 茶色の外壁に橙・緑・赤の帯
+  const CVS=[
+    {n:'デイリーかもめ',stripes:[['#1f4fa8',30]],bottom:'#1f4fa8',name:'#1f4fa8',wall:0xf2f2ef,pole:'#1f4fa8'},
+    {n:'ヨツバ24',stripes:[['#1f9a4a',28]],bottom:'#2a5fb8',name:'#1f9a4a',wall:0xf2f2ef,pole:'#1f9a4a'},
+    {n:'まいにちマート',stripes:[['#f08a24',12],['#1f8a4c',12],['#d2282e',12]],bottom:'#d2282e',name:'#1f8a4c',wall:0x8a5a44,pole:'#f08a24'},
+  ];
   const FAMI=[{n:'ダイニング さくら',c:'#8a3b2e'},{n:'グリル ひまわり',c:'#d9a21f'},{n:'カフェレスト もみじ',c:'#3f7a4a'},
               {n:'ファミリーレストラン こむぎ',c:'#d9622b'},{n:'洋食 あおぞら',c:'#2f5f9e'},{n:'和食 ささの',c:'#3a3f46'}];
   const OIL=[{n:'あおば石油',c:'#1f8a4c'},{n:'ひかり石油',c:'#e05a1a'},{n:'みなと石油',c:'#2a5fae'},{n:'EKO OIL',c:'#c2262e'},
@@ -1084,20 +1089,26 @@ export function createNihonTown(world, opts={}){
   // 店のブランド(看板の色)は、道路沿いの位置で決める番号 o.bi で選ぶ。隣どうしの店は必ず違う番号になる。
   const brand=(list,o)=>o&&o.bi!=null?list[((o.bi%list.length)+list.length)%list.length]:pk(list);
   function cConvenience(W,D,o){
-    const B=brand(CVS,o);
+    // コンビニの敷地は幅28m固定なので、隣り合うコンビニは中心が28m離れる。14mごとの番号なら差は2で、
+    // 3種類の色が必ず違う(番号は o.bi(9mごと)と同じ位置から数え直す)。
+    const B=o&&o.cx!=null?CVS[((Math.floor(o.cx/14)%3)+3)%3]:pk(CVS);
     cb(W,0.05,D,0x4a4c4f,0,0.08,D/2);
     const bw=Math.min(W-4,20), zf=D-11, cz=zf+5;
-    cb(bw,4.4,10,0xe9e5dc,0,0.1,cz); cb(bw+0.4,0.3,10.4,0xcfcac0,0,4.5,cz); ccol(-bw/2,zf,bw/2,zf+10);
-    const ft=ctex(1024,96,(g,w,h)=>{ g.fillStyle=B.a; g.fillRect(0,0,w,26); g.fillStyle='#fbf8f2'; g.fillRect(0,26,w,52); g.fillStyle=B.b; g.fillRect(0,78,w,18);
-      g.fillStyle=B.b; g.font='bold 40px sans-serif'; g.textBaseline='middle'; g.fillText(B.n,60,53); g.font='bold 22px sans-serif'; g.fillText('24h OPEN',w-170,53); });
+    cb(bw,4.4,10,B.wall,0,0.1,cz); cb(bw+0.4,0.3,10.4,0xcfcac0,0,4.5,cz); ccol(-bw/2,zf,bw/2,zf+10);
+    const ft=ctex(1024,96,(g,w,h)=>{ g.fillStyle='#fbf8f2'; g.fillRect(0,0,w,h);
+      let y=0; for(const [c,hh] of B.stripes){ g.fillStyle=c; g.fillRect(0,y,w,hh); y+=hh; }
+      g.fillStyle=B.bottom; g.fillRect(0,h-14,w,14);
+      g.fillStyle=B.name; g.font='bold 36px sans-serif'; g.textBaseline='middle'; const ty=(y+h-14)/2; g.fillText(B.n,60,ty); g.font='bold 22px sans-serif'; g.fillText('24h OPEN',w-170,ty); });
     cb(bw+0.6,1.1,0.4,0xfbf8f2,0,3.3,zf-0.2); cfront(bw+0.6,1.1,0,3.85,zf-0.4,cglow(ft,.9));
     const shop=ctex(512,128,(g,w,h)=>{ g.fillStyle='#eef1ee'; g.fillRect(0,0,w,h); for(let r=0;r<3;r++) for(let x=6;x<w;x+=9){ g.fillStyle=['#d24a3c','#3f7cc0','#e3b23c','#5aa66a','#8a5ab8'][(x+r*3)%5]; g.fillRect(x,40+r*28,6,18); } });
     cfront(bw-2,2.6,0,1.5,zf,cglow(shop,1));
     for(let i=0;i<Math.floor((bw-2)/2.5);i++) cb(0.1,2.6,0.12,0x8e9296,-bw/2+1+i*2.5,0.2,zf-0.06);
     for(let i=0;i<=6;i++){ const x=-W/2+3+i*2.6; if(x>W/2-2) break; cb(0.12,0.01,5,0xf0f0f0,x,0.11,zf-4); if(i<6&&RN()<0.4) ccar(x+1.3,zf-4,0); }
-    const st=ctex(256,256,(g,w,h)=>{ g.fillStyle='#fbf8f2'; g.fillRect(0,0,w,h); g.fillStyle=B.a; g.fillRect(0,0,w,40); g.fillStyle=B.b; g.fillRect(0,h-28,w,28);
-      g.fillStyle=B.a; g.beginPath(); g.arc(128,110,50,0,Math.PI*2); g.fill(); g.fillStyle='#fff'; g.font='bold 54px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(B.n[0],128,112);
-      g.fillStyle=B.b; g.font='bold 30px sans-serif'; g.fillText(B.n,128,198); });
+    const st=ctex(256,256,(g,w,h)=>{ g.fillStyle='#fbf8f2'; g.fillRect(0,0,w,h);
+      let y=0; for(const [c,hh] of B.stripes){ g.fillStyle=c; g.fillRect(0,y,w,hh*1.3); y+=hh*1.3; }
+      g.fillStyle=B.bottom; g.fillRect(0,h-28,w,28);
+      g.fillStyle=B.pole; g.beginPath(); g.arc(128,110,50,0,Math.PI*2); g.fill(); g.fillStyle='#fff'; g.font='bold 54px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(B.n[0],128,112);
+      g.fillStyle=B.name; g.font='bold 28px sans-serif'; g.fillText(B.n,128,198); });
     const sm=cglow(st,.9), em=cmat(0xd8d8d4);
     cb(0.3,7.6,0.3,0xf2f2f0,W/2-1.5,0.1,2); const s=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,0.45),[em,em,em,em,sm,sm]); s.position.set(W/2-1.5,8.9,2); s.rotation.y=Math.PI/2; croot.add(s);
     ccol(W/2-1.7,1.8,W/2-1.3,2.2);
@@ -1233,7 +1244,7 @@ export function createNihonTown(world, opts={}){
         // ブランド番号 = 周の中での店の中心の位置を9mごとに数えた番号。隣り合う店の中心は9.25m以上
         // 40m以下離れているので番号の差は1〜5。どの店もブランドが6種類あるので、隣どうしは必ず違う。
         const bi=Math.floor((cx-lap*LAP-RX0)/9);
-        csub(cx,side*LOT_Z,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1,bi}));
+        csub(cx,side*LOT_Z,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1,bi,cx:cx-lap*LAP-RX0}));
         keepSolid=false;
       });
     }
