@@ -6342,21 +6342,25 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     //  - 1灯ずつは控えめにし、2灯が重なる前方の中央が主に明るくなるようにする(配分は後で調整)。
     //  - 円錐の上の縁が水平になるよう半角と同じだけ下へ向け、ライトの高さより上は照らさない。
     const NEO_LAMP_X = 0.8, NEO_CONE = 0.45, NEO_LAMP_INTENSITY = 1.6;
-    let neoPoolMat = null;
-    function neoHeadPoolMaterial() {
-      if (neoPoolMat) return neoPoolMat;
-      // 縦長の画像: 下端(ライト側)は細く明るく、前へ行くほど広く淡くなる。
-      const W = 128, H = 256, c = document.createElement('canvas');
+    const neoPoolMats = {};
+    const POOL_W = 7, POOL_L = 9;   // 光だまりの板の幅と長さ(m)
+    // side: -1/1(車の左右)。光だまりは内側へ向け、5m先で車の中央に寄る。
+    // 1つずつは控えめにし、2つが重なる前方の中央が主に明るくなるようにする。
+    function neoHeadPoolMaterial(side) {
+      if (neoPoolMats[side]) return neoPoolMats[side];
+      // 扇形の光だまり: ライトの真ん前を要(かなめ)にして、前へ行くほど横に広がり淡くなる。
+      // 板は幅 POOL_W m・長さ POOL_L m。画像の上の行は地面では車側になる(板を寝かせると上が後ろを向く)。
+      const W = 192, H = 256, c = document.createElement('canvas');
       c.width = W; c.height = H;
       const g = c.getContext('2d'), img = g.createImageData(W, H);
       for (let j = 0; j < H; j++) {
-        // 画像の上の行は地面では車側になる(板を寝かせると上が後ろを向く)。
-        const t = (j + 0.5) / H;                        // 0=ライト側 1=前の端
-        const half = 0.5 + 0.5 * Math.sqrt(t);           // 横の広がり(画像の幅に対する割合)。手前から幅広
-        const along = Math.min(1, t / 0.05) * Math.pow(1 - t, 1.4);
+        const zm = (j + 0.5) / H * POOL_L;               // ライトから前へ(m)
+        const half = 0.25 + 0.45 * zm;                   // 横の広がり(片側 m)
+        const cx = -side * NEO_LAMP_X * Math.min(1, zm / 5); // 内側へ寄る(5m先で車の中央)
+        const along = Math.min(1, zm / 0.3) * Math.pow(1 - zm / POOL_L, 1.5);
         for (let i = 0; i < W; i++) {
-          const u = Math.abs((i + 0.5) / W * 2 - 1) / half;
-          const v = along * Math.exp(-u * u * 2.5);
+          const xm = ((i + 0.5) / W - 0.5) * POOL_W, u = (xm - cx) / half;
+          const v = along * Math.exp(-u * u * 2);
           const o = (j * W + i) * 4;
           img.data[o] = 255; img.data[o + 1] = 236; img.data[o + 2] = 200;
           img.data[o + 3] = Math.round(Math.min(1, v) * 255);
@@ -6365,9 +6369,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       g.putImageData(img, 0, 0);
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
-      neoPoolMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.55,
+      neoPoolMats[side] = new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.4,
         blending: THREE.AdditiveBlending, depthWrite: false });
-      return neoPoolMat;
+      return neoPoolMats[side];
     }
     for (const side of [-1, 1]) {
       const intensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
@@ -6391,9 +6395,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 地面の光だまり: ライトのすぐ前から前へ広がる柔らかい明るさ(照明の計算はしない)。
         // ボンネットに隠れない所から、車の前の左右の角に光の出どころが見えるようにする。
         // 夜にライトを点けたときだけ出る(playerHeadlights と一緒に表示を切り替える)。
-        const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 9), neoHeadPoolMaterial());
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(POOL_W, POOL_L), neoHeadPoolMaterial(side));
         pool.rotation.x = -Math.PI / 2;
-        pool.position.set(side * (NEO_LAMP_X + 0.5), 0.05, 2.55 + 4.5);   // 少し外側へ広げる
+        pool.position.set(side * NEO_LAMP_X, 0.05, 2.4 + POOL_L / 2);     // 扇の要はライトの真ん前
         pool.renderOrder = 2;
         pool.visible = light.visible;
         player.group.add(pool);
