@@ -4074,7 +4074,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
         // 色を強めても変わらないので、光球の大きさを2倍にして光る量を増やす。
-        if (NEO_COURSE && direction === 'oncoming') {
+        // トラック(前面が黄色いマーカーランプ)は元の明るさのまま。
+        if (NEO_COURSE && direction === 'oncoming' && vehicle.mesh.userData.lampLayout !== 'truck') {
           for (const sprite of car.group.userData.nightLights?.userData.headSprites ?? []) {
             // さらに1.3倍(合わせて2.6倍)。
             sprite.material.color.multiplyScalar(2 * 1.3);
