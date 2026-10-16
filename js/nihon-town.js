@@ -1166,14 +1166,14 @@ export function createNihonTown(world, opts={}){
       for(let i=0;i<n;i++){ const cx=x0+(i+0.5)*2.5; if(ry===0&&i===Math.floor(n/2)) continue; cb(0.9,0.07,0.45,0x2b2b2b,cx,0.11,(a+b)/2); if(RN()<0.45) ccar(cx,(a+b)/2,ry); }
     }
     cb(0.06,0.8,D,0x9aa0a6,-W/2+0.1,0.1,D/2); cb(W,0.8,0.06,0x9aa0a6,0,0.1,D-0.1);
-    const pt=ctex(256,256,(g,w,h)=>{ g.fillStyle=P.bg; g.fillRect(0,0,w,h); g.fillStyle=P.fg; g.font='bold 170px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('P',w/2,105);
+    const pt=ctex(256,256,(g,w,h)=>{ g.fillStyle='#f4c21a'; g.fillRect(0,0,w,h); g.fillStyle='#1d1d1d'; g.font='bold 170px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('P',w/2,105);
       g.font='bold 28px sans-serif'; g.fillText(P.n,w/2,200); g.font='bold 22px sans-serif'; g.fillText('24H 30分¥200',w/2,234); });
     // P看板(位置で決める)。7割は看板なし。残りは高さ3通り(低い1.6m・ふつう3.4m・高い6m)と
-    // 向き3通り(道路に面す・道路に沿う・斜め45度)の組み合わせ。
+    // 向き2通り(道路に面する・道路に垂直)の組み合わせ。色は黄色だけ。
     const h=o&&o.bi!=null?(Math.imul((o.bi>>>0)+97,2654435761)>>>0):0;
     const kind=o&&o.bi!=null?(h%10<7?0:1+((h>>>8)%3)):2;
     if(kind>0){
-      const pole=[0,1.6,3.4,6][kind], size=[0,1.0,1.3,1.8][kind], turn=[0,Math.PI/2,Math.PI/4][(h>>>16)%3];
+      const pole=[0,1.6,3.4,6][kind], size=[0,1.0,1.3,1.8][kind], turn=[0,Math.PI/2][(h>>>16)%2];
       const pm=cglow(pt,.8), mm=cmat(0x444a50);
       cb(0.12,pole,0.12,0x444a50,W/2-0.8,0.1,0.4); const s=new THREE.Mesh(cgeo(size,size,0.12),[mm,mm,mm,mm,pm,pm]); s.position.set(W/2-0.8,0.1+pole+size/2,0.4); s.rotation.y=turn; croot.add(s);
     }
