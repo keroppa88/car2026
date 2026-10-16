@@ -6360,13 +6360,16 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
             // 外側はこの座標で -side の向き。
             const out = z < 4 ? 2.2 * z / 4 : 2.2 - 0.22 * (z - 4);
             const center = -side * out;
-            const half = z < 4 ? 0.5 + 0.7 * z / 4 : Math.min(2.5, 1.2 + 1.3 * (z - 4) / 21);
+            // 帯の幅は前方ほど広がる(前方ほどぼやっとさせる)。20m先で約±6m。
+            const half = z < 4 ? 0.5 + 0.7 * z / 4 : 1.2 + 0.25 * (z - 4);
             // 輪郭はぼかす: 帯の中心から外へなだらかに暗くする(光の出どころをはっきりさせない)。
             const d = Math.abs(x - center) / (half * 1.3);
             const edge = Math.exp(-d * d * 2.2);
+            // 光の上の縁(ライトの高さに近い向き)はなだらかに消す。壁に当たっても横一線の縁にならない。
+            const dip = -dy / Math.hypot(dx, dy, dz), top = Math.min(1, dip / 0.07);
             // 車のすぐ前は急に明るくせず、0〜6mでゆっくり明るくする。
             const t = Math.min(1, z / 6), nearFade = t * t * (3 - 2 * t);
-            v = edge * Math.max(0.15, nearFade) * Math.min(1, Math.max(0.35, z / 7));
+            v = edge * top * top * Math.max(0.15, nearFade) * Math.min(1, Math.max(0.35, z / 7));
           }
           const o = (j * N + i) * 4;
           img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.round(v * 255);
