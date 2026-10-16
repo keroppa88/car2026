@@ -66,8 +66,8 @@ export function createNihonTown(world, opts={}){
   box(130,0.15,3,walk,0,0,7.7);   // 手前歩道
   box(130,0.15,3,walk,0,0,-7.7);  // 向かい歩道
   // 歩道と建物の間は草地ではなく薄いアスファルト（両側）
-  const lightAsph=mat(0x707275);
-  box(130,0.05,3.2,lightAsph,0,0.05,10.8); box(130,0.05,3.2,lightAsph,0,0.05,-10.8);
+  // 歩道の外(道路中心から9.2〜12.4m)も歩道と同じ舗装にする(車道・歩道・建物の3つに見せる)。
+  box(130,0.15,3.2,walk,0,0,10.8); box(130,0.15,3.2,walk,0,0,-10.8);
 
   // ---- 駐車場 ----
   box(26,0.03,15,0x4a4c4f,0,0.13,16.6);
@@ -482,7 +482,7 @@ export function createNihonTown(world, opts={}){
     // 幹線道路を交差点の先まで延長
     box(75,0.02,12,asph,102.5,0,0);
     for(const [a,b] of [[65,72],[84,140]]){ segX(a,b,(c,l)=>{ box(l,0.15,3,walk,c,0,7.7); box(l,0.15,3,walk,c,0,-7.7);
-      for(const z of [-6.1,6.1]) box(l,0.18,0.2,cb,c,0,z); box(l,0.05,3.2,lightAsph2,c,0.05,10.8); box(l,0.05,3.2,lightAsph2,c,0.05,-10.8); }); }
+      for(const z of [-6.1,6.1]) box(l,0.18,0.2,cb,c,0,z); box(l,0.15,3.2,walk,c,0,10.8); box(l,0.15,3.2,walk,c,0,-10.8); }); }
     for(const [a,b] of [[65,66],[90,140]]) segX(a,b,(c,l)=>{ box(l,0.02,0.15,yl,c,0.02,0); for(const z of [-5.6,5.6]) box(l,0.02,0.12,wl,c,0.02,z); });
     // 交差する道（南北）
     box(12,0.02,180,asph,X0,0,0);
@@ -938,6 +938,7 @@ export function createNihonTown(world, opts={}){
   // ---- ここから先：幹線道路を一直線にどこまでも延ばす（区画を自動で組み立てる）----
   // 1区画 = 240m（60m × 4）。区画の種類は5つ。順番を入れ替え、左右も入れ替えながらループする。
   // =====================================================================
+  const LOT_Z=9.2;                                     // 区画の敷地の道路側の端(道路中心から)。歩道の外側の端と同じ
   const RX0=NIHON_INTRO_END, CL=NIHON_CHUNK_LENGTH, SEC=4, IA=NIHON_INTRO_START, LAP=NIHON_LAP_LENGTH, NCH=NIHON_CHUNKS_PER_LAP;                          // 延長の始まり、1チャンクの長さ、1区画のチャンク数
   const ZONES=['mixed','houses','buildings','roadside','trees'];
   const chunkMap=new Map();
@@ -1200,7 +1201,7 @@ export function createNihonTown(world, opts={}){
     for(const z of [-5.6,5.6]) cb(CL,0.02,0.12,0xeeeeee,x0+CL/2,0.02,z);
     for(const z of [-6.1,6.1]) cb(CL,0.18,0.2,0x9d9a94,x0+CL/2,0,z);
     for(const z of [-7.7,7.7]) cb(CL,0.15,3,cWalk,x0+CL/2,0,z);
-    for(const z of [-10.8,10.8]) cb(CL,0.05,3.2,0x707275,x0+CL/2,0.05,z);
+    // 歩道のすぐ外から敷地(薄いグレーの帯は置かない)。
     // 街灯（両側・互い違い）と光だまり
     // 片側60mおき(元の30mおきの倍)。両側で互い違い。
     for(const [x,z,d] of [[x0+10,-6.6,1],[x0+40,6.6,-1]]){
@@ -1208,9 +1209,10 @@ export function createNihonTown(world, opts={}){
       const pl=new THREE.Mesh(new THREE.PlaneGeometry(16,16),roadPoolM); pl.rotation.x=-Math.PI/2; pl.position.set(x,0.2,z+d*4.5); ch.group.add(pl);   // 街灯は当たり判定なし
     }
     // 電柱と電線（手前側）
-    for(const x of [x0+15,x0+45]){ cb(0.34,9.5,0.34,0xb9b6ae,x,0.15,9.4); cb(0.12,0.12,2.2,0x8a8a86,x,8.8,9.4); ch.cols.push([x-0.25,9.15,x+0.25,9.65]); }
+    // 電柱は歩道の外側の端(敷地の手前)に立てる。
+    for(const x of [x0+15,x0+45]){ cb(0.34,9.5,0.34,0xb9b6ae,x,0.15,8.8); cb(0.12,0.12,2.2,0x8a8a86,x,8.8,8.8); ch.cols.push([x-0.25,8.55,x+0.25,9.05]); }
     { const spans=[];                                   // 区画の電線4本をまとめて1回で描く
-      for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,9.4+dz), B=new THREE.Vector3(x0+15,8.95,9.4+dz), C=new THREE.Vector3(x0+45,8.95,9.4+dz);
+      for(const dz of [-0.9,0.9]){ const A=new THREE.Vector3(x0-15,8.95,8.8+dz), B=new THREE.Vector3(x0+15,8.95,8.8+dz), C=new THREE.Vector3(x0+45,8.95,8.8+dz);
         spans.push([A,B,0.7],[B,C,0.7]); }
       ch.group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wireSegments(spans,[])),wireM)); }
     // 街路樹の区画
@@ -1224,7 +1226,7 @@ export function createNihonTown(world, opts={}){
       lots.forEach(([type,w,lx],i)=>{
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
         keepSolid=['conv','famires','gas','parking'].includes(type);
-        csub(cx,side*12.4,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1}));
+        csub(cx,side*LOT_Z,side>0?0:Math.PI,()=>BUILD[type](w,D,{lastRight:i===lots.length-1}));
         keepSolid=false;
       });
     }
