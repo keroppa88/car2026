@@ -1115,6 +1115,19 @@ export function createNihonTown(world, opts={}){
   }
   // 店のブランド(看板の色)は、道路沿いの位置で決める番号 o.bi で選ぶ。隣どうしの店は必ず違う番号になる。
   const brand=(list,o)=>o&&o.bi!=null?list[((o.bi%list.length)+list.length)%list.length]:pk(list);
+  // 柱の看板の高さ決め: 近く(30m以内)に看板の高さが近い(0.9m未満の差)ものがあれば、
+  // base から上下にずらした候補の中で、近くの看板と高さが離れる最初のものを選ぶ。
+  // signLog は区画ごと(通し番号 g)の看板 [x, z, 看板の高さ]。前後の区画も調べる。
+  const signLog=new Map();
+  function signHeight(lx,lz,base,min=1.2){
+    const w=new THREE.Vector3(lx,0,lz); croot.updateMatrixWorld(true); croot.localToWorld(w);
+    const g=cchunk.k, near=[];
+    for(const k of [g-1,g,g+1]) for(const [x,z,h] of signLog.get(k)||[]) if(Math.hypot(x-w.x,z-w.z)<30) near.push(h);
+    let pick=base;
+    for(const d of [0,1.4,-1.2,2.8,-2.4,4.2]){ const h=base+d; if(h<min) continue; if(near.every((n)=>Math.abs(n-h)>=0.9)){ pick=h; break; } }
+    if(!signLog.has(g)) signLog.set(g,[]); signLog.get(g).push([w.x,w.z,pick]);
+    return pick;
+  }
   function cConvenience(W,D,o){
     // コンビニの敷地は幅28m固定なので、隣り合うコンビニは中心が28m離れる。14mごとの番号なら差は2で、
     // 3種類の色が必ず違う(番号は o.bi(9mごと)と同じ位置から数え直す)。
@@ -1137,7 +1150,7 @@ export function createNihonTown(world, opts={}){
       g.fillStyle=B.pole; g.beginPath(); g.arc(128,110,50,0,Math.PI*2); g.fill(); g.fillStyle='#fff'; g.font='bold 54px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(B.n[0],128,112);
       g.fillStyle=B.name; g.font='bold 28px sans-serif'; g.fillText(B.n,128,198); });
     const sm=cglow(st,.9), em=cmat(0xd8d8d4);
-    cb(0.3,7.6,0.3,0xf2f2f0,W/2-1.5,0.1,2); const s=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,0.45),[em,em,em,em,sm,sm]); s.position.set(W/2-1.5,8.9,2); s.rotation.y=Math.PI/2; croot.add(s);
+    const ch2=signHeight(W/2-1.5,2,8.9,5); cb(0.3,ch2-1.3,0.3,0xf2f2f0,W/2-1.5,0.1,2); const s=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,0.45),[em,em,em,em,sm,sm]); s.position.set(W/2-1.5,ch2,2); s.rotation.y=Math.PI/2; croot.add(s);
     ccol(W/2-1.7,1.8,W/2-1.3,2.2);
     cb(1,1.8,0.8,0xd8dfe6,bw/2-1,0.1,zf-0.6); cb(1,1.8,0.8,pk([0xc23b2e,0x2f5f9e,0xe3b23c]),bw/2-2.2,0.1,zf-0.6);
   }
@@ -1155,7 +1168,7 @@ export function createNihonTown(world, opts={}){
     cb(bw+1.2,1.3,bd+1.2,new THREE.Color(F.c).getHex(),0,y0+(pil?0.5:0)+H-0.4,cz);
     cfront(Math.min(14,bw*0.6),1.2,0,y0+(pil?0.5:0)+H+0.25,zf-0.62,cglow(t,.9));
     for(let i=0;i<14;i++){ const x=-W/2+2+i*2.6; if(x>W/2-2) break; cb(0.12,0.01,5,0xf0f0f0,x,0.11,zf-4); if(RN()<0.45) ccar(x+1.3,zf-4,0); }
-    const pm=cglow(t,.9); cb(0.25,8,0.25,0x777d85,-W/2+1.5,0.1,1.5); const ps=new THREE.Mesh(new THREE.BoxGeometry(3.2,1.6,0.35),[pm,pm,pm,pm,pm,pm]); ps.position.set(-W/2+1.5,8.5,1.5); ps.rotation.y=Math.PI/2; croot.add(ps);
+    const pm=cglow(t,.9); const fh=signHeight(-W/2+1.5,1.5,8.5,5); cb(0.25,fh-0.5,0.25,0x777d85,-W/2+1.5,0.1,1.5); const ps=new THREE.Mesh(new THREE.BoxGeometry(3.2,1.6,0.35),[pm,pm,pm,pm,pm,pm]); ps.position.set(-W/2+1.5,fh,1.5); ps.rotation.y=Math.PI/2; croot.add(ps);
   }
   function cParking(W,D,o){
     const P=brand(PARK,o);
@@ -1176,7 +1189,7 @@ export function createNihonTown(world, opts={}){
     if(kind>0){
       const pole=[0,1.6,3.4,6][kind], size=[0,1.0,1.3,1.8][kind], turn=[0,Math.PI/2][(h>>>16)%2];
       const pm=cglow(pt,.8), mm=cmat(0x444a50);
-      cb(0.12,pole,0.12,0x444a50,W/2-0.8,0.1,0.4); const s=new THREE.Mesh(cgeo(size,size,0.12),[mm,mm,mm,mm,pm,pm]); s.position.set(W/2-0.8,0.1+pole+size/2,0.4); s.rotation.y=turn; croot.add(s);
+      const ph=signHeight(W/2-0.8,0.4,0.1+pole+size/2,1.2); cb(0.12,ph-size/2-0.1,0.12,0x444a50,W/2-0.8,0.1,0.4); const s=new THREE.Mesh(cgeo(size,size,0.12),[mm,mm,mm,mm,pm,pm]); s.position.set(W/2-0.8,ph,0.4); s.rotation.y=turn; croot.add(s);
     }
     cb(0.55,1.4,0.45,0x5a6068,W/2-2.1,0.1,1);
   }
@@ -1195,7 +1208,7 @@ export function createNihonTown(world, opts={}){
     const pt=ctex(128,256,(g,w,h)=>{ g.fillStyle=O.c; g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font='bold 20px sans-serif'; g.textAlign='center'; g.fillText(O.n,w/2,30);
       [['レギュラー',160+Math.floor(RN()*15)],['ハイオク',172+Math.floor(RN()*15)],['軽油',140+Math.floor(RN()*15)]].forEach(([n,p],i)=>{ const y=70+i*62; g.fillStyle='#0d1b14'; g.fillRect(8,y-22,w-16,52); g.fillStyle='#fff'; g.font='bold 16px sans-serif'; g.fillText(n,w/2,y-6); g.fillStyle='#ffd25a'; g.font='bold 26px monospace'; g.fillText(String(p),w/2,y+22); }); });
     const pm=cglow(pt,.9);
-    cb(0.25,3.2,0.25,0x777d85,W/2-2,0.1,1); const ps=new THREE.Mesh(new THREE.BoxGeometry(1.6,3.2,0.3),[cw,cw,cw,cw,pm,pm]); ps.position.set(W/2-2,4.9,1); croot.add(ps);
+    const gh=signHeight(W/2-2,1,4.9,3.6); cb(0.25,gh-1.7,0.25,0x777d85,W/2-2,0.1,1); const ps=new THREE.Mesh(new THREE.BoxGeometry(1.6,3.2,0.3),[cw,cw,cw,cw,pm,pm]); ps.position.set(W/2-2,gh,1); croot.add(ps);
     cb(0.15,1.8,D,0xbab4a8,-W/2+0.1,0.1,D/2); cb(W,1.8,0.15,0xbab4a8,0,0.1,D-0.1);
   }
   const APTC=[0xd8d2c6,0xe8e2d6,0xc9b9a3,0xbfc6c9,0xd9c7b0,0xf0ece4,0xb7c4b5,0xe0cfc8], APTA=[0xa8a39a,0x6e7378,0x8a5a44,0x4a5a6e,0x7a8a6a];
@@ -1431,6 +1444,7 @@ export function createNihonTown(world, opts={}){
     // ひと固まりにしたので親の変換は単位行列に
   }
   function disposeChunk(ch){
+    signLog.delete(ch.k);
     world.remove(ch.group);
     ch.group.traverse(o=>{ if(o.geometry && !Object.values(CGC).includes(o.geometry) && o.geometry!==tGeo && o.geometry!==lGeo) o.geometry.dispose(); });
     ch.texs.forEach(t=>t.dispose()); ch.glows.forEach(([m])=>m.dispose());
