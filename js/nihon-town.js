@@ -16,8 +16,9 @@ export const NIHON_CHUNKS_PER_LAP = 40; // 1周の区画数(5種類 × 4個 × 2
 export const NIHON_LAP_LENGTH = NIHON_INTRO_END - NIHON_INTRO_START
   + NIHON_CHUNK_LENGTH * NIHON_CHUNKS_PER_LAP;
 // 交差点のある区画(周の中の番号)。区画の中央に交わる道を通す(歩道の端から端まで区画の21〜39m)。
-// コンビニ区間の交差点(x 69〜87)と合わせて1周に3か所、約800〜900mおき。
-export const NIHON_CROSS_CHUNKS = [12, 27];
+// コンビニ区間の交差点(x 69〜87)と合わせて1周に3か所、約850mおき。
+// 13 はビル街(信号・スクランブル・歩道橋)、28 は住宅街(信号なし・止まれ)。道路の作りは区画の種類で決まる。
+export const NIHON_CROSS_CHUNKS = [13, 28];
 const CROSS_A = 21, CROSS_B = 39;          // 区画の中の、交わる道の歩道の外側の端どうし
 // 交差点の x 範囲(歩道の外側の端どうし、周の中の座標)。走行面(neo-map.js)で使う。
 export const NIHON_CROSSINGS = [[69, 87],
@@ -981,6 +982,19 @@ export function createNihonTown(world, opts={}){
   const cDark=mat(0x2d3440);
   const sigOnM={green:new THREE.MeshBasicMaterial({color:0x2fd28a}),red:new THREE.MeshBasicMaterial({color:0xff3a2a})}, sigOffM=mat(0x2b2f35);
   const cRoad=roadGlowM, cWalk=walk;
+  // 住宅街の交差点: 路面の「止まれ」、逆三角の標識、カーブミラー。夜も模様は外さない(keepMap)。
+  const stopTextM=LAM({map:tex(128,384,(g,w,h)=>{ g.clearRect(0,0,w,h); g.fillStyle=g.strokeStyle='#f2f2f2'; g.lineWidth=9; g.lineJoin='round';
+      g.textAlign='center'; g.textBaseline='middle'; g.font='900 104px sans-serif';
+      ['止','ま','れ'].forEach((c,i)=>{ g.fillText(c,w/2,64+i*128); g.strokeText(c,w/2,64+i*128); }); }),alphaTest:0.3});
+  stopTextM.userData.keepMap=true;
+  const stopTextGeo=new THREE.PlaneGeometry(2.4,7.2);   // 路面の文字は進む向きに長く引き伸ばす
+  const stopSignM=LAM({map:tex(128,112,(g,w,h)=>{ g.clearRect(0,0,w,h);
+      const tri=(m,c)=>{ g.beginPath(); g.moveTo(m,m*0.7); g.lineTo(w-m,m*0.7); g.lineTo(w/2,h-m); g.closePath(); g.fillStyle=c; g.fill(); };
+      tri(2,'#ffffff'); tri(11,'#d42a22'); g.fillStyle='#fff'; g.textAlign='center'; g.font='bold 26px sans-serif'; g.fillText('止まれ',w/2,44); }),alphaTest:0.5});
+  stopSignM.userData.keepMap=true;
+  const stopSignGeo=new THREE.PlaneGeometry(0.9,0.79);
+  const mirrorGeo=new THREE.CylinderGeometry(0.42,0.42,0.06,20);
+  const mirrorRimM=mat(0xe8742a), mirrorM=mat(0xc9d6de);
   const carColors=[0xf3f3f0,0x5d6f84,0xb3392f,0x2e2e2e,0x8c9a7a,0xe8e4da,0x3d4a63,0x9aa0a6];
   function ccar(x,z,ry){ const g=new THREE.Group(), c=pk(carColors);
     const add=(w,h,d,m,x1,y,z1)=>{ const o=new THREE.Mesh(cgeo(w,h,d),cmat(m)); o.position.set(x1,y+h/2,z1); g.add(o); };
@@ -1327,39 +1341,71 @@ export function createNihonTown(world, opts={}){
     cb(CL,0.02,300,0x6d7a55,x0+CL/2,-0.03,0);
     cb(CL,0.02,12,cRoad,x0+CL/2,0,0);
     const cross=NIHON_CROSS_CHUNKS.includes(k);
+    // 交差点の作り(道路だけ): ビル街は大きな交差点、住宅街・並木は信号なし、それ以外はふつうの信号交差点。
+    const style=!cross?null: zone==='buildings'?'big': (zone==='houses'||zone==='trees')?'stop':'signal';
     // 交差点の区画は、交わる道(車道 24〜36m、歩道 21〜24m・36〜39m)の所で幹線の線・縁石・歩道を切る。
+    // 信号なしの交差点は優先道路なので、幹線の線は交差点の中も続ける。
     const runs=(a,b)=>cross?[[0,a],[CL-a,CL]]:[[0,CL]];
     const seg=(runList,fn)=>runList.forEach(([a,b])=>{ if(b-a>0.01) fn(x0+(a+b)/2,b-a); });
-    seg(runs(19),(c,l)=>{ cb(l,0.02,0.15,0xd9b23a,c,0.02,0); for(const z of [-5.6,5.6]) cb(l,0.02,0.12,0xeeeeee,c,0.02,z); });
+    seg(style==='stop'?[[0,CL]]:runs(19),(c,l)=>{ cb(l,0.02,0.15,0xd9b23a,c,0.02,0); for(const z of [-5.6,5.6]) cb(l,0.02,0.12,0xeeeeee,c,0.02,z); });
     seg(runs(24),(c,l)=>{ for(const z of [-6.1,6.1]) cb(l,0.18,0.2,0x9d9a94,c,0,z); for(const z of [-7.7,7.7]) cb(l,0.15,3,cWalk,c,0,z); });
     if(cross){
       // 交わる道は幹線から36mまで。その先は「交差点を直進した先の幹線」の写し(ゴースト)が続く。
-      const cx=x0+CL/2, L=30;
+      const cx=x0+CL/2, L=30, sig=style!=='stop';
       for(const sd of [-1,1]){
         const zc=sd*(6+L/2);
         cb(12,0.02,L,cRoad,cx,0,zc);                                           // 車道
-        cb(0.15,0.02,L-8,0xd9b23a,cx,0.02,sd*(14+(L-8)/2));                    // 中央線(横断歩道の先から)
+        if(sig) cb(0.15,0.02,L-8,0xd9b23a,cx,0.02,sd*(14+(L-8)/2));            // 中央線(横断歩道の先から)。住宅街は無し
         for(const x of [cx-5.6,cx+5.6]) cb(0.12,0.02,L-8,0xeeeeee,x,0.02,sd*(14+(L-8)/2));
         for(const x of [cx-6.1,cx+6.1]) cb(0.2,0.18,L-3.2,0x9d9a94,x,0,sd*(9.2+(L-3.2)/2));   // 縁石
         for(const x of [cx-7.5,cx+7.5]) cb(3,0.15,L-3.2,cWalk,x,0,sd*(9.2+(L-3.2)/2));         // 歩道
-        for(let x=cx-5.4;x<=cx+5.4;x+=0.9) cb(0.45,0.01,3,0xeeeeee,x,0.03,sd*11.5);            // 横断歩道(交わる道)
-        cb(6,0.01,0.4,0xeeeeee,cx-sd*3,0.03,sd*13.6);                                           // 停止線(交わる道)
+        if(sig) for(let x=cx-5.4;x<=cx+5.4;x+=0.9) cb(0.45,0.01,3,0xeeeeee,x,0.03,sd*11.5);    // 横断歩道(交わる道)
+        if(sig) cb(6,0.01,0.4,0xeeeeee,cx-sd*3,0.03,sd*13.6);                                   // 停止線(交わる道)
+        else {
+          // 住宅街: 幹線の手前で一時停止。停止線・「止まれ」の文字・逆三角の標識・カーブミラー。
+          cb(5.4,0.01,0.45,0xeeeeee,cx-sd*2.9,0.03,sd*8.4);
+          csub(cx-sd*2.9,sd*13.6,sd>0?0:Math.PI,()=>{ const o=new THREE.Mesh(stopTextGeo,stopTextM); o.rotation.x=-Math.PI/2; o.position.y=0.04; croot.add(o); });
+          const px=cx-sd*7.6, pz=sd*9.6;
+          cb(0.09,2.4,0.09,0x8a8f96,px,0.15,pz);
+          csub(px,pz,sd>0?0:Math.PI,()=>{ const o=new THREE.Mesh(stopSignGeo,stopSignM); o.position.set(0,2.35,0.06); croot.add(o);
+            cb(0.9,0.02,0.04,0x8a8f96,0,2.62,0.02); });
+          const mx=cx+sd*7.9, mz=sd*8.0;                                        // カーブミラー(交差点の角)
+          cb(0.12,2.9,0.12,0xe8742a,mx,0.15,mz);
+          csub(mx,mz,Math.atan2(cx-mx,-mz),()=>{ const f=new THREE.Mesh(mirrorGeo,mirrorRimM); f.rotation.x=Math.PI/2; f.position.set(0,3.1,0.12); croot.add(f);
+            const g=new THREE.Mesh(mirrorGeo,mirrorM); g.rotation.x=Math.PI/2; g.scale.set(0.85,1,0.85); g.position.set(0,3.1,0.17); croot.add(g); });
+        }
       }
-      for(const sd of [-1,1]){
-        const xw=cx+sd*10.5;                                                     // 横断歩道(幹線)
-        for(let z=-5.4;z<=5.4;z+=0.9) cb(3,0.01,0.45,0xeeeeee,xw,0.03,z);
-        cb(0.4,0.01,6,0xeeeeee,cx-sd*12.6,0.03,-sd*3);                          // 停止線(幹線、左側通行の手前)
+      if(sig){
+        for(const sd of [-1,1]){
+          const xw=cx+sd*10.5;                                                   // 横断歩道(幹線)
+          for(let z=-5.4;z<=5.4;z+=0.9) cb(3,0.01,0.45,0xeeeeee,xw,0.03,z);
+          cb(0.4,0.01,6,0xeeeeee,cx-sd*12.6,0.03,-sd*3);                        // 停止線(幹線、左側通行の手前)
+        }
+        // 信号機(飾り。幹線は青、交わる道は赤で点いたまま)。柱は当たり判定なし。
+        for(const [px,pz,ry] of [[cx+7.5,-7.7,-Math.PI/2],[cx-7.5,7.7,Math.PI/2]]){
+          cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
+          csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
+            cb(0.3,0.3,0.05,sigOnM.green,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,4.12,5.16,0.17); });
+        }
+        for(const [px,pz,ry] of [[cx+7.5,7.7,Math.PI],[cx-7.5,-7.7,0]]){
+          cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
+          csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
+            cb(0.3,0.3,0.05,sigOffM,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOnM.red,4.12,5.16,0.17); });
+        }
       }
-      // 信号機(飾り。幹線は青、交わる道は赤で点いたまま)。柱は当たり判定なし。
-      for(const [px,pz,ry] of [[cx+7.5,-7.7,-Math.PI/2],[cx-7.5,7.7,Math.PI/2]]){
-        cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
-        csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
-          cb(0.3,0.3,0.05,sigOnM.green,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,4.12,5.16,0.17); });
-      }
-      for(const [px,pz,ry] of [[cx+7.5,7.7,Math.PI],[cx-7.5,-7.7,0]]){
-        cb(0.18,5.6,0.18,0x8a8f96,px,0.15,pz);
-        csub(px,pz,ry,()=>{ cb(3.7,0.1,0.1,0x8a8f96,1.85,5.3,0); cb(1.3,0.42,0.3,0x5a6068,3.7,5.1,0);
-          cb(0.3,0.3,0.05,sigOffM,3.28,5.16,0.17); cb(0.3,0.3,0.05,sigOffM,3.7,5.16,0.17); cb(0.3,0.3,0.05,sigOnM.red,4.12,5.16,0.17); });
+      if(style==='big'){
+        // ビル街: 斜めにも渡れるスクランブル交差点と、手前の歩道橋。
+        for(const a of [Math.PI/4,-Math.PI/4]) csub(cx,0,a,()=>{ for(let t=-6.3;t<=6.3;t+=0.9) cb(0.45,0.01,3,0xeeeeee,t,0.035,0); });
+        const bx=x0+4, deck=0x7f9db3, rail=0x6a8aa2;
+        cb(2.4,0.45,19.6,deck,bx,5.2,0);                                         // 橋の床
+        for(const dx of [-1.15,1.15]) cb(0.08,1.1,19.6,rail,bx+dx,5.65,0);       // 手すり
+        for(const sd of [-1,1]){
+          cb(0.45,5.2,0.45,0x8a9aa6,bx,0,sd*7.2);                                // 橋脚(歩道の上)
+          cb(2.4,0.3,1.8,deck,bx,5.35,sd*8.3);                                   // 踊り場
+          for(let i=0;i<13;i++){ const top=5.2-i*0.4; cb(0.62,0.16,1.6,deck,bx+1.5+i*0.6,top-0.16,sd*8.3); }   // 階段(交差点の方へ下りる)
+          cchunk.cols.push([bx+1.2,sd>0?7.5:-9.1,bx+8.6,sd>0?9.1:-7.5]);           // 階段にはぶつかる
+          cchunk.cols.push([bx-0.25,sd*7.2-0.25,bx+0.25,sd*7.2+0.25]);
+        }
       }
     }
     // 歩道のすぐ外から敷地(薄いグレーの帯は置かない)。
@@ -1559,7 +1605,7 @@ export function createNihonTown(world, opts={}){
   // 夜は模様(色の画像)を外し、その平均の単色にする。光る窓・看板(発光の画像)は残す。
   function simplify(m,on){
     if(!m||!m.isMeshLambertMaterial) return;
-    if(on){ if(!m.map||m.userData.dayMap) return;
+    if(on){ if(!m.map||m.userData.dayMap||m.userData.keepMap) return;
       m.userData.dayMap=m.map; m.userData.dayColor=m.color.clone();
       const a=m.map.userData.average; if(a) m.color.setRGB(a.r,a.g,a.b).multiply(m.userData.dayColor);
       m.map=null; m.needsUpdate=true; }
