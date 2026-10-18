@@ -1340,7 +1340,7 @@ export function createNihonTown(world, opts={}){
   // 川には入れない(当たり判定)。
   const waterM=mat(0x3d6b66), canalWallM=mat(0x8a877e), bridgeM=mat(0x8fb3c9), railM=mat(0x2f78c4), fenceM=mat(0x5b6168);
   function buildCanal(x0){
-    const a=x0+CANAL_A, b=x0+CANAL_B, cx=(a+b)/2, W=b-a, ZL=140, zm=9.2+ZL/2, D=4;
+    const a=x0+CANAL_A, b=x0+CANAL_B, cx=(a+b)/2, W=b-a, ZL=380, zm=9.2+ZL/2, D=4;   // 川は霞で見えなくなる所まで延ばす
     cb(W,0.02,2*ZL+20,waterM,cx,-D+0.4,0);                                  // 水面
     for(const x of [a,b]){ const xw=x+(x===a?-0.3:0.3);                     // 護岸(垂直なコンクリート)
       for(const sd of [-1,1]) cb(0.6,D,ZL+10,canalWallM,xw,-D,sd*(9.4+(ZL+10)/2));
@@ -1355,8 +1355,10 @@ export function createNihonTown(world, opts={}){
       for(const [p,q] of [[a-BANK,a],[b,b+BANK]]) cb(q-p,0.13,ZL,cWalk,(p+q)/2,-0.03,sd*zm);   // 川沿いの道
       for(const x of [a-0.12,b+0.12]){                                       // 川前の柵
         cb(0.07,0.07,ZL,fenceM,x,1.05,sd*zm); cb(0.07,0.07,ZL,fenceM,x,0.55,sd*zm);
-        for(let z=9.6;z<9.2+ZL;z+=2.5) cb(0.08,1.0,0.08,fenceM,x,0.1,sd*z);
+        for(let z=9.6;z<9.2+ZL;z+=4) cb(0.08,1.0,0.08,fenceM,x,0.1,sd*z);
       }
+      // 区画の地面(道路から150m)より先も、川の両脇に地面を敷く(書き割りを置かないので見える)。
+      for(const xg of [a-BANK-20,b+BANK+20]) cb(40,0.02,ZL-140,0x6d7a55,xg,-0.03,sd*(150+(ZL-140)/2));
       for(let z=14, i=0; z<9.2+ZL; z+=17, i++){                            // 護岸の上の木(まばら・左右互い違い)
         const x=i%2===0?a-1.6:b+1.6; ctree(x,sd*(z+(i%3)*3),1.1+(i%3)*0.15); }
       cchunk.cols.push([a-BANK,sd>0?9.3:-60,b+BANK,sd>0?60:-9.3]);         // 川にも川沿いの道にも入れない(橋で渡るだけ)
@@ -1488,6 +1490,7 @@ export function createNihonTown(world, opts={}){
     const gaps=[];
     for(const lp of [lap-1,lap,lap+1]) for(const kc of NIHON_CROSS_CHUNKS){
       const c=RX0+lp*LAP+kc*CL+CL/2, a=Math.max(x0,c-66), b=Math.min(x0+CL,c+66); if(b>a) gaps.push([a,b]); }
+    if(canal) gaps.push([x0+CANAL_A-BANK,x0+CANAL_B+BANK]);                // 川の延長線上も書き割りを置かない
     gaps.sort((p,q)=>p[0]-q[0]);
     bdPieces(ch.group,x0,x0+CL,gaps);
     mergeChunk(ch.group);
