@@ -2829,17 +2829,34 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     if (NEO_COURSE && neoCity) {
       // 街並み: 建物・塀・電柱・駐車中の車にぶつかったら、ぶつかる前の位置へ戻して止める。
-      // 車体の前・中・後ろの3点を、車体の半幅の円で調べる。
+      // 当たり判定はゆるめ: 車体の前・中・後ろの3点を、車体の半幅より小さい円で調べる。
+      // 向きを変えただけで鼻先が障害物にかかった時(止まる前の位置でも当たる時)は、
+      // 車の中心が入り込まない限り動けるようにして、引っ掛かって抜け出せなくなるのを防ぐ。
       const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-      const hit = [-1.6, 0, 1.6].some((d) => neoCity.isBlocked(
-        player.pos.x + fx * d, player.pos.z + fz * d, 0.85));
-      if (hit && neoLastFreePos) {
-        player.pos.x = neoLastFreePos.x;
-        player.pos.z = neoLastFreePos.z;
-        player.vel.x *= -0.15;
-        player.vel.z *= -0.15;
+      const hitAt = (x, z) => [-1.4, 0, 1.4].some((d) => neoCity.isBlocked(
+        x + fx * d, z + fz * d, d === 0 ? 0.7 : 0.5));
+      const last = neoLastFreePos;
+      const lastOverlaps = last && hitAt(last.x, last.z);
+      const blocked = (x, z) => (lastOverlaps
+        ? neoCity.isBlocked(x, z, 0.3) : hitAt(x, z));
+      if (last && blocked(player.pos.x, player.pos.z)) {
+        // 壁に沿って滑らせる: x だけ、z だけ動かして通れる方を使う(道路も建物も x・z にそろっている)。
+        if (!blocked(player.pos.x, last.z)) {
+          player.pos.z = last.z;
+          player.vel.z = 0;
+        } else if (!blocked(last.x, player.pos.z)) {
+          player.pos.x = last.x;
+          player.vel.x = 0;
+        } else {
+          // 正面から当たった時は止める(R でバックすれば出られる)。
+          player.pos.x = last.x;
+          player.pos.z = last.z;
+          player.vel.x *= -0.15;
+          player.vel.z *= -0.15;
+        }
         document.body.dataset.neoBuildingContacts = String(
           Number(document.body.dataset.neoBuildingContacts || 0) + 1);
+        neoLastFreePos = { x: player.pos.x, z: player.pos.z };
       } else {
         neoLastFreePos = { x: player.pos.x, z: player.pos.z };
       }
