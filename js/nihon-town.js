@@ -494,6 +494,8 @@ export function createNihonTown(world, opts={}){
     for(const [a,b] of [[65,66],[90,140]]) segX(a,b,(c,l)=>{ box(l,0.02,0.15,yl,c,0.02,0); for(const z of [-5.6,5.6]) box(l,0.02,0.12,wl,c,0.02,z); });
     // 交差する道（南北）
     box(12,0.02,180,asph,X0,0,0);
+    // 霞で見えなくなる所(400m)まで延ばす。地面も道の両側に。
+    for(const sd of [-1,1]){ box(12,0.02,310,asph,X0,0,sd*245); box(40,0.02,250,0x6d7a55,X0,-0.03,sd*275); }
     // 歩道（西側の工場裏の路地との接続部は切る）
     for(const [side,segs] of [[-1,[[9.2,58.8],[62.4,90],[-90,-9.2]]],[1,[[9.2,90],[-90,-9.2]]]])
       for(const [a,b] of segs){ const c=(a+b)/2,l=b-a; box(3,0.15,l,walk,X0+side*7.5,0,c); box(0.2,0.18,l,cb,X0+side*6.1,0,c); }
@@ -1329,10 +1331,11 @@ export function createNihonTown(world, opts={}){
     seg(runs(19),(c,l)=>{ cb(l,0.02,0.15,0xd9b23a,c,0.02,0); for(const z of [-5.6,5.6]) cb(l,0.02,0.12,0xeeeeee,c,0.02,z); });
     seg(runs(24),(c,l)=>{ for(const z of [-6.1,6.1]) cb(l,0.18,0.2,0x9d9a94,c,0,z); for(const z of [-7.7,7.7]) cb(l,0.15,3,cWalk,c,0,z); });
     if(cross){
-      const cx=x0+CL/2, L=140;                                                // 交わる道は幹線から両側へ140m
+      const cx=x0+CL/2, L=394;                                                // 交わる道は幹線から両側へ400m(霞で見えなくなる所まで)
       for(const sd of [-1,1]){
         const zc=sd*(6+L/2);
         cb(12,0.02,L,cRoad,cx,0,zc);                                           // 車道
+        cb(40,0.02,L-144,0x6d7a55,cx,-0.03,sd*(150+(L-144)/2));                // 区画の地面(±150m)の先も道の両側に地面
         cb(0.15,0.02,L-8,0xd9b23a,cx,0.02,sd*(14+(L-8)/2));                    // 中央線(横断歩道の先から)
         for(const x of [cx-5.6,cx+5.6]) cb(0.12,0.02,L-8,0xeeeeee,x,0.02,sd*(14+(L-8)/2));
         for(const x of [cx-6.1,cx+6.1]) cb(0.2,0.18,L-3.2,0x9d9a94,x,0,sd*(9.2+(L-3.2)/2));   // 縁石
@@ -1417,6 +1420,7 @@ export function createNihonTown(world, opts={}){
       }
     }
     RN=Math.random;
+    bdPieces(ch.group,x0,x0+CL,cross?[[x0+CROSS_A,x0+CROSS_B]]:[]);   // 書き割り(交わる道の所は空ける)
     mergeChunk(ch.group);
     if(night) simplifyGroup(ch.group,true);
     return ch;
@@ -1486,7 +1490,7 @@ export function createNihonTown(world, opts={}){
   // ---- 書き割り(建物の隙間から奥の荒野が見えないよう、街並みの影絵を立てる) ----
   // 家の屋根やビルが連なる形のグレーの板。手前(道路中心から64m)と奥(110m)の2枚ずつ。
   // 板は車について動くが、模様の周期(200m)ごとにしか動かさないので、絵は地面に固定されて見える。
-  const BD_PERIOD=200, BD_LEN=1000;
+  const BD_PERIOD=200;
   function skylineTex(seed,maxH,tall){
     const R=seeded(seed), W=1024, H=128, ppm=W/BD_PERIOD, py=H/32;    // 横 5.12px/m、縦 4px/m(高さ32m)
     const t=tex(W,H,(g)=>{ g.clearRect(0,0,W,H); g.fillStyle='#fff';
@@ -1501,18 +1505,31 @@ export function createNihonTown(world, opts={}){
           g.fillRect(x,H-h,w,h); if(R()<0.5) g.fillRect(x+w*(0.2+R()*0.5),H-h-1.5*py,2.5*ppm,1.5*py); x+=w+R()*1.5*ppm;
         }
       } });
-    t.wrapS=THREE.RepeatWrapping; t.repeat.set(BD_LEN/BD_PERIOD,1); return t;
+    t.wrapS=THREE.RepeatWrapping; return t;
   }
-  const backdrops=[];
+  // 書き割りの材質(手前・奥)。板は区画ごとに作り、交わる道の所は空ける(行き止まりに見せない)。
+  const bdMats=[];
   for(const [dist,seed,maxH,tall,day,nightC] of [[64,11,14,false,0x9aa1a8,0x1b1f27],[110,23,28,true,0xb4bcc4,0x141820]]){
-    const map=skylineTex(seed,maxH,tall), H=32;
+    const map=skylineTex(seed,maxH,tall); map.repeat.set(1,1);
     const m=new THREE.MeshBasicMaterial({color:day,alphaMap:map,alphaTest:0.5,side:THREE.DoubleSide});
-    m.userData.day=day; m.userData.night=nightC;
-    for(const side of [-1,1]){
-      const p=new THREE.Mesh(new THREE.PlaneGeometry(BD_LEN,H),m);
-      p.position.set(0,H/2-0.5,side*dist); p.rotation.y=side>0?Math.PI:0; p.name='skyline'; world.add(p); backdrops.push(p);
+    m.userData.day=day; m.userData.night=nightC; bdMats.push({m,dist});
+  }
+  // x の範囲 [xa, xb] に書き割りの板を両側に置く(gaps は空ける x の範囲)。絵は x に合わせて続く。
+  function bdPieces(parent,xa,xb,gaps=[]){
+    const segs=[]; let x=xa;
+    for(const [ga,gb] of gaps){ if(ga>x) segs.push([x,ga]); x=Math.max(x,gb); }
+    if(xb>x) segs.push([x,xb]);
+    const H=32, y0=-0.5, y1=H-0.5;
+    for(const {m,dist} of bdMats) for(const side of [-1,1]) for(const [a,b] of segs){
+      const z=side*dist, g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.Float32BufferAttribute([a,y0,z, b,y0,z, a,y1,z, b,y1,z],3));
+      g.setAttribute('normal',new THREE.Float32BufferAttribute([0,0,-side, 0,0,-side, 0,0,-side, 0,0,-side],3));
+      g.setAttribute('uv',new THREE.Float32BufferAttribute([a/BD_PERIOD,0, b/BD_PERIOD,0, a/BD_PERIOD,1, b/BD_PERIOD,1],2));
+      g.setIndex([0,1,2,2,1,3]);
+      const mesh=new THREE.Mesh(g,m); mesh.name='skyline'; parent.add(mesh);
     }
   }
+  bdPieces(scene,IA,RX0,[[69,87]]);                     // コンビニ区間(交差点の所を空ける)
 
   // ---- 昼夜 ----
   // 夜は模様(色の画像)を外し、その平均の単色にする。光る窓・看板(発光の画像)は残す。
@@ -1533,7 +1550,7 @@ export function createNihonTown(world, opts={}){
   function applyShade(){
     const d=night?1:dusk;
     leafM.color.copy(_c1.setHex(LEAF_DAY)).lerp(_c2.setHex(LEAF_NIGHT),d);
-    backdrops.forEach(p=>p.material.color.copy(_c1.setHex(p.material.userData.day)).lerp(_c2.setHex(p.material.userData.night),d));
+    bdMats.forEach(({m})=>m.color.copy(_c1.setHex(m.userData.day)).lerp(_c2.setHex(m.userData.night),d));
   }
   function setDusk(d){ if(Math.abs(d-dusk)<0.005) return; dusk=d; applyShade(); }
   function setNight(n){
@@ -1566,7 +1583,6 @@ export function createNihonTown(world, opts={}){
   function update(dt,t,player){
     const px=player?player.x:0;
     updateChunks(px);
-    backdrops.forEach(p=>{ p.position.x=Math.round(px/BD_PERIOD)*BD_PERIOD; });
     // コンビニ区間を一番近い周へ。
     scene.position.x=Math.round((px-(IA+RX0)/2)/LAP)*LAP;
     updateSignals(t);
