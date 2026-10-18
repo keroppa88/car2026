@@ -20,9 +20,9 @@ export const NIHON_LAP_LENGTH = NIHON_INTRO_END - NIHON_INTRO_START
 // 13 はビル街(信号・スクランブル・歩道橋)、28 は住宅街(信号なし・止まれ)。道路の作りは区画の種類で決まる。
 export const NIHON_CROSS_CHUNKS = [13, 28];
 const CROSS_A = 21, CROSS_B = 39;
-// 小さな川(目黒川くらいの水路)が道路の下をくぐる区画。区画の 25〜35m が川、22〜25m・35〜38m が川沿いの道。
+// 川が道路の下をくぐる区画。区画の 15〜45m が川(幅30m)、12〜15m・45〜48m が川沿いの道(走れない)。
 export const NIHON_CANAL_CHUNKS = [6];   // 1周に1か所だけ(出現は少なめ)
-const CANAL_A = 25, CANAL_B = 35, BANK = 3;          // 区画の中の、交わる道の歩道の外側の端どうし
+const CANAL_A = 15, CANAL_B = 45, BANK = 3;          // 区画の中の、交わる道の歩道の外側の端どうし
 // 交差点の x 範囲(歩道の外側の端どうし、周の中の座標)。走行面(neo-map.js)で使う。
 export const NIHON_CROSSINGS = [[69, 87],
   ...NIHON_CROSS_CHUNKS.map((k) => [NIHON_INTRO_END + k * NIHON_CHUNK_LENGTH + CROSS_A,
@@ -1335,8 +1335,8 @@ export function createNihonTown(world, opts={}){
     return {zone:order[s%ZONES.length], mirror:(cyc+s)%2===1};
   }
   // ---- 小さな川と橋(目黒川くらい) ----
-  // 幅10mの川が道路の下をくぐる。地表より4m低い所を流れ、両岸は垂直なコンクリート護岸。
-  // 護岸の上に柵と川沿いの道。道路と歩道はそのまま橋になり、橋の両端に青い欄干。木は植えない。
+  // 幅30mの川が道路の下をくぐる。地表より4m低い所を流れ、両岸は垂直なコンクリート護岸。
+  // 護岸の上に柵と川沿いの道、木がまばらに立つ。道路と歩道はそのまま橋になり、橋の両端に青い欄干。
   // 川には入れない(当たり判定)。
   const waterM=mat(0x3d6b66), canalWallM=mat(0x8a877e), bridgeM=mat(0x8fb3c9), railM=mat(0x2f78c4), fenceM=mat(0x5b6168);
   function buildCanal(x0){
@@ -1357,7 +1357,9 @@ export function createNihonTown(world, opts={}){
         cb(0.07,0.07,ZL,fenceM,x,1.05,sd*zm); cb(0.07,0.07,ZL,fenceM,x,0.55,sd*zm);
         for(let z=9.6;z<9.2+ZL;z+=2.5) cb(0.08,1.0,0.08,fenceM,x,0.1,sd*z);
       }
-      cchunk.cols.push([a-0.1,sd>0?9.3:-60,b+0.1,sd>0?60:-9.3]);           // 川には入れない
+      for(let z=14, i=0; z<9.2+ZL; z+=17, i++){                            // 護岸の上の木(まばら・左右互い違い)
+        const x=i%2===0?a-1.6:b+1.6; ctree(x,sd*(z+(i%3)*3),1.1+(i%3)*0.15); }
+      cchunk.cols.push([a-BANK,sd>0?9.3:-60,b+BANK,sd>0?60:-9.3]);         // 川にも川沿いの道にも入れない(橋で渡るだけ)
     }
   }
   // g は周をまたいで通しの区画番号。周の中の番号 k で中身が決まるので、どの周も同じ街になる。
