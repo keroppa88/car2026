@@ -1382,6 +1382,8 @@ export function createNihonTown(world, opts={}){
       // 交差点の区画は、交わる道の両側(0〜21m と 39〜60m)にだけ敷地を並べる。
       for(const [s0,s1] of cross?[[0,CROSS_A],[CROSS_B,CL]]:[[0,CL]]){ let x=s0;
         while(x<s1-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>s1){ w=s1-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; }
+          // 交差点の両脇は家かビルだけ(交わる道から幹線へ移った時、景色がつながるように)。
+          if(cross && !['house','building'].includes(type)) type=w>=13?'building':'house';
           if(type==='super'){                            // 向かいにスーパーがあれば(前後20mの余裕)、駐車場にする
             const a=side>0?x0+x:x0+CL-(x+w), b=a+w;
             if(superRanges.some(([p,q])=>a<q+20&&b>p-20)) type='parking'; else superRanges.push([a,b]); }

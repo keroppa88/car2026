@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-54';
-import { createNeoCity } from './neo-city.js?v=20261018-town-54';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-55';
+import { createNeoCity } from './neo-city.js?v=20261018-town-55';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -74,7 +74,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 街並み: 交差点で曲がって交わる道を NEO_CROSS_TRANSFER m 進んだら、その交差点を直進して
   // 同じ距離だけ進んだ幹線の上へ置き直す(向き・速さ・車線の左右はそのまま)。
   // どちらも両側に建物が並ぶ道なので、前の景色はほぼ同じに見える。カメラは車に付いて動く。
-  const NEO_CROSS_TRANSFER = 16;   // 交わる道の横断歩道(12m)と停止線(13.6m)を抜けた所
+  // 交わる道へ曲がり切った所(幹線の中心から8m)。行き止まり(奥の書き割り)が目に入る前に移る。
+  const NEO_CROSS_TRANSFER = 8;
   function neoCrossTransfer() {
     const period = gunmaCourse.seam.offset.x;
     const dist = Math.abs(player.pos.z);
@@ -86,6 +87,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (Math.abs(player.pos.x - c) > 6) continue;            // 交わる道の車道の上だけ
       const forward = player.vel.z * side;                       // 交差点から離れる向きの速さ
       if (forward <= 0) continue;
+      // 車が交わる道の向きを向いている時だけ(ずれ45度以内)。交差点で少しはみ出しただけでは移らない。
+      if (Math.cos(player.heading) * side < Math.SQRT1_2) continue;
       const lateral = player.vel.x * side;                       // 進む向きの左向きの速さ
       const leftOffset = (player.pos.x - c) * side;              // 道の中心から左への位置
       player.pos.x = c + dist;
