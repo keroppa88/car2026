@@ -19,7 +19,10 @@ export const NIHON_LAP_LENGTH = NIHON_INTRO_END - NIHON_INTRO_START
 // コンビニ区間の交差点(x 69〜87)と合わせて1周に3か所、約850mおき。
 // 13 はビル街(信号・スクランブル・歩道橋)、28 は住宅街(信号なし・止まれ)。道路の作りは区画の種類で決まる。
 export const NIHON_CROSS_CHUNKS = [13, 28];
-const CROSS_A = 21, CROSS_B = 39;          // 区画の中の、交わる道の歩道の外側の端どうし
+const CROSS_A = 21, CROSS_B = 39;
+// 小さな川(目黒川くらいの水路)が道路の下をくぐる区画。区画の 25〜35m が川、22〜25m・35〜38m が川沿いの道。
+export const NIHON_CANAL_CHUNKS = [6];   // 1周に1か所だけ(出現は少なめ)
+const CANAL_A = 25, CANAL_B = 35, BANK = 3;          // 区画の中の、交わる道の歩道の外側の端どうし
 // 交差点の x 範囲(歩道の外側の端どうし、周の中の座標)。走行面(neo-map.js)で使う。
 export const NIHON_CROSSINGS = [[69, 87],
   ...NIHON_CROSS_CHUNKS.map((k) => [NIHON_INTRO_END + k * NIHON_CHUNK_LENGTH + CROSS_A,
@@ -1331,6 +1334,32 @@ export function createNihonTown(world, opts={}){
     for(let i=order.length-1;i>0;i--){ const j=Math.floor(rr()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
     return {zone:order[s%ZONES.length], mirror:(cyc+s)%2===1};
   }
+  // ---- 小さな川と橋(目黒川くらい) ----
+  // 幅10mの川が道路の下をくぐる。地表より4m低い所を流れ、両岸は垂直なコンクリート護岸。
+  // 護岸の上に柵と川沿いの道。道路と歩道はそのまま橋になり、橋の両端に青い欄干。木は植えない。
+  // 川には入れない(当たり判定)。
+  const waterM=mat(0x3d6b66), canalWallM=mat(0x8a877e), bridgeM=mat(0x8fb3c9), railM=mat(0x2f78c4), fenceM=mat(0x5b6168);
+  function buildCanal(x0){
+    const a=x0+CANAL_A, b=x0+CANAL_B, cx=(a+b)/2, W=b-a, ZL=140, zm=9.2+ZL/2, D=4;
+    cb(W,0.02,2*ZL+20,waterM,cx,-D+0.4,0);                                  // 水面
+    for(const x of [a,b]){ const xw=x+(x===a?-0.3:0.3);                     // 護岸(垂直なコンクリート)
+      for(const sd of [-1,1]) cb(0.6,D,ZL+10,canalWallM,xw,-D,sd*(9.4+(ZL+10)/2));
+      cb(0.6,D-1.1,18.8,canalWallM,xw,-D,0); }                               // 橋の下は桁の下まで
+    cb(W+1.2,1.0,18.8,bridgeM,cx,-1.02,0);                                   // 橋の桁(水色)
+    for(const z of [-9.3,9.3]){                                              // 橋の欄干(青)
+      cb(W+1.2,0.1,0.14,railM,cx,1.05,z); cb(W+1.2,0.1,0.14,railM,cx,0.3,z);
+      for(let x=a-0.5;x<=b+0.5;x+=0.55) cb(0.06,0.75,0.06,railM,x,0.35,z);
+      for(const x of [a-0.6,b+0.6]) cb(0.22,1.15,0.22,railM,x,0.15,z);
+    }
+    for(const sd of [-1,1]){
+      for(const [p,q] of [[a-BANK,a],[b,b+BANK]]) cb(q-p,0.13,ZL,cWalk,(p+q)/2,-0.03,sd*zm);   // 川沿いの道
+      for(const x of [a-0.12,b+0.12]){                                       // 川前の柵
+        cb(0.07,0.07,ZL,fenceM,x,1.05,sd*zm); cb(0.07,0.07,ZL,fenceM,x,0.55,sd*zm);
+        for(let z=9.6;z<9.2+ZL;z+=2.5) cb(0.08,1.0,0.08,fenceM,x,0.1,sd*z);
+      }
+      cchunk.cols.push([a-0.1,sd>0?9.3:-60,b+0.1,sd>0?60:-9.3]);           // 川には入れない
+    }
+  }
   // g は周をまたいで通しの区画番号。周の中の番号 k で中身が決まるので、どの周も同じ街になる。
   // opts.parent: 付け先(既定 world)。opts.skipBefore: 区画の頭からこの長さ(m)の敷地は作らない(ゴースト用)。
   function buildChunk(g,opts={}){
@@ -1338,9 +1367,12 @@ export function createNihonTown(world, opts={}){
     const s=Math.floor(k/SEC), ci=k%SEC, {zone,mirror}=sectionInfo(s), x0=RX0+lap*LAP+k*CL;
     const ch={k:g,group:new THREE.Group(),cols:[],glows:[],texs:[],ghost:!!opts.ghost}; cchunk=ch; croot=ch.group; (opts.parent||world).add(ch.group);
     // 地面・道路・歩道・線
-    cb(CL,0.02,300,0x6d7a55,x0+CL/2,-0.03,0);
+    const canal=NIHON_CANAL_CHUNKS.includes(k);
+    if(canal){ for(const [a,b] of [[0,CANAL_A-BANK],[CANAL_B+BANK,CL]]) cb(b-a,0.02,300,0x6d7a55,x0+(a+b)/2,-0.03,0); }
+    else cb(CL,0.02,300,0x6d7a55,x0+CL/2,-0.03,0);
     cb(CL,0.02,12,cRoad,x0+CL/2,0,0);
     const cross=NIHON_CROSS_CHUNKS.includes(k);
+    if(canal) buildCanal(x0);
     // 交差点の作り(道路だけ): ビル街は大きな交差点、住宅街・並木は信号なし、それ以外はふつうの信号交差点。
     const style=!cross?null: zone==='buildings'?'big': (zone==='houses'||zone==='trees')?'stop':'signal';
     // 交差点の区画は、交わる道(車道 24〜36m、歩道 21〜24m・36〜39m)の所で幹線の線・縁石・歩道を切る。
@@ -1394,8 +1426,7 @@ export function createNihonTown(world, opts={}){
         }
       }
       if(style==='big'){
-        // ビル街: 斜めにも渡れるスクランブル交差点と、手前の歩道橋。
-        for(const a of [Math.PI/4,-Math.PI/4]) csub(cx,0,a,()=>{ for(let t=-6.3;t<=6.3;t+=0.9) cb(0.45,0.01,3,0xeeeeee,t,0.035,0); });
+        // ビル街: 手前の歩道橋。
         const bx=x0+4, deck=0x7f9db3, rail=0x6a8aa2;
         cb(2.4,0.45,19.6,deck,bx,5.2,0);                                         // 橋の床
         for(const dx of [-1.15,1.15]) cb(0.08,1.1,19.6,rail,bx+dx,5.65,0);       // 手すり
@@ -1431,7 +1462,7 @@ export function createNihonTown(world, opts={}){
       const side=mirror?-logical:logical, D=26;
       const lots=[];
       // 交差点の区画は、交わる道の両側(0〜21m と 39〜60m)にだけ敷地を並べる。
-      for(const [s0,s1] of cross?[[0,CROSS_A],[CROSS_B,CL]]:[[0,CL]]){ let x=s0;
+      for(const [s0,s1] of cross?[[0,CROSS_A],[CROSS_B,CL]]:canal?[[0,CANAL_A-BANK],[CANAL_B+BANK,CL]]:[[0,CL]]){ let x=s0;
         while(x<s1-0.5){ let [type,w]=pickLot(zone); w=Math.round(w*2)/2; if(x+w>s1){ w=s1-x; type=w>=11?(zone==='buildings'?'building':'house'):'parking'; }
           // 交差点の両脇は家かビルだけ(交わる道から幹線へ移った時、景色がつながるように)。
           if(cross && !['house','building'].includes(type)) type=w>=13?'building':'house';
