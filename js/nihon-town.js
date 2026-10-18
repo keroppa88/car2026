@@ -1396,6 +1396,24 @@ export function createNihonTown(world, opts={}){
         keepSolid=false;
       });
     }
+    // 交差点の区画: 交わる道の両側にも建物を並べる(幹線から36〜62m。その先は奥の書き割り)。
+    // 建物は交わる道に正面を向ける。中身は同じ区画の種類から選ぶ(店は除いて家・ビル・アパート)。
+    if(cross){
+      const cx=x0+CL/2;
+      for(const sd of [1,-1]) for(const xs of [1,-1]){
+        RN=seeded(ZONES.indexOf(zone)*1000+ci*10+500+(sd>0?1:2)*10+(xs>0?1:2));
+        let z=36; const zEnd=62;
+        while(z<zEnd-0.5){
+          let [type,w]=pickLot(zone==='roadside'?'mixed':zone); w=Math.round(w*2)/2;
+          if(!['house','building','apartment'].includes(type)){ type=RN()<0.5?'house':'building'; w=13; }
+          if(z+w>zEnd){ w=zEnd-z; if(w<11){ break; } }
+          const lz=sd*(z+w/2);                              // 敷地の中心(幹線からの距離)
+          // 交わる道の歩道の外(中心から9.2m)から奥へ。正面は交わる道を向く。
+          csub(cx+xs*9.2, lz, xs>0?Math.PI/2:-Math.PI/2, ()=>BUILD[type](w,20,{lastRight:false}));
+          z+=w;
+        }
+      }
+    }
     RN=Math.random;
     mergeChunk(ch.group);
     if(night) simplifyGroup(ch.group,true);
