@@ -18,7 +18,7 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF } from './neo-map.js?v=20261016-town-51';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-53';
 import { createNeoCity } from './neo-city.js?v=20261016-town-51';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
@@ -71,6 +71,35 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let neoCity = null;
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
+  // 街並み: 交差点で曲がって交わる道を NEO_CROSS_TRANSFER m 進んだら、その交差点を直進して
+  // 同じ距離だけ進んだ幹線の上へ置き直す(向き・速さ・車線の左右はそのまま)。
+  // どちらも両側に建物が並ぶ道なので、前の景色はほぼ同じに見える。カメラは車に付いて動く。
+  const NEO_CROSS_TRANSFER = 16;   // 交わる道の横断歩道(12m)と停止線(13.6m)を抜けた所
+  function neoCrossTransfer() {
+    const period = gunmaCourse.seam.offset.x;
+    const dist = Math.abs(player.pos.z);
+    if (dist < NEO_CROSS_TRANSFER) return;
+    const side = Math.sign(player.pos.z);
+    for (const [a, b] of NIHON_CROSSINGS) {
+      const c0 = (a + b) / 2;
+      const c = c0 + Math.round((player.pos.x - c0) / period) * period;
+      if (Math.abs(player.pos.x - c) > 6) continue;            // 交わる道の車道の上だけ
+      const forward = player.vel.z * side;                       // 交差点から離れる向きの速さ
+      if (forward <= 0) continue;
+      const lateral = player.vel.x * side;                       // 進む向きの左向きの速さ
+      const leftOffset = (player.pos.x - c) * side;              // 道の中心から左への位置
+      player.pos.x = c + dist;
+      player.pos.z = -leftOffset;
+      player.vel.x = forward;
+      player.vel.z = -lateral;
+      player.heading += Math.PI / 2 - (side > 0 ? 0 : Math.PI);
+      neoLastFreePos = { x: player.pos.x, z: player.pos.z };
+      car2LastRoadPos.copy(player.pos);
+      document.body.dataset.neoCrossTransfers = String(
+        Number(document.body.dataset.neoCrossTransfers || 0) + 1);
+      return;
+    }
+  }
   const NEO_LAMPS_ON_METER = 0.16;   // 街並み: 地平線の明暗がこれ以下なら街の灯りを点ける
   const NEO_CPU_DETAIL_DISTANCE = 80;  // 街並み: これより遠いCPU車は箱で描く(m)
   // 街並み: 遠くのCPU車の代わりの箱。車体の長さ・幅に合わせ、色は車体の色の平均。
@@ -2736,6 +2765,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         mapLoopCount++;
         document.body.dataset.mapLoopCount = String(mapLoopCount);
       }
+      if (NEO_COURSE) neoCrossTransfer();
       // 嵐が丘は南北にも繰り返す草原。周期の端を越えたら反対側へ移す。
       const zWrap = gunmaCourse.zWrap;
       if (zWrap) {
