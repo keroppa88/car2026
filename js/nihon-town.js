@@ -1120,10 +1120,11 @@ export function createNihonTown(world, opts={}){
   // 柱の看板の高さ決め: 近く(30m以内)に看板の高さが近い(0.9m未満の差)ものがあれば、
   // base から上下にずらした候補の中で、近くの看板と高さが離れる最初のものを選ぶ。
   // signLog は区画ごと(通し番号 g)の看板 [x, z, 看板の高さ]。前後の区画も調べる。
-  const signLog=new Map();
+  const signLogReal=new Map(), signLogGhost=new Map();
+  let ghostBuilding=false;   // 交わる道の先の写し(ゴースト)を作っている間 true
   function signHeight(lx,lz,base,min=1.2){
     const w=new THREE.Vector3(lx,0,lz); croot.updateMatrixWorld(true); croot.localToWorld(w);
-    const g=cchunk.k, near=[];
+    const g=cchunk.k, near=[], signLog=ghostBuilding?signLogGhost:signLogReal;
     for(const k of [g-1,g,g+1]) for(const [x,z,h] of signLog.get(k)||[]) if(Math.hypot(x-w.x,z-w.z)<30) near.push(h);
     let pick=base;
     for(const d of [0,1.4,-1.2,2.8,-2.4,4.2]){ const h=base+d; if(h<min) continue; if(near.every((n)=>Math.abs(n-h)>=0.9)){ pick=h; break; } }
@@ -1317,10 +1318,11 @@ export function createNihonTown(world, opts={}){
     return {zone:order[s%ZONES.length], mirror:(cyc+s)%2===1};
   }
   // g は周をまたいで通しの区画番号。周の中の番号 k で中身が決まるので、どの周も同じ街になる。
-  function buildChunk(g){
+  // opts.parent: 付け先(既定 world)。opts.skipBefore: 区画の頭からこの長さ(m)の敷地は作らない(ゴースト用)。
+  function buildChunk(g,opts={}){
     const lap=Math.floor(g/NCH), k=g-lap*NCH;
     const s=Math.floor(k/SEC), ci=k%SEC, {zone,mirror}=sectionInfo(s), x0=RX0+lap*LAP+k*CL;
-    const ch={k:g,group:new THREE.Group(),cols:[],glows:[],texs:[]}; cchunk=ch; croot=ch.group; world.add(ch.group);
+    const ch={k:g,group:new THREE.Group(),cols:[],glows:[],texs:[],ghost:!!opts.ghost}; cchunk=ch; croot=ch.group; (opts.parent||world).add(ch.group);
     // 地面・道路・歩道・線
     cb(CL,0.02,300,0x6d7a55,x0+CL/2,-0.03,0);
     cb(CL,0.02,12,cRoad,x0+CL/2,0,0);
@@ -1331,11 +1333,11 @@ export function createNihonTown(world, opts={}){
     seg(runs(19),(c,l)=>{ cb(l,0.02,0.15,0xd9b23a,c,0.02,0); for(const z of [-5.6,5.6]) cb(l,0.02,0.12,0xeeeeee,c,0.02,z); });
     seg(runs(24),(c,l)=>{ for(const z of [-6.1,6.1]) cb(l,0.18,0.2,0x9d9a94,c,0,z); for(const z of [-7.7,7.7]) cb(l,0.15,3,cWalk,c,0,z); });
     if(cross){
-      const cx=x0+CL/2, L=394;                                                // 交わる道は幹線から両側へ400m(霞で見えなくなる所まで)
+      // 交わる道は幹線から36mまで。その先は「交差点を直進した先の幹線」の写し(ゴースト)が続く。
+      const cx=x0+CL/2, L=30;
       for(const sd of [-1,1]){
         const zc=sd*(6+L/2);
         cb(12,0.02,L,cRoad,cx,0,zc);                                           // 車道
-        cb(40,0.02,L-144,0x6d7a55,cx,-0.03,sd*(150+(L-144)/2));                // 区画の地面(±150m)の先も道の両側に地面
         cb(0.15,0.02,L-8,0xd9b23a,cx,0.02,sd*(14+(L-8)/2));                    // 中央線(横断歩道の先から)
         for(const x of [cx-5.6,cx+5.6]) cb(0.12,0.02,L-8,0xeeeeee,x,0.02,sd*(14+(L-8)/2));
         for(const x of [cx-6.1,cx+6.1]) cb(0.2,0.18,L-3.2,0x9d9a94,x,0,sd*(9.2+(L-3.2)/2));   // 縁石
@@ -1392,6 +1394,7 @@ export function createNihonTown(world, opts={}){
             if(superRanges.some(([p,q])=>a<q+20&&b>p-20)) type='parking'; else superRanges.push([a,b]); }
           lots.push([type,w,x]); x+=w; } }
       lots.forEach(([type,w,lx],i)=>{
+        if(opts.skipBefore && lx<opts.skipBefore) return;   // ゴーストの最初の区画: 交差点の角の建物と重ならないように
         const cx=side>0? x0+lx+w/2 : x0+CL-(lx+w/2);
         keepSolid=['conv','famires','gas','parking','super','koban'].includes(type);
         // ブランド番号 = 周の中での店の中心の位置を9mごとに数えた番号。隣り合う店の中心は9.25m以上
@@ -1401,26 +1404,13 @@ export function createNihonTown(world, opts={}){
         keepSolid=false;
       });
     }
-    // 交差点の区画: 交わる道の両側にも建物を並べる(幹線から36〜62m。その先は奥の書き割り)。
-    // 建物は交わる道に正面を向ける。中身は同じ区画の種類から選ぶ(店は除いて家・ビル・アパート)。
-    if(cross){
-      const cx=x0+CL/2;
-      for(const sd of [1,-1]) for(const xs of [1,-1]){
-        RN=seeded(ZONES.indexOf(zone)*1000+ci*10+500+(sd>0?1:2)*10+(xs>0?1:2));
-        let z=36; const zEnd=62;
-        while(z<zEnd-0.5){
-          let [type,w]=pickLot(zone==='roadside'?'mixed':zone); w=Math.round(w*2)/2;
-          if(!['house','building','apartment'].includes(type)){ type=RN()<0.5?'house':'building'; w=13; }
-          if(z+w>zEnd){ w=zEnd-z; if(w<11){ break; } }
-          const lz=sd*(z+w/2);                              // 敷地の中心(幹線からの距離)
-          // 交わる道の歩道の外(中心から9.2m)から奥へ。正面は交わる道を向く。
-          csub(cx+xs*9.2, lz, xs>0?Math.PI/2:-Math.PI/2, ()=>BUILD[type](w,20,{lastRight:false}));
-          z+=w;
-        }
-      }
-    }
     RN=Math.random;
-    bdPieces(ch.group,x0,x0+CL,cross?[[x0+CROSS_A,x0+CROSS_B]]:[]);   // 書き割り(交わる道の所は空ける)
+    // 書き割り。交差点の前後66mは空ける(交わる道の先の写しの両脇が見えるように)。
+    const gaps=[];
+    for(const lp of [lap-1,lap,lap+1]) for(const kc of NIHON_CROSS_CHUNKS){
+      const c=RX0+lp*LAP+kc*CL+CL/2, a=Math.max(x0,c-66), b=Math.min(x0+CL,c+66); if(b>a) gaps.push([a,b]); }
+    gaps.sort((p,q)=>p[0]-q[0]);
+    bdPieces(ch.group,x0,x0+CL,gaps);
     mergeChunk(ch.group);
     if(night) simplifyGroup(ch.group,true);
     return ch;
@@ -1468,8 +1458,8 @@ export function createNihonTown(world, opts={}){
     // ひと固まりにしたので親の変換は単位行列に
   }
   function disposeChunk(ch){
-    signLog.delete(ch.k);
-    world.remove(ch.group);
+    (ch.ghost?signLogGhost:signLogReal).delete(ch.k);
+    ch.group.parent?.remove(ch.group);
     ch.group.traverse(o=>{ if(o.geometry && !Object.values(CGC).includes(o.geometry) && o.geometry!==tGeo && o.geometry!==lGeo) o.geometry.dispose(); });
     ch.texs.forEach(t=>t.dispose()); ch.glows.forEach(([m])=>m.dispose());
   }
@@ -1479,6 +1469,40 @@ export function createNihonTown(world, opts={}){
     const cur=lap*NCH+Math.floor(local/CL), lo=cur-2, hi=cur+7;
     for(const [k,ch] of chunkMap) if(k<lo||k>hi){ disposeChunk(ch); chunkMap.delete(k); }
     for(let k=lo;k<=hi;k++) if(!chunkMap.has(k)){ chunkMap.set(k,buildChunk(k)); break; }   // 1フレームに1つずつ作る（カクつき防止）
+  }
+  // ---- 交わる道の先の写し(ゴースト) ----
+  // 交差点(区画 NIHON_CROSS_CHUNKS)の交わる道は幹線から30mまで。その先には「交差点を直進した先の
+  // 幹線の街並み(区画 gc+1〜gc+GH_N)」を交差点の中心で90度回して置く。交わる道を進むと、
+  // main.js がその写しと同じ所(幹線の上)へ車を置き直す。前と両脇は写しと同じなので変わって見えない。
+  // 写しの当たり判定は持たない(置き直す前に写しの建物までは行けない)。
+  const GH_N=7;                                         // 写す区画の数(420m。霞で見えなくなる所まで)
+  const GH_SHIFT=6;                                     // 写しをずらす長さ(m)。main.js の置き直しと同じ値
+  const ghostMap=new Map();                             // `${gc}_${s}` → {holder, chunks: Map g→ch}
+  function ghostChunks(){ const out=[]; ghostMap.forEach(gh=>gh.chunks.forEach(ch=>out.push(ch))); return out; }
+  function updateGhosts(px){
+    const lap=Math.floor((px-IA)/LAP), want=new Set();
+    for(const lp of [lap-1,lap,lap+1]) for(const kc of NIHON_CROSS_CHUNKS){
+      const c=RX0+lp*LAP+kc*CL+CL/2; if(Math.abs(c-px)>520) continue;
+      const gc=lp*NCH+kc;
+      for(const sd of [1,-1]){
+        const key=gc+'_'+sd; want.add(key);
+        let gh=ghostMap.get(key);
+        if(!gh){
+          // 写しの座標: 幹線の (X, Z) → 交わる道の (c - sd*Z, sd*(X - c + GH_SHIFT))。
+          // 写しは GH_SHIFT m 奥へずらし、交差点の角の敷地(交わる道に沿って35mまで)と重ならないようにする。
+          const holder=new THREE.Group(); holder.position.set(c,0,sd*(GH_SHIFT-c)); holder.rotation.y=-sd*Math.PI/2; holder.name='ghost';
+          world.add(holder); gh={holder,chunks:new Map()}; ghostMap.set(key,gh);
+        }
+        for(let g=gc+1; g<=gc+GH_N; g++) if(!gh.chunks.has(g)){
+          const tmp=new THREE.Group(); ghostBuilding=true;
+          const ch=buildChunk(g,{parent:tmp,ghost:true});
+          ghostBuilding=false; if(night) simplifyGroup(ch.group,true);
+          gh.holder.add(ch.group); gh.chunks.set(g,ch);
+          return;                                         // 1フレームに1つずつ
+        }
+      }
+    }
+    for(const [key,gh] of ghostMap) if(!want.has(key)){ gh.chunks.forEach(disposeChunk); world.remove(gh.holder); ghostMap.delete(key); }
   }
   function chunkBlocked(x,z,r){ for(const ch of chunkMap.values()) if(ch.cols.some(c=>x>c[0]-r&&x<c[2]+r&&z>c[1]-r&&z<c[3]+r)) return true; return false; }
 
@@ -1556,9 +1580,10 @@ export function createNihonTown(world, opts={}){
   function setNight(n){
     night=n;
     applyShade();
-    simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n));
+    simplifyGroup(scene,n); chunkMap.forEach(ch=>simplifyGroup(ch.group,n)); ghostChunks().forEach(ch=>simplifyGroup(ch.group,n));
     glowMats.forEach(([m,v])=>m.emissiveIntensity=n?v:0);
     chunkMap.forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
+    ghostChunks().forEach(ch=>ch.glows.forEach(([m,v])=>m.emissiveIntensity=n?v:0));
     // 街灯の電球(灯具)は夜に光るが、点光源での照明計算はしない(昼も夜も外す)。
     // 道路が明るいのは光だまりの円の所だけ。
     lamps.forEach(L=>{ L.intensity=0; L.visible=false; });
@@ -1583,6 +1608,7 @@ export function createNihonTown(world, opts={}){
   function update(dt,t,player){
     const px=player?player.x:0;
     updateChunks(px);
+    updateGhosts(px);
     // コンビニ区間を一番近い周へ。
     scene.position.x=Math.round((px-(IA+RX0)/2)/LAP)*LAP;
     updateSignals(t);

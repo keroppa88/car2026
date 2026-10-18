@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-57';
-import { createNeoCity } from './neo-city.js?v=20261018-town-57';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-59';
+import { createNeoCity } from './neo-city.js?v=20261018-town-59';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -71,42 +71,54 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let neoCity = null;
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
-  // 街並み: 交差点で交わる道へ曲がり始めたら、交差点の中心を軸に車の位置・向き・速さを
-  // まとめて90度回して置き直す。交差点は十字でどの方向も同じ形なので、
-  // 「交わる道へ曲がっている途中」が「幹線へ曲がっている途中」に入れ替わり、曲がり切ると
-  // そのまま幹線を前へ走っている。カメラは車に付いて動くので流れない。
-  //  - 交差点の中(中心から NEO_CROSS_BOX m 以内)で、交わる道の方へ NEO_CROSS_TURN 度以上向いた時
-  //  - 一度切り替えたら、交差点を出るまで次の切り替えはしない(行ったり来たりしない)
-  const NEO_CROSS_BOX = 9, NEO_CROSS_TURN = 25;
+  // 街並み: 交わる道から幹線へつなぐ。交差点の中心を軸に、車の位置・向き・速さをまとめて90度回して
+  // 置き直す(交わる道の上 → 交差点を直進した先の幹線の上)。カメラは車に付いて動くので流れない。
+  //  - 区画の交差点: 交わる道の先には「直進した先の幹線」の写しが描いてある(nihon-town.js)。
+  //    交わる道を NEO_CROSS_ALONG m 進んだ所で置き直す。前と両脇は写しと同じなので変わって見えない。
+  //  - 最初の交差点(コンビニ区間): 写しが無いので、曲がり始め(交わる道の方へ NEO_CROSS_TURN 度)で置き直す。
+  //    一度切り替えたら交差点を出るまで次の切り替えはしない。
+  const NEO_CROSS_ALONG = 40, NEO_CROSS_BOX = 9, NEO_CROSS_TURN = 25;
   let neoCrossLock = false;
-  function neoCrossTransfer() {
-    const period = gunmaCourse.seam.offset.x;
-    let inside = null;
-    for (const [a, b] of NIHON_CROSSINGS) {
-      const c0 = (a + b) / 2;
-      const c = c0 + Math.round((player.pos.x - c0) / period) * period;
-      if (Math.abs(player.pos.x - c) <= NEO_CROSS_BOX && Math.abs(player.pos.z) <= NEO_CROSS_BOX) { inside = c; break; }
-    }
-    if (inside === null) { neoCrossLock = false; return; }
-    if (neoCrossLock) return;
-    const towardZ = Math.cos(player.heading);                    // 車の向きの z 成分(交わる道の向き)
-    if (Math.abs(towardZ) < Math.sin(THREE.MathUtils.degToRad(NEO_CROSS_TURN))) return;
-    const side = Math.sign(towardZ);
-    if (player.vel.z * side <= 0) return;                        // 交わる道の方へ動いている時だけ
-    const c = inside;
+  // shift: 写しを奥へずらした長さ(nihon-town.js の GH_SHIFT)。最初の交差点は 0。
+  function neoCrossRotate(c, side, shift = 0) {
     const along = player.pos.z * side;                           // 交わる道に沿った位置(交差点の中心から)
     const leftOffset = (player.pos.x - c) * side;                // 交わる道の中心から左への位置
     const forward = player.vel.z * side, lateral = player.vel.x * side;
-    player.pos.x = c + along;
+    player.pos.x = c + along - shift;
     player.pos.z = -leftOffset;
     player.vel.x = forward;
     player.vel.z = -lateral;
     player.heading += Math.PI / 2 - (side > 0 ? 0 : Math.PI);
     neoLastFreePos = { x: player.pos.x, z: player.pos.z };
     car2LastRoadPos.copy(player.pos);
-    neoCrossLock = true;
     document.body.dataset.neoCrossTransfers = String(
       Number(document.body.dataset.neoCrossTransfers || 0) + 1);
+  }
+  function neoCrossTransfer() {
+    const period = gunmaCourse.seam.offset.x;
+    const towardZ = Math.cos(player.heading);                    // 車の向きの z 成分(交わる道の向き)
+    let inIntroBox = false;
+    NIHON_CROSSINGS.forEach(([a, b], index) => {
+      const c0 = (a + b) / 2;
+      const c = c0 + Math.round((player.pos.x - c0) / period) * period;
+      if (index === 0) {
+        if (Math.abs(player.pos.x - c) > NEO_CROSS_BOX || Math.abs(player.pos.z) > NEO_CROSS_BOX) return;
+        inIntroBox = true;
+        if (neoCrossLock) return;
+        if (Math.abs(towardZ) < Math.sin(THREE.MathUtils.degToRad(NEO_CROSS_TURN))) return;
+        const side = Math.sign(towardZ);
+        if (player.vel.z * side <= 0) return;
+        neoCrossRotate(c, side);
+        neoCrossLock = true;
+        return;
+      }
+      if (Math.abs(player.pos.x - c) > 6) return;                // 交わる道の車道の上だけ
+      const side = Math.sign(player.pos.z);
+      if (Math.abs(player.pos.z) < NEO_CROSS_ALONG) return;
+      if (player.vel.z * side <= 0 || towardZ * side < Math.SQRT1_2) return;   // 交差点から離れる向き(45度以内)
+      neoCrossRotate(c, side, 6);
+    });
+    if (!inIntroBox) neoCrossLock = false;
   }
   const NEO_LAMPS_ON_METER = 0.16;   // 街並み: 地平線の明暗がこれ以下なら街の灯りを点ける
   const NEO_CPU_DETAIL_DISTANCE = 80;  // 街並み: これより遠いCPU車は箱で描く(m)
