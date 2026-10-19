@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-70';
-import { createNeoCity } from './neo-city.js?v=20261018-town-70';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-71';
+import { createNeoCity } from './neo-city.js?v=20261018-town-71';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -1216,14 +1216,16 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   function addTurnSignals(tilt) {
     const box = tilt.userData.bodyBox;
     if (!box) return;
-    const hw = Math.max(0.5, Math.min(Math.abs(box.min.x), Math.abs(box.max.x)) - 0.12);
+    // 光は車体の輪郭からはみ出さない大きさ・位置にする(横は車体の端から内へ寄せる)。
+    const SIZE = 0.36;
+    const hw = Math.max(0.4, Math.min(Math.abs(box.min.x), Math.abs(box.max.x)) - SIZE / 2 - 0.08);
     for (const [side, list] of [[1, turnSignalSprites.left], [-1, turnSignalSprites.right]]) {
-      for (const [z, y] of [[box.max.z + 0.05, 0.62], [box.min.z - 0.05, 0.7]]) {
+      for (const [z, y] of [[box.max.z + 0.02, 0.62], [box.min.z - 0.02, 0.7]]) {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-          map: headGlowTex, color: 0xff9a1a, transparent: true, depthWrite: false, toneMapped: false,
+          map: headGlowTex, color: 0xffcc10, transparent: true, depthWrite: false, toneMapped: false,
         }));
         sprite.position.set(side * hw, y, z);
-        sprite.scale.setScalar(0.62);
+        sprite.scale.setScalar(SIZE);
         sprite.renderOrder = 4;
         sprite.visible = false;
         tilt.add(sprite);
