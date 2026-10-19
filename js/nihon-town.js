@@ -516,10 +516,11 @@ export function createNihonTown(world, opts={}){
   {
     const poleM=mat(0x8a8f96), houseM=mat(0x5a6068);
     const lampOff=c=>mat(c,{emissive:c,emissiveIntensity:0.05});
-    function head(x,z,ry,grp){                          // 横型の車両用信号
+    // 横型の車両用信号。灯は箱の +z 側(ry で来る車の方へ向ける)。来る車から見て左から青・黄・赤。
+    function head(x,z,ry,grp){
       const g=new THREE.Group(); g.position.set(x,5.3,z); g.rotation.y=ry; scene.add(g);
       box(1.3,0.42,0.3,houseM,0,-0.21,0,g);
-      const lamps=[0x2fd28a,0xffc23a,0xff3a2a].map((c,i)=>{ const m=lampOff(c); const l=new THREE.Mesh(new THREE.CircleGeometry(0.15,20),m); l.position.set(-0.42+i*0.42,0,-0.16); l.rotation.y=Math.PI; g.add(l); return m; });
+      const lamps=[0x2fd28a,0xffc23a,0xff3a2a].map((c,i)=>{ const m=lampOff(c); const l=new THREE.Mesh(new THREE.CircleGeometry(0.15,20),m); l.position.set(-0.42+i*0.42,0,0.16); g.add(l); return m; });
       sigHeads.push({grp,lamps});
     }
     function ped(x,z,ry,grp){                           // 歩行者用（上が赤、下が青）
@@ -534,8 +535,8 @@ export function createNihonTown(world, opts={}){
     // 車両用：各方向とも交差点の向こう側に設置
     box(0.1,0.1,3.7,poleM,85.5,5.35,-5.85); head(85.5,-4.0,-Math.PI/2,'main');   // 東行き（-z 側の車線）を見る
     box(0.1,0.1,3.7,poleM,70.5,5.35,5.85);  head(70.5,4.0,Math.PI/2,'main');     // 西行き
-    box(4.5,0.1,0.1,poleM,83.25,5.35,7.7);  head(81,7.7,0,'cross');              // 南向き（+z へ進む車）を見る ※-z 側から来る
-    box(4.5,0.1,0.1,poleM,72.75,5.35,-7.7); head(75,-7.7,Math.PI,'cross');       // 北向き
+    box(4.5,0.1,0.1,poleM,83.25,5.35,7.7);  head(81,7.7,Math.PI,'cross');              // 南向き（+z へ進む車）を見る ※-z 側から来る
+    box(4.5,0.1,0.1,poleM,72.75,5.35,-7.7); head(75,-7.7,0,'cross');       // 北向き
     // 歩行者用：横断歩道の両端
     ped(70.5,-7.4,0,'xmain'); ped(70.5,7.4,Math.PI,'xmain'); ped(85.5,-7.4,0,'xmain'); ped(85.5,7.4,Math.PI,'xmain');      // 幹線を渡る
     ped(70.2,-7.7,-Math.PI/2,'xcross'); ped(85.8,-7.7,Math.PI/2,'xcross'); ped(70.2,7.7,-Math.PI/2,'xcross'); ped(85.8,7.7,Math.PI/2,'xcross'); // 交差道路を渡る

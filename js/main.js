@@ -18,8 +18,8 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-68';
-import { createNeoCity } from './neo-city.js?v=20261018-town-68';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-70';
+import { createNeoCity } from './neo-city.js?v=20261018-town-70';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -321,6 +321,29 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // ------------------------------------------------------------- input ----
   const keys = {};
+  // 方向指示器: 0=消灯 / -1=左 / 1=右。点いている間は約0.8秒周期で点滅する。
+  let turnSignal = 0, turnSignalTime = 0;
+  const turnSignalSprites = { left: [], right: [] };
+  // 方向指示器の音(カチカチ)。点いている間は繰り返し鳴らし、消したら止める。
+  const winkerSound = new Audio('sound/winker.mp3');
+  winkerSound.preload = 'auto';
+  winkerSound.loop = true;
+  winkerSound.volume = 0.8;
+  // 曲がり終えたら自動で消す: 点けてからの向きの変化を足し合わせ、
+  // 指示した側へ約55度以上曲がって、ハンドルが戻った(向きの変化が小さくなった)所で消す。
+  let turnSignalTurned = 0, turnSignalLastHeading = null;
+  function setTurnSignal(next) {
+    turnSignal = next;
+    turnSignalTime = 0;
+    turnSignalTurned = 0;
+    turnSignalLastHeading = null;
+    if (next) {
+      winkerSound.currentTime = 0;
+      winkerSound.play().catch(() => {});
+    } else {
+      winkerSound.pause();
+    }
+  }
   let shiftUp = false, shiftDown = false;
   window.addEventListener('keydown', (e) => {
     AUDIO.unlock();
@@ -375,6 +398,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         refreshLampVisibility();
       }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
+      // E: 右の方向指示器 / W: 左の方向指示器(今は街並みだけ)。同じキーでもう一度押すと消える。
+      if (NEO_COURSE && k.toLowerCase() === 'e') setTurnSignal(turnSignal === 1 ? 0 : 1);
+      if (NEO_COURSE && k.toLowerCase() === 'w') setTurnSignal(turnSignal === -1 ? 0 : -1);
       // V: 通常 → ボンネットカメラ → 視点のみ(車体非表示・マウスで視点操作) → 通常
       if (k.toLowerCase() === 'v') switchBonnetView();
       // 曲操作は運転中も有効。I/O で前の曲/次の曲。
@@ -1183,6 +1209,49 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     group.userData.nightLights = lights;
     nightLampGroups.push(lights);
     vehicleLampGroups.push(lights);
+  }
+
+  // 自車の方向指示器。車体の四隅(前後の端の少し外)に橙色の光を置く。
+  // 車体のローカル +x が進む向きの左。昼でも見えるよう、加算ではなく普通の重ね方で描く。
+  function addTurnSignals(tilt) {
+    const box = tilt.userData.bodyBox;
+    if (!box) return;
+    const hw = Math.max(0.5, Math.min(Math.abs(box.min.x), Math.abs(box.max.x)) - 0.12);
+    for (const [side, list] of [[1, turnSignalSprites.left], [-1, turnSignalSprites.right]]) {
+      for (const [z, y] of [[box.max.z + 0.05, 0.62], [box.min.z - 0.05, 0.7]]) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: headGlowTex, color: 0xff9a1a, transparent: true, depthWrite: false, toneMapped: false,
+        }));
+        sprite.position.set(side * hw, y, z);
+        sprite.scale.setScalar(0.62);
+        sprite.renderOrder = 4;
+        sprite.visible = false;
+        tilt.add(sprite);
+        list.push(sprite);
+      }
+    }
+  }
+  function updateTurnSignals(dt) {
+    if (!turnSignalSprites.left.length) return;
+    turnSignalTime += dt;
+    if (turnSignal !== 0 && player.group) {
+      const h = player.heading;
+      if (turnSignalLastHeading !== null) {
+        const dh = Math.atan2(Math.sin(h - turnSignalLastHeading), Math.cos(h - turnSignalLastHeading));
+        // 交差点で幹線へ置き直した時の90度の跳びは数えない。
+        if (Math.abs(dh) < 0.3) {
+          turnSignalTurned += dh;
+          const progress = -turnSignalTurned * turnSignal;   // 右(1)は向きの角度が減る向き
+          const rate = Math.abs(dh) / Math.max(dt, 1e-3);
+          if ((progress > 0.95 && rate < 0.12) || progress > 1.5) setTurnSignal(0);
+        }
+      }
+      turnSignalLastHeading = h;
+    }
+    const on = turnSignal !== 0 && (turnSignalTime % 0.8) < 0.45;
+    turnSignalSprites.left.forEach((s) => { s.visible = on && turnSignal === -1; });
+    turnSignalSprites.right.forEach((s) => { s.visible = on && turnSignal === 1; });
+    document.body.dataset.turnSignal = String(turnSignal);
   }
 
   // 地表の暗さ（0=昼のまま / 1=夜間モードと同じ）。
@@ -4664,6 +4733,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       tilt.updateMatrixWorld(true);
       const inv = new THREE.Matrix4().copy(tilt.matrixWorld).invert();
       box.applyMatrix4(inv);
+      tilt.userData.bodyBox = box.clone();
       for (const sprite of group.userData.nightLights.children) {
         if (sprite.position.z < 0) sprite.position.z = Math.min(sprite.position.z, box.min.z - 0.06);
         else sprite.position.z = Math.max(sprite.position.z, box.max.z + 0.06);
@@ -6389,6 +6459,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const p = makeCarGroup(playerCarMesh);
     player.group = p.group;
     player.tilt = p.tilt;
+    if (NEO_COURSE) {
+      addTurnSignals(p.tilt);
+      const helpWinker = document.getElementById('help-winker');
+      if (helpWinker) helpWinker.style.display = '';
+    }
 
     // 夜間用の自車(toyota86n.vox): フロントライトが開いた夜仕様。
     // 黄色部分(ライト)は発光させる。読み込めない場合は昼の車のまま走る。
@@ -10811,6 +10886,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
       updateFx(dt);
       updateTailTrails(dt);
+      updateTurnSignals(dt);
       updateCamera(dt);
       applyDesertShake(dt);
       updateWeatherEffects(dt);
