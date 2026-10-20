@@ -386,21 +386,6 @@ export function createNihonTown(world, opts={}){
   car(16.25,-26.8,0xe8e4da,Math.PI); car(21.25,-26.8,0x4a6b5a,Math.PI);
   lot(31,0xcac2ad,-1,0x3d4a63);
 
-  // 公園の奥・斜め奥の家（入口は道路と反対側、庭に木）
-  function backLot(x0,x1,wall,wh=1.2){                                          // 敷地はすき間なく、奥の路地にぴったり
-    const z0=24.15, z1=44.55, cx=(x0+x1)/2, w=x1-x0, zc=(z0+z1)/2;
-    box(w,0.04,z1-z0,0x7f9a5c,cx,0.12,zc);                               // 庭
-    box(w,wh,0.15,blockM,cx,0.15,z0);                                    // 公園側
-    box(0.15,wh,z1-z0,blockM,x0,0.15,zc); box(0.15,wh,z1-z0,blockM,x1,0.15,zc);
-    box((w-2)/2,wh,0.15,blockM,x0+(w-2)/4,0.15,z1); box((w-2)/2,wh,0.15,blockM,x1-(w-2)/4,0.15,z1); // 門は奥側（路地）
-    if(wh>1.5) colliders.push([x0,z0-0.1,x1,z0+0.1],[x0-0.1,z0,x0+0.1,z1],[x1-0.1,z0,x1+0.1,z1],[x0,z1-0.1,cx-1,z1+0.1],[cx+1,z1-0.1,x1,z1+0.1]);
-    box(2,0.03,5.1,0xc8b48e,cx,0.14,41.9);                               // 玄関までの小道
-    house(cx,39.3,1,9,wall,false);
-    tree(cx-4,27,1.1); tree(cx+3.8,27.4,0.9); tree(cx-0.5,29.2,1.2); tree(cx-3.6,31,0.8); tree(cx+4,30.6,1);
-  }
-  backLot(-29,-13.2,0xe2dccd,2.3);                                     // 電波ビルの奥まで敷地を広げ、高い塀で囲む
-  backLot(-42.4,-29,0xd6cfbe);
-
   // コンビニ隣の家のさらに隣：古いビル（4階建て、汚れた外壁、屋上に貯水タンク）
   {
     const cx=36.5, zf=10.6, W=10, D=9, floors=4, FH=3, cz=zf+D/2, H=floors*FH;
@@ -428,26 +413,6 @@ export function createNihonTown(world, opts={}){
     for(const dx of [-0.6,0.6]) for(const dz of [-0.6,0.6]) box(0.1,1.2,0.1,0x6a6d70,cx+2+dx,0.5+H,cz+dz);
     const tank=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1.6,16),mat(0xb9bdb8)); tank.position.set(cx+2,0.5+H+2,cz); scene.add(tank);
     box(1.6,0.9,1.6,0x9a9488,cx-2.5,0.5+H,cz+1);                                    // 階段室
-  }
-
-  // コンビニ隣の家の奥：アパート（道路側は窓だけ、入口は奥側）
-  {
-    const cx=22, zb=25.5, zf=33.5, W=16, floors=3, FH=2.9;
-    box(W,floors*FH,zf-zb,0xd8d2c6,cx,0.15,(zb+zf)/2);
-    box(W+0.3,0.4,zf-zb+0.3,0xa8a39a,cx,0.15+floors*FH,(zb+zf)/2);     // 屋上の縁
-    for(let f=0;f<floors;f++) for(let i=0;i<4;i++){
-      const x=cx-W/2+2+i*4, y=0.15+f*FH+1.5;
-      const aptLit=[1,0,0,1, 0,1,1,0, 1,0,1,0];                          // 夜の点灯：12部屋中6部屋（ばらばらに）
-      frontPlane(1.4,1.1,x,y,zb,-1,aptLit[f*4+i]?winM:darkWinM);         // 道路側の窓
-      box(1.6,0.08,0.25,0xa8a39a,x,y-0.65,zb-0.12);                      // 窓の水切り
-    }
-    const doorM=mat(0x6e6a62);
-    for(let f=0;f<floors;f++){
-      const y=0.15+f*FH;
-      if(f>0){ box(W,0.15,1.3,0xbab4a8,cx,y,zf+0.65); box(W,1.0,0.08,0x8e9296,cx,y+0.15,zf+1.28); } // 外廊下と手すり
-      for(let i=0;i<4;i++) frontPlane(0.9,2,cx-W/2+2+i*4,y+1.05,zf,1,doorM);  // 玄関ドア
-    }
-    box(1.4,floors*FH,3,0xbab4a8,cx+W/2+0.7,0.15,zf-0.5);                  // 階段
   }
 
   // ---- 向かい側の右端：タイル張りの2階建てビル（1階は美容室、2階は横長の窓、屋上に手すり）----
@@ -713,146 +678,8 @@ export function createNihonTown(world, opts={}){
   }
 
   keepSolid=false;
-  // ---- 裏の路地（車1台がぎりぎり通れる幅）----
-  // 公園隣の家の脇から奥へ → コンビニ裏を横切る → 工場の脇を折れ曲がって交差する道へ。途中で奥へ分岐。
-  {
-    const alleyM=mat(0x4a4c4f,{emissive:0x8a8f9a,emissiveIntensity:0}), _ag=glowMats.push([alleyM,0.16]), ltM=mat(0x707275);
-    const strip=(x0,z0,x1,z1,m=alleyM,y=0.05)=>box(x1-x0,0.06,z1-z0,m,(x0+x1)/2,y,(z0+z1)/2);
-    strip(-45.6,9.2,-42.4,48.2);                     // 入口：家の脇から奥へ
-    strip(-45.6,44.6,33.2,48.2);                     // コンビニ裏を横切る道
-    strip(29.6,44.6,33.2,62.4);                      // 工場の脇（1回目の曲がり）
-    strip(29.6,58.8,72,62.4);                        // 工場の裏（2回目の曲がり）→ 交差する道へ
-    strip(13.4,48.2,16.8,72);                        // 奥への分岐
-    // 黄色の区域：コンビニ裏の空き地（アスファルト）
-    strip(-15.5,24,-13,34.5,ltM,0.06); strip(-15.5,34.5,13.4,44.6,ltM,0.06);
-    // アパートの駐車場と出入口（アパートの玄関側）
-    strip(13.4,35,29.6,44.6,ltM,0.06);
-    for(let i=0;i<=5;i++) box(0.12,0.01,5,0xf0f0f0,14.4+i*2.6,0.13,40.5);
-    for(let i=0;i<5;i++){ box(1.3,0.12,0.2,0xc9b07a,15.7+i*2.6,0.12,38.4); if(i!==2&&i!==4) car(15.7+i*2.6,40.5,[0xf3f3f0,0x5d6f84,0x9aa0a6,0x2e2e2e,0x8c9a7a][i],Math.PI); }
-    // コンビニとの境目の塀
-    // コンビニ左横のすき間：アスファルト舗装とゴミ箱3つ
-    box(3.1,0.06,10.6,mat(0x707275),-11.6,0.06,29.3);
-    [[26.2,0x2f5f9e],[27.5,0x6b7076],[28.8,0x3f7a4a]].forEach(([z,c])=>{
-      box(0.8,1.0,0.7,c,-10.6,0.12,z); box(0.86,0.1,0.76,0x30343a,-10.6,1.12,z);
-      colliders.push([-11,z-0.35,-10.2,z+0.35]); });
-    lotWall(10.2,24.15,14.1,24.15);                              // 自販機（赤・白）の背後〜隣の家の高い壁まで
-    // アパート横・月極駐車場の奥・工場横のすき間：木が茂る小さな森
-    box(12.9,0.06,6.3,mat(0x5f7f46),36.65,0.06,27.15);
-    box(2.1,0.06,14.3,mat(0x5f7f46),32.45,0.06,37.45);
-    { let k=3; const r=()=>{ k=(k*9301+49297)%233280; return k/233280; };
-      for(let x=31.4;x<=42.2;x+=2.1) for(let z=25;z<=29.6;z+=2.2){ const tx=x+(r()-0.5)*0.8, tz=z+(r()-0.5)*0.8; tree(tx,tz,0.8+r()*0.6); colliders.push([tx-0.3,tz-0.3,tx+0.3,tz+0.3]); }
-      for(let z=31.5;z<=43.5;z+=2.3){ const tz=z+(r()-0.5)*0.6; tree(32.45,tz,0.6+r()*0.4); colliders.push([32.15,tz-0.3,32.75,tz+0.3]); } }
-    box(3.9,0.06,10.8,mat(0x707275),12.05,0.06,29.7);               // アパート入口前（店の横〜アパート）をアスファルト舗装
-    // アパート側面（コンビニ側）の中央に入口と屋根
-    { const dm=mat(0x3a4148,{emissive:0xfff2d8,emissiveIntensity:0}); glowMats.push([dm,.8]);
-      const d=new THREE.Mesh(new THREE.PlaneGeometry(1.4,2.2),dm); d.position.set(13.97,0.15+1.1,29.5); d.rotation.y=-Math.PI/2; scene.add(d);
-      box(0.06,2.3,1.6,0x8e9296,13.99,0.15,29.5);
-      box(0.85,0.12,2.6,0x8e9296,13.6,2.55,29.5); box(1.2,0.12,2.2,0xbdbab3,13.55,0.12,29.5); }
-    // 駐車場に面した駐輪場（屋根付き、アパートの廊下側）
-    { const x0=15.2, x1=25.2, z=36.2;
-      const rf=box(x1-x0,0.08,1.9,0x8e9296,(x0+x1)/2,0,z); rf.position.y=2.25; rf.rotation.x=-0.08;
-      for(let x=x0+0.2;x<=x1;x+=3.3) box(0.08,2.25,0.08,0x6e7378,x,0.12,z+0.85);
-      const tire=new THREE.TorusGeometry(0.3,0.035,6,14), bm=mat(0x2b2b2b);
-      for(let i=0;i<10;i++){ const g=new THREE.Group(), bx=x0+0.6+i*0.95;
-        for(const dz of [-0.48,0.48]){ const w=new THREE.Mesh(tire,bm); w.rotation.y=Math.PI/2; w.position.set(0,0.32,dz); g.add(w); }
-        box(0.05,0.05,0.95,[0xc23b2e,0xd8d8d8,0x2f5f9e,0x3a3a3a][i%4],0,0.62,0,g); box(0.25,0.05,0.18,0x222222,0,0.88,-0.2,g); box(0.4,0.04,0.04,0x9aa0a6,0,0.95,0.42,g);
-        g.position.set(bx,0.12,z); scene.add(g); }
-      colliders.push([x0,z-0.8,x1,z+0.9]); }
-    // 路地の奥の住宅（水色の位置）：正面は路地側
-    const pal=[0xe2dccd,0xd6cfbe,0xcfc6b2,0xd9d3c4];
-    // 敷地はすき間なく隣り合わせ（境の塀は1枚を共有）
-    const lots=[[-42.4,-23.8],[-23.8,-5.2],[-5.2,13.4],[16.8,29.6]], z0=48.2, z1=62;
-    lots.forEach(([a,b],i)=>{
-      const cx=(a+b)/2, w=b-a, hw=Math.min(w-5,10), side=i%2?-1:1;
-      box(w,0.04,z1-z0,0x8e9a6e,cx,0.08,(z0+z1)/2);                                      // 庭
-      const hx=cx-side*1.8;                                             // 駐車スペースの分だけ家を横にずらす
-      house(hx,51.8,-1,hw,pal[i],false);
-      colliders.push([hx-hw/2,51.8,hx+hw/2,57.8]);
-      const px=side>0?b-1.75:a+1.75;                                   // 縦向き（道路に直角）の駐車スペース
-      box(3.1,0.04,5.6,0xbdbab3,px,0.12,51.2);
-      if(i!==1) car(px,51.4,[0xf3f3f0,0,0xb3392f,0x3d4a63][i],0);
-      // 道路ぎわの塀（車の出入口と門だけ空ける）
-      const cuts=[[px-1.55,px+1.55],[hx-0.6,hx+0.6]].sort((p,q)=>p[0]-q[0]); let st=a;
-      cuts.forEach(([c0,c1])=>{ if(c0>st) box(c0-st,1.2,0.15,0xbab4a8,(st+c0)/2,0.12,48.3); st=Math.max(st,c1); });
-      if(b>st) box(b-st,1.2,0.15,0xbab4a8,(st+b)/2,0.12,48.3);
-      box(0.25,1.4,0.25,0x8f8a80,hx-0.7,0.12,48.3); box(0.25,1.4,0.25,0x8f8a80,hx+0.7,0.12,48.3);
-    });
-    for(const x of [-42.4,-23.8,-5.2,13.4,16.8,29.6]) box(0.15,1.2,z1-z0,0xbab4a8,x,0.12,(z0+z1)/2);   // 境の塀
-    box(55.8,1.2,0.15,0xbab4a8,-14.5,0.12,z1); box(12.8,1.2,0.15,0xbab4a8,23.2,0.12,z1);
-  }
-
-  // ---- コンビニの裏：塀で囲った敷地の奥に白いレトロなビル（3階建て、屋上に謎の電波塔）＋横は駐車場 ----
-  {
-    // 敷地（塀で囲む。入口は路地側）
-    const lx0=-13.2, lx1=-3.0, lz0=34.6, lz1=44.5, bm=0xbab4a8;
-    box(0.15,1.2,lz1-lz0,bm,lx1,0.12,(lz0+lz1)/2);   // 西側は隣の家の高い塀
-    box((lx1-lx0-3)/2,1.2,0.15,bm,lx0+(lx1-lx0-3)/4,0.12,lz1); box((lx1-lx0-3)/2,1.2,0.15,bm,lx1-(lx1-lx0-3)/4,0.12,lz1);
-    const gc=(lx0+lx1)/2;
-    for(const x of [gc-1.5,gc+1.5]) box(0.3,1.4,0.3,0x8f8a80,x,0.12,lz1);
-    colliders.push([lx1-0.1,lz0,lx1+0.1,lz1],[lx0,lz1-0.1,gc-1.5,lz1+0.1],[gc+1.5,lz1-0.1,lx1,lz1+0.1]);
-    box(2.2,0.03,3.8,0xbdbab3,-8.5,0.12,42.6);                                      // 門から入口へのアプローチ
-
-    // 建物は元の寸法で作り、グループごと 2/3 に縮小して敷地の奥に置く
-    const g=new THREE.Group(), S=2/3; scene.add(g);
-    const B=(w,h,d,m,x,y,z)=>box(w,h,d,m,x,y,z,g);
-    const FP=(w,h,x,y,z,ry,m)=>{ const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m); p.position.set(x,y,z); p.rotation.y=ry; g.add(p); return p; };
-    const bw=11, bd=8.6, H=10, FH=H/3, zf=0, cz=-bd/2;                               // 正面中央が原点
-    const wT=tex(128,128,(c,w,h)=>{ c.fillStyle='#f1efe9'; c.fillRect(0,0,w,h); c.fillStyle='rgba(120,115,100,.10)'; for(let x=0;x<w;x+=8) c.fillRect(x,0,2,h); });
-    wT.wrapS=wT.wrapT=THREE.RepeatWrapping; wT.repeat.set(4,3);
-    const wm=mat(0xffffff,{map:wT}), frame=mat(0x6b6f74);
-    B(bw,H,bd,wm,0,0,cz); B(bw+0.2,0.3,bd+0.2,0xe2ded4,0,FH,cz);
-    const win=(x,y,lit)=>{ B(2.3,1.7,0.08,frame,x,y-0.85,0.04); FP(2.0,1.4,x,y,0.09,0,lit?winM:darkWinM); B(0.06,1.4,0.06,frame,x,y-0.7,0.12); };
-    win(-2.4,FH+1.7,true); win(2.2,FH+1.7,false); win(-2.4,FH*2+1.7,false); win(2.2,FH*2+1.7,true); win(-2.4,1.7,false);
-    const dm=mat(0x3a4148,{emissive:0xfff2d8,emissiveIntensity:0}); glowMats.push([dm,.8]);
-    FP(1.9,2.3,2.2,1.15,0.03,0,dm); B(0.06,2.3,0.06,frame,2.2,0,0.06);
-    B(2.8,0.18,1.2,0xe2ded4,2.2,2.6,0.6); B(2.4,0.15,0.8,0xbdbab3,2.2,0,0.4);
-    for(let f=1;f<3;f++) FP(1.6,1.4,bw/2+0.02,f*FH+1.7,cz,Math.PI/2,f===1?winM:darkWinM);
-    const rm=mat(0xe2ded4);
-    for(const [len,x,z,ax] of [[bw,0,-0.08,'x'],[bw,0,-bd+0.08,'x'],[bd,-bw/2+0.08,cz,'z'],[bd,bw/2-0.08,cz,'z']]){
-      ax==='x'?B(len,0.35,0.15,rm,x,H,z):B(0.15,0.35,len,rm,x,H,z);
-      ax==='x'?B(len,0.08,0.1,rm,x,H+1.0,z):B(0.1,0.08,len,rm,x,H+1.0,z);
-      for(let t=-len/2+0.3;t<len/2;t+=0.6) ax==='x'?B(0.06,0.7,0.06,rm,x+t,H+0.3,z):B(0.06,0.7,0.06,rm,x,H+0.3,z+t);
-    }
-    const px=-0.6, pz=cz-0.6, ps=4.4, ph=3;
-    B(ps,ph,ps,wm,px,H,pz); B(ps+0.2,0.2,ps+0.2,0xe2ded4,px,H+ph,pz);
-    FP(0.9,2,px+0.8,H+1,pz+ps/2+0.02,0,mat(0x8a8f96));
-    for(const dz of [-0.25,0.25]) B(0.05,ph,0.05,frame,px-ps/2-0.06,H,pz+1+dz);
-    for(let y=0.3;y<ph;y+=0.35) B(0.05,0.04,0.5,frame,px-ps/2-0.06,H+y,pz+1);
-    // 電波塔：さらに半分に縮小（塔屋の上が原点）
-    const t=new THREE.Group(); t.position.set(px,H+ph+0.2,pz); t.scale.setScalar(0.5); g.add(t);
-    const T=(w,h,d,m,x,y,z)=>box(w,h,d,m,x,y,z,t);
-    const steel=mat(0x8a8f96), legH=5.6, hw=1.3;
-    for(const sx of [-1,1]) for(const sz of [-1,1]) T(0.14,legH,0.14,steel,sx*hw,0,sz*hw);
-    const diag=Math.hypot(hw*2,legH/2), ang=Math.atan2(legH/2,hw*2);
-    for(let k=0;k<2;k++){ const yc=legH/4+k*legH/2;
-      for(const sz of [-1,1]) for(const sg of [-1,1]){ const d=T(diag,0.08,0.08,steel,0,0,sz*hw); d.position.y=yc; d.rotation.z=sg*ang; }
-      for(const sx of [-1,1]) for(const sg of [-1,1]){ const d=T(0.08,0.08,diag,steel,sx*hw,0,0); d.position.y=yc; d.rotation.x=sg*ang; }
-      T(hw*2,0.08,0.08,steel,0,(k+1)*legH/2,-hw); T(hw*2,0.08,0.08,steel,0,(k+1)*legH/2,hw);
-    }
-    const pf=legH;
-    T(3.8,0.35,3.8,0xe8e6e0,0,pf,0); T(3.9,0.06,3.9,steel,0,pf+0.9,0);
-    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.05,4.6,20),mat(0xf0eee8)); cyl.position.set(0,pf+0.35+2.3,0); t.add(cyl);
-    for(let y=0.8;y<4.6;y+=0.75){ const r=new THREE.Mesh(new THREE.TorusGeometry(1.07,0.04,6,24),steel); r.rotation.x=Math.PI/2; r.position.set(0,pf+0.35+y,0); t.add(r); }
-    T(0.04,4.6,0.04,steel,-0.18,pf+0.35,1.12); T(0.04,4.6,0.04,steel,0.18,pf+0.35,1.12);
-    for(let y=0.3;y<4.6;y+=0.35) T(0.4,0.04,0.04,steel,0,pf+0.35+y,1.12);
-    const dome=new THREE.Mesh(new THREE.SphereGeometry(1.3,20,14),mat(0xf6f5f1)); dome.position.set(0,pf+0.35+4.6+1.0,0); t.add(dome);
-    T(0.08,2.4,0.08,steel,0,pf+0.35+4.6+2.2,0);
-    const red=new THREE.Mesh(new THREE.SphereGeometry(0.15,8,6),mat(0xff3a2a,{emissive:0xff2a1a,emissiveIntensity:1})); red.position.set(0,pf+0.35+4.6+4.7,0); t.add(red);
-    // 建物の正面中央を (-9.2, 40.6) に置く（門から少し歩いた奥）
-    g.scale.setScalar(S); g.position.set(-9.2-2.2*S+2.2*S,0.12,40.6);
-    colliders.push([-9.2-bw*S/2,40.6-bd*S,-9.2+bw*S/2,40.6]);
-
-    // 横の空きスペースは駐車場（路地から入る）
-    for(let i=0;i<=5;i++) box(0.12,0.01,5,0xf0f0f0,-1.6+i*2.6,0.13,40.6);
-    for(let i=0;i<5;i++){ box(1.3,0.12,0.2,0xc9b07a,-0.3+i*2.6,0.12,38.4); if(i===1||i===2||i===4) car(-0.3+i*2.6,40.6,[0,0xf3f3f0,0x5d6f84,0,0x9aa0a6][i],Math.PI); }
-  }
-
-  // ---- 時計塔ビル：敷地を塀で囲み、ビル裏の空き地は駐車場 ----
-  lotWall(124.9,-9.4,124.9,-49.2); lotWall(87,-49.1,125,-49.1);
-  for(let i=0;i<14;i++){ const x=89+i*2.6; box(0.12,0.01,5,0xf0f0f0,x,0.17,-38); box(0.12,0.01,5,0xf0f0f0,x,0.17,-45.5);
-    if(i<13){ box(1.4,0.12,0.2,0xc9b07a,x+1.3,0.16,-40.2); box(1.4,0.12,0.2,0xc9b07a,x+1.3,0.16,-47.7);
-      if((i*5)%7<4) car(x+1.3,-38,[0xf3f3f0,0x2e2e2e,0x5d6f84,0x9aa0a6][i%4],0); if((i*3)%5<2) car(x+1.3,-45.5,[0xb3392f,0xe8e4da,0x3d4a63][i%3],Math.PI); } }
-
+  // スタート地点のまわりは、道路に面していない建物(公園の奥の家・アパート・裏の路地と奥の住宅・
+  // コンビニ裏のビル・ビル裏の駐車場・駐車場奥の工場)を省いて軽くする。
   // ---- 時計塔ビルの隣：白いタイル張りの細長いビル（茶色い太枠の窓）----
   {
     const x0=125.6, x1=140, cx=(x0+x1)/2, zf=-10.6, bw=11, bd=13, FL=4, FH=3.3, H=FL*FH, cz=zf-bd/2;
@@ -887,42 +714,6 @@ export function createNihonTown(world, opts={}){
       const p=new THREE.Mesh(new THREE.PlaneGeometry(1.1,1),(f+k)%3===0?winM:darkWinM); p.position.set(cx+bw/2+0.02,y,z); p.rotation.y=Math.PI/2; scene.add(p); }
     box(0.12,H,0.12,0xd8d8d4,cx+bw/2+0.08,0.15,zf-0.6);
     tree(cx-bw/2-0.1,zf+1.6,0.9);
-  }
-
-  // ---- 月極駐車場の奥：トタン屋根の町工場（敷地はブロック塀、軽トラが停まっている）----
-  {
-    const x0=33.5, x1=68.6, z0=30.3, z1=58, cx=(x0+x1)/2;
-    box(x1-x0,0.06,z1-z0,mat(0x707275),cx,0.1,(z0+z1)/2);                     // 薄いアスファルト
-    // ブロック塀（入口は交差する道の側）
-    lotWall(x0,z0,x0,z1); lotWall(x0,z1,x1,z1); lotWall(x0,z0,43.1,z0);
-    lotWall(x1,z0,x1,32); lotWall(x1,39,x1,z1);
-    // トタンの外壁（明るいグレー）と屋根（濃いグレー）
-    const tin=(base,dark)=>{ const t=tex(128,128,(g,w,h)=>{ for(let x=0;x<w;x+=8){ g.fillStyle=base; g.fillRect(x,0,5,h); g.fillStyle=dark; g.fillRect(x+5,0,3,h); } }); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t; };
-    const wT=tin('#a9adb1','#8f9398'); wT.repeat.set(8,1);
-    const rT=tin('#6c7177','#585c61'); rT.repeat.set(1,10);
-    const wallG=mat(0xffffff,{map:wT}), roofG=mat(0xffffff,{map:rT});
-    const bx=51, bw=28, bd=16, zf=40, H=6, cz=zf+bd/2;
-    box(bw,H,bd,wallG,bx,0.15,cz); colliders.push([bx-bw/2,zf,bx+bw/2,zf+bd]);
-    box(bw+0.1,0.5,bd+0.1,0x7d8287,bx,0.15,cz);                                      // 足元の腰（濃いグレー）
-    const sh=new THREE.Shape([new THREE.Vector2(-bd/2-0.6,0),new THREE.Vector2(bd/2+0.6,0),new THREE.Vector2(0,2.6)]);
-    const rg=new THREE.ExtrudeGeometry(sh,{depth:bw+0.6,bevelEnabled:false}); rg.translate(0,0,-(bw+0.6)/2);
-    const roof=new THREE.Mesh(rg,[wallG,roofG]); roof.rotation.y=Math.PI/2; roof.position.set(bx,0.15+H,cz); scene.add(roof);
-    // 正面中央のシャッターと、小さな事務所の扉・窓
-    const shT=tex(128,128,(g,w,h)=>{ g.fillStyle='#b5b8bb'; g.fillRect(0,0,w,h); g.fillStyle='#8d9094'; for(let y=0;y<h;y+=6) g.fillRect(0,y,w,2); });
-    frontPlane(5,4.4,bx,0.15+2.2,zf,-1,mat(0xffffff,{map:shT})); box(5.4,0.4,0.3,0x5f646a,bx,4.55,zf-0.15);
-    frontPlane(0.9,2,bx-9,1.15,zf,-1,mat(0x5a5f66)); frontPlane(1.8,1,bx-6.5,1.9,zf,-1,winM); frontPlane(1.8,1,bx+8,1.9,zf,-1,darkWinM);
-    const nt=tex(256,48,(g,w,h)=>{ g.fillStyle='#f2f0ea'; g.fillRect(0,0,w,h); g.fillStyle='#1d2a4a'; g.font='bold 28px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('有限会社 青葉製作所',w/2,h/2+2); });
-    frontPlane(5,0.9,bx,5.2,zf,-1,mat(0xffffff,{map:nt}));
-    // 軽トラ（シャッター前の左右に2台ずつ）
-    function keiTruck(x,z,ry){
-      const g=new THREE.Group(), wM=mat(0xf2f2f0);
-      box(1.45,1.25,1.25,wM,0,0.35,1.05,g); box(1.38,0.5,0.04,0x2b3440,0,1.0,1.69,g);       // 運転席と窓
-      box(1.45,0.12,2.0,0x9aa0a6,0,0.55,-0.6,g);                                           // 荷台
-      for(const s of [-1,1]) box(0.05,0.35,2.0,wM,s*0.7,0.67,-0.6,g); box(1.45,0.35,0.05,wM,0,0.67,-1.58,g); box(1.45,0.5,0.05,0x777d85,0,0.67,0.4,g);
-      for(const a of [-0.65,0.65]) for(const b of [-1.1,1.1]){ const w=new THREE.Mesh(new THREE.CylinderGeometry(.28,.28,.2,12),mat(0x1d1d1d)); w.rotation.z=Math.PI/2; w.position.set(a,.28,b); g.add(w); }
-      g.position.set(x,0.13,z); g.rotation.y=ry; scene.add(g); colliders.push([x-1,z-1.8,x+1,z+1.8]);
-    }
-    keiTruck(bx-11,zf-3,Math.PI); keiTruck(bx-8,zf-3.2,Math.PI); keiTruck(bx+8,zf-3,Math.PI); keiTruck(bx+11,zf-3.3,Math.PI);
   }
 
   const lampPools=[];
@@ -1546,10 +1337,17 @@ export function createNihonTown(world, opts={}){
     ch.group.traverse(o=>{ if(o.geometry && !Object.values(CGC).includes(o.geometry) && o.geometry!==tGeo && o.geometry!==lGeo) o.geometry.dispose(); });
     ch.texs.forEach(t=>t.dispose()); ch.glows.forEach(([m])=>m.dispose());
   }
+  // 見ている向き: +x を向いていれば +1、-x なら -1。区画は見ている側を遠くまで作る。
+  let viewDir=1;
+  // x にある区画の通し番号。コンビニ区間の中なら、lo 側はその先の区画・hi 側はその手前の区画にする。
+  function chunkAt(x,hiSide){
+    const lap=Math.floor((x-IA)/LAP), local=x-RX0-lap*LAP;
+    if(local<0) return lap*NCH-(hiSide?1:0);
+    return lap*NCH+Math.floor(local/CL);
+  }
   function updateChunks(fx){
-    const lap=Math.floor((fx-IA)/LAP), local=fx-IA-lap*LAP-(RX0-IA);
-    // 前は約400m先まで(霞で見えなくなる距離)、後ろは約120m。
-    const cur=lap*NCH+Math.floor(local/CL), lo=cur-2, hi=cur+7;
+    // 見ている側は約450m先まで(霞で見えなくなる距離)、反対側は約120m。
+    const lo=chunkAt(fx-(viewDir>0?120:450),false), hi=chunkAt(fx+(viewDir>0?450:120),true);
     for(const [k,ch] of chunkMap) if(k<lo||k>hi){ disposeChunk(ch); chunkMap.delete(k); }
     for(let k=lo;k<=hi;k++) if(!chunkMap.has(k)){ chunkMap.set(k,buildChunk(k)); break; }   // 1フレームに1つずつ作る（カクつき防止）
   }
@@ -1690,6 +1488,8 @@ export function createNihonTown(world, opts={}){
   // player は見ている位置(カメラ)。周をまたいだ座標でもよい。
   function update(dt,t,player){
     const px=player?player.x:0;
+    // 向きが変わったら作る範囲を切り替える(横向き付近で行ったり来たりしないよう、はっきり向いた時だけ)。
+    if(player && player.dirX!==undefined){ if(player.dirX>0.35) viewDir=1; else if(player.dirX<-0.35) viewDir=-1; }
     updateChunks(px);
     updateGhosts(px);
     // コンビニ区間を一番近い周へ。

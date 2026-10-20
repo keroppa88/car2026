@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { createNihonTown } from './nihon-town.js?v=20261018-town-71';
+import { createNihonTown } from './nihon-town.js?v=20261018-town-73';
 
 // 街並み(旧NeoTokyo)の見た目。中身は nihon-town.js(日本の街並み)。
 // 地図グループの外に置き、車のレイキャストの対象にしない。
@@ -9,6 +9,7 @@ export function createNeoCity(scene, course, startX = 0) {
   scene.add(group);
   const town = createNihonTown(group, { startX });
   let elapsed = 0;
+  const _dir = new THREE.Vector3();
   return {
     group,
     // 建物・塀・電柱・駐車中の車にぶつかるか(半径 R の円で調べる)。
@@ -19,7 +20,8 @@ export function createNeoCity(scene, course, startX = 0) {
       elapsed += dt;
       if (town.isNight() !== nightMode) town.setNight(nightMode);
       town.setDusk(dusk);
-      town.update(dt, elapsed, { x: camera.position.x, z: camera.position.z });
+      camera.getWorldDirection(_dir);
+      town.update(dt, elapsed, { x: camera.position.x, z: camera.position.z, dirX: _dir.x });
       group.visible = !hidden;
     },
   };
