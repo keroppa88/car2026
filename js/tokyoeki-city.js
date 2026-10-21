@@ -193,6 +193,32 @@ function disc(x, z, r, y, out) {
     out.push(x, y, z, x + Math.cos(b) * r, y, z + Math.sin(b) * r, x + Math.cos(a) * r, y, z + Math.sin(a) * r);
   }
 }
+// 向きを持った箱を、まとめて描くための配列へ足す(ang は y 軸まわり、+z が前)。
+const _BOX = (() => {
+  const g = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  return { p: g.getAttribute('position').array, n: g.getAttribute('normal').array };
+})();
+function boxInto(out, cx, cy, cz, sx, sy, sz, ang = 0) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  for (let i = 0; i < _BOX.p.length; i += 3) {
+    const x = _BOX.p[i] * sx, y = _BOX.p[i + 1] * sy, z = _BOX.p[i + 2] * sz;
+    out.p.push(cx + x * c + z * s, cy + y, cz - x * s + z * c);
+    const nx = _BOX.n[i], ny = _BOX.n[i + 1], nz = _BOX.n[i + 2];
+    out.n.push(nx * c + nz * s, ny, -nx * s + nz * c);
+  }
+}
+function solidMesh(o, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+  const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; return m;
+}
+const distToSeg = (x, z, a, b) => {
+  const ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez || 1;
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / L2));
+  return Math.hypot(a[0] + ex * t - x, a[1] + ez * t - z);
+};
+
 function buildRoads(data, group) {
   const white = [], yellow = [], curb = [];
   // 車道(交差点を含めた全体の形)は多角形で受け取る。縁石はその縁。
@@ -237,6 +263,84 @@ function buildRoads(data, group) {
       if (s.lanes >= 2) rect(Q.x + lx * w / 2, Q.z + lz * w / 2, Math.atan2(dx, dz), 0.45, w, 0.035, white);
     }
   }
+  // ---- 歩道の柵(片側2車線以上の大通り) ----
+  // 縁石のすぐ内側(歩道側)に高さ0.9mの柵。交差点・横断歩道の所と、細い道の入口は空ける。
+  const fence = { p: [], n: [] };
+  const nearNarrow = (x, z) => data.narrow.some((n) => { for (let i = 0; i + 1 < n.pts.length; i++) if (distToSeg(x, z, n.pts[i], n.pts[i + 1]) < 4.5) return true; return false; });
+  for (const s of data.main) {
+    if (s.lanes < 4) continue;
+    const half = s.lanes * LANE / 2, L = polyLength(s.pts);
+    const ra = radius.get(s.a) || 0, rb = radius.get(s.b) || 0;
+    const f0 = ra ? ra + 4 + 1.5 : 0, f1 = L - (rb ? rb + 4 + 1.5 : 0);
+    if (f1 - f0 < 6) continue;
+    for (const sd of [-1, 1]) {
+      const line = offsetPoly(cutPoly(s.pts, f0, f1), sd * (half + 0.6));
+      const Lf = polyLength(line), n = Math.max(1, Math.round(Lf / 2));
+      let prev = null;
+      for (let k = 0; k <= n; k++) {
+        const P = pointAt(line, Lf * k / n);
+        const ok = !nearNarrow(P.x, P.z);
+        if (ok) boxInto(fence, P.x, 0.45, P.z, 0.07, 0.9, 0.07);          // 支柱
+        if (ok && prev) {                                                   // 上と下の横棒
+          const mx = (P.x + prev.x) / 2, mz = (P.z + prev.z) / 2, len = Math.hypot(P.x - prev.x, P.z - prev.z), ang = Math.atan2(P.x - prev.x, P.z - prev.z);
+          boxInto(fence, mx, 0.85, mz, 0.06, 0.06, len, ang); boxInto(fence, mx, 0.4, mz, 0.04, 0.04, len, ang);
+        }
+        prev = ok ? P : null;
+      }
+    }
+  }
+  // ---- 信号機(片側2車線以上の道が来る交差点) ----
+  // 来る道ごとに、交差点の向こう側の左の角に柱を立て、腕を車線の上へ出して灯を来る車へ向ける。
+  // 灯は来る車から見て左から青・黄・赤。交差点の中で向きの近い道どうしを同じ組にし、2組を交互に青にする。
+  const sig = { pole: { p: [], n: [] }, head: { p: [], n: [] }, lamps: [0, 1].map(() => [0, 1, 2].map(() => ({ p: [], n: [] }))) };
+  let signalCount = 0;
+  for (const [node, list] of inc) {
+    if (list.length < 3 || !list.some((s) => s.lanes >= 4)) continue;
+    const [cx, cz] = data.nodes[node - 1], r = radius.get(node);
+    // 交差点へ向かう向き(道の端の接線)
+    let app = list.map((s) => {
+      const atStart = s.a === node, L = polyLength(s.pts);
+      const P = pointAt(s.pts, atStart ? Math.min(L, r + 8) : Math.max(0, L - r - 8));
+      const dx = atStart ? -P.tx : P.tx, dz = atStart ? -P.tz : P.tz;
+      return { s, dx, dz };
+    });
+    // 中央分離帯で2本に分かれた道は、同じ向きの道として1つにまとめる(車線の多い方を残す)。
+    app.sort((p, q) => q.s.lanes - p.s.lanes);
+    for (let i = app.length - 1; i > 0; i--) if (app.slice(0, i).some((B) => B.dx * app[i].dx + B.dz * app[i].dz > 0.93)) app.splice(i, 1);
+    if (app.length < 3) continue;
+    const ax = app[0];
+    for (const A of app) {
+      const grp = Math.abs(A.dx * ax.dx + A.dz * ax.dz) > 0.7 ? 0 : 1;
+      const halfA = Math.max(1, A.s.lanes) * LANE / 2;
+      const lx = A.dz, lz = -A.dx;                       // 来る車の左
+      // 柱は交差点の向こう側の左の歩道。まっすぐ先に続く道があればその歩道、無ければ(丁字路)突き当たりの歩道。
+      let B = null, best = -0.7;
+      for (const C of app) { const d = A.dx * C.dx + A.dz * C.dz; if (C !== A && d < best) { best = d; B = C; } }
+      let px, pz, side;
+      if (B) {
+        const halfB = Math.max(1, B.s.lanes) * LANE / 2;
+        side = halfB + 1.0;
+        px = cx + A.dx * (r + 4) + lx * side; pz = cz + A.dz * (r + 4) + lz * side;
+      } else {
+        const halfC = Math.max(...app.filter((C) => C !== A).map((C) => Math.max(1, C.s.lanes) * LANE / 2));
+        side = halfA * 0.5 + 0.5;
+        px = cx + A.dx * (halfC + 1.5) + lx * side; pz = cz + A.dz * (halfC + 1.5) + lz * side;
+      }
+      const reach = Math.max(1.2, Math.min(8, side - halfA / 2));   // 腕: 来る車線(左半分)の真ん中の上まで
+      const ang = Math.atan2(lx, lz);
+      boxInto(sig.pole, px, 2.8, pz, 0.22, 5.6, 0.22);
+      boxInto(sig.pole, px - lx * reach / 2, 5.45, pz - lz * reach / 2, 0.12, 0.12, reach, ang);
+      const hx = px - lx * reach, hz = pz - lz * reach;
+      const faceAng = Math.atan2(-A.dx, -A.dz);          // 灯の面は来る車の方
+      boxInto(sig.head, hx, 5.15, hz, 0.32, 0.45, 1.35, ang);   // 灯の箱(来る車から見て横長)
+      for (let k = 0; k < 3; k++) {                       // 左から青・黄・赤
+        const off = 0.42 * (1 - k);
+        const qx = hx + lx * off - A.dx * 0.18, qz = hz + lz * off - A.dz * 0.18;
+        boxInto(sig.lamps[grp][k], qx, 5.15, qz, 0.3, 0.3, 0.05, faceAng);
+      }
+      signalCount++;
+    }
+  }
   // 細い道: 両端は大通りの中まで延びているので、線は端から12m内側だけに引く。
   // 1車線は路側帯の線だけ、片側1車線は白の破線の中央線も。
   for (const s of data.narrow) {
@@ -250,7 +354,25 @@ function buildRoads(data, group) {
   const road = new THREE.Mesh(ag, new THREE.MeshLambertMaterial({ color: ASPHALT, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
   road.matrixAutoUpdate = false;
   g.add(road, flatMesh(curb, CURB), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
+  if (fence.p.length) g.add(solidMesh(fence, new THREE.MeshLambertMaterial({ color: 0xe8ebee })));
+  const lampMats = [0, 1].map(() => [0x2fd28a, 0xffc23a, 0xff3a2a].map((c) => new THREE.MeshLambertMaterial({ color: 0x2b2f35, emissive: c, emissiveIntensity: 0 })));
+  if (sig.pole.p.length) {
+    g.add(solidMesh(sig.pole, new THREE.MeshLambertMaterial({ color: 0x8a8f96 })), solidMesh(sig.head, new THREE.MeshLambertMaterial({ color: 0x4f555c })));
+    sig.lamps.forEach((grp, i) => grp.forEach((o, k) => { if (o.p.length) g.add(solidMesh(o, lampMats[i][k])); }));
+  }
   group.add(g);
+  document.body.dataset.tokyoEkiSignals = String(signalCount);
+  // 信号の切り替え(全部の交差点で同じ周期): 組0 青0-14 黄14-17 赤17-32 / 組1 赤0-17 青17-29 黄29-32
+  let phase = '';
+  return {
+    update(t) {
+      const c = t % 32;
+      const st = [c < 14 ? 0 : c < 17 ? 1 : 2, c >= 17 && c < 29 ? 0 : c >= 29 ? 1 : 2];
+      const key = st.join();
+      if (key === phase) return; phase = key;
+      lampMats.forEach((mats, i) => mats.forEach((m, k) => { m.emissiveIntensity = k === st[i] ? 1.6 : 0; m.color.setHex(k === st[i] ? 0xffffff : 0x2b2f35); }));
+    },
+  };
 }
 
 // 建物の当たり判定: 床の形(多角形)を 16m 角の升目に登録し、点の周り半径 R に建物があるかを調べる。
@@ -392,6 +514,7 @@ export function decorateTokyoEki(root) {
   });
   const city = new THREE.Group(); city.name = 'tokyoeki-city';
   let blocked = () => false;
+  let roads = null, clock = 0;
   (root.parent || root).add(city);
   fetch('map/tokyoeki-city.json?v=20261022-4').then((r) => r.json()).then((data) => {
     // 地面の下地(元の地図の地面には建物の跡の穴があるので、その下を舗装の色で埋める)
@@ -399,7 +522,7 @@ export function decorateTokyoEki(root) {
     lg.rotateX(Math.PI / 2); lg.translate(0, -0.03, 0);
     const land = new THREE.Mesh(lg, new THREE.MeshLambertMaterial({ color: GROUND.M05_GRAPHITE_HAZE, side: THREE.DoubleSide }));
     land.matrixAutoUpdate = false; city.add(land);
-    buildRoads(data, city);
+    roads = buildRoads(data, city);
     blocked = makeBlocker(data.buildings);
     const n = buildBuildings(data, city, wallMats, roofMat);
     buildElevated(data, city);
@@ -409,6 +532,8 @@ export function decorateTokyoEki(root) {
   return {
     // 建物にぶつかるか(半径 R の円)。データを読み込むまでは何も無い。
     isBlocked: (x, z, R) => blocked(x, z, R),
+    // 信号を進める
+    update(dt) { clock += dt; roads?.update(clock); },
     // 夜は窓を光らせる。
     setNight(on) { glowMaterials.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };

@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
-import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-8';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-11';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
@@ -10904,6 +10904,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const neoLampsOn = nightMode || horizonMeter() <= NEO_LAMPS_ON_METER;
       neoCity?.update(camera, topView, neoLampsOn, dt, weatherDuskLevel());
       tokyoEkiCity?.setNight(nightMode || horizonMeter() <= NEO_LAMPS_ON_METER);
+      tokyoEkiCity?.update(dt);
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
         // 80mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。
