@@ -7,12 +7,12 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
-import { decorateTokyoEki } from './tokyoeki-city.js?v=20261021-eki-3';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-6';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261021-eki-2';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261022-eki-3';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -2901,18 +2901,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         );
       }
     }
-    if (NEO_COURSE && neoCity) {
-      // 街並み: 建物・塀・電柱・駐車中の車にぶつかったら、ぶつかる前の位置へ戻して止める。
+    const townBlocker = (NEO_COURSE && neoCity) || (TOKYOEKI_COURSE && tokyoEkiCity?.isBlocked && tokyoEkiCity);
+    if (townBlocker) {
+      // 街並み・東京駅: 建物・塀・電柱・駐車中の車にぶつかったら、ぶつかる前の位置へ戻して止める。
       // 当たり判定はゆるめ: 車体の前・中・後ろの3点を、車体の半幅より小さい円で調べる。
       // 向きを変えただけで鼻先が障害物にかかった時(止まる前の位置でも当たる時)は、
       // 車の中心が入り込まない限り動けるようにして、引っ掛かって抜け出せなくなるのを防ぐ。
       const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-      const hitAt = (x, z) => [-1.4, 0, 1.4].some((d) => neoCity.isBlocked(
+      const hitAt = (x, z) => [-1.4, 0, 1.4].some((d) => townBlocker.isBlocked(
         x + fx * d, z + fz * d, d === 0 ? 0.7 : 0.5));
       const last = neoLastFreePos;
       const lastOverlaps = last && hitAt(last.x, last.z);
       const blocked = (x, z) => (lastOverlaps
-        ? neoCity.isBlocked(x, z, 0.3) : hitAt(x, z));
+        ? townBlocker.isBlocked(x, z, 0.3) : hitAt(x, z));
       if (last && blocked(player.pos.x, player.pos.z)) {
         // 壁に沿って滑らせる: x だけ、z だけ動かして通れる方を使う(道路も建物も x・z にそろっている)。
         if (!blocked(player.pos.x, last.z)) {

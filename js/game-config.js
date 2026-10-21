@@ -570,7 +570,7 @@ export const MAP_CONFIGS = {
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/tokyoeki.png',
     scale: 1,
-    assetRevision: '20261021-tokyoeki-1',
+    assetRevision: '20261022-tokyoeki-2',
     spawnSearchRadius: 40,
     // 赤い M06 が大通りの路面。灰色 M05 は街区の地面(細い道もここ)。どちらも走れる。
     roadMaterial: 'M06_Steel_Smoke',

@@ -1,12 +1,14 @@
-# 東京駅ステージの街のデータ(map/tokyoeki-city.json)を、整えた地図(map/map_tokyoeki.glb)から作る。
-# 使い方: python3 tools/tokyoeki_city.py map/map_tokyoeki.glb map/tokyoeki-city.json
-# 要るもの: numpy, scipy, scikit-image
+# 東京駅ステージの街のデータ(map/tokyoeki-city.json)を、地図の元データ(tools/tokyoeki_src.glb)から作る。
+# 使い方: python3 tools/tokyoeki_city.py tools/tokyoeki_src.glb map/tokyoeki-city.json
+# 要るもの: numpy, scipy, scikit-image, shapely
 #  1) 地図の面を 0.5m 角の升目に塗る(大通りの路面 M06・地面 M05・建物・線路・川・緑)
 #  2) 建物をつながった面ごとに棟に分け、屋上の高さごとに床の形(柱)を取り出す。
 #     道路の上にかかる低い構造物は高架として分け、三角形のまま出す。
-#  3) 道路網: 大通りは M06 の路面の中心線、細い道は建物の間の空き地のうち
-#     まっすぐで長く両端がつながっている所の中心線。幅は建物から建物まで。
-#     車線は 3.25m が何本入るか(2本以上は偶数、最大8本)。余りは両側の歩道。
+#  3) 道路は地図に縛られずに設計する(日本のオフィス街として自然な形):
+#     大通りは元の路面の中心線を直線的に整え、広い交差点は1点にまとめる。
+#     建物の間の幅から歩道(片側2.5m以上)を除いて 3.25m の車線が何本入るか(2本以上は偶数、最大8本)。
+#     細い道は大通りで囲まれた大きな街区を40〜60mごとに区切る碁盤目の道。
+#  4) 建物は道路の帯(車道+歩道)に食い込む所を削り、細切れは捨てる。
 import sys
 GLB, OUT = sys.argv[1], sys.argv[2]
 import json,struct
@@ -202,50 +204,109 @@ def graph(mask,minlen,keep):
         if len(P)<3: continue
         out.append((a,b,P,deg[a] if a else 0,deg[b] if b else 0))
     return cen,out
-# 1) 大通り: 赤い路面 M06 の中心線。幅は建物から建物まで。
+# ---- 道路の設計(地図に縛られず、日本のオフィス街として自然な形にする) ----
+#  - 大通り: 元の路面 M06 の中心線を直線的に整え、交差点ではつながる道の端を同じ点にそろえる。
+#    建物から建物までの幅から、歩道(片側2.5m以上)を除いて 3.25m の車線が何本入るかを決める。
+#    余りは歩道(片側8mまで)。
+#  - 細い道: 1車線(路側帯0.8m)か片側1車線。
+#  - 建物は道路の帯(車道+歩道)に食い込む所を削る。削って細切れになった所は捨てる。
+from shapely.geometry import LineString, Polygon, Point, MultiPolygon
+from shapely.ops import unary_union
 road=closing(M['road'],disk(2))
+DTR=ndi.distance_transform_edt(road)*RES
+MAINWALK=2.5
 cen,E=graph(road,15,None)
+nodeW=[world(c) for c in cen]
+deg=np.zeros(len(cen)+1,int)
+for a,b,P,da,db in E: deg[a]+=1; deg[b]+=1
+# 広い交差点は細線化で節が2つ以上に割れるので、25m以内の交差点の節は1つにまとめる。
+jnodes=[k for k in range(1,len(cen)+1) if deg[k]>=3]
+rep={k:k for k in range(1,len(cen)+1)}
+for i_,k in enumerate(jnodes):
+    for k2 in jnodes[:i_]:
+        if np.linalg.norm(nodeW[k-1]-nodeW[k2-1])<25: rep[k]=rep[k2]; break
+groups={}
+for k in jnodes: groups.setdefault(rep[k],[]).append(k)
+for r_,ks in groups.items():
+    c_=np.mean([nodeW[k-1] for k in ks],axis=0)
+    for k in ks: nodeW[k-1]=c_
 main=[]
 for a,b,P,da,db in E:
+    if a and b and rep[a]==rep[b] and da>=3 and db>=3: continue   # 同じ交差点の中の短い道筋
+    a=rep[a] if a else a; b=rep[b] if b else b
     Lm=len(P)*RES
-    mid=P[len(P)//5:max(len(P)//5+1,len(P)*4//5)]
     dead=[(d<=1) and not edge[tuple(P[0 if k==0 else -1])] for k,d in ((0,da),(1,db))]
     if any(dead) and Lm<15: continue
-    W=float(np.median(d_bld[mid[:,0],mid[:,1]]))*2
-    dt_road=ndi.distance_transform_edt(road)*RES if 'DTR' not in globals() else DTR
-    globals()['DTR']=dt_road
-    Wc=float(np.median(dt_road[mid[:,0],mid[:,1]]))*2      # 赤い路面(車道)の幅
-    W=min(max(W,Wc+3.0),60)                                # 車道より狭くはしない(歩道1.5mずつは取る)
-    n=lanes_of(W); pts=rdp(np.array([world(q) for q in P]),0.6)
-    main.append(dict(pts=pts.round(2).tolist(),W=round(W,2),lanes=n,walk=round((W-n*LANE)/2,2),kind='main',ja=bool(da>=3),jb=bool(db>=3),
-        ra=round(float(DTR[tuple(P[0])]),2),rb=round(float(DTR[tuple(P[-1])]),2),a=int(a),b=int(b)))
-# 大通りの帯(車道+歩道)
-corr=np.zeros_like(openm)
-mainmask=np.zeros_like(openm)
-for s in main:
-    pass
-dist_road=ndi.distance_transform_edt(~road)*RES
-corr=openm&(dist_road< 14)
-# 2) 細い道: 帯の外の空き地の中心線のうち、まっすぐで長く、両端がつながっているもの
-rest=opening(openm&~corr,disk(3))
-cen2,E2=graph(rest,0,None)
-narrow=[]
-for a,b,P,da,db in E2:
-    Lm=len(P)*RES
-    if Lm<25: continue
+    pts=rdp(np.array([world(q) for q in P]),2.5)
+    if da>=3: pts[0]=nodeW[a-1]
+    if db>=3: pts[-1]=nodeW[b-1]
+    if len(pts)<2 or np.linalg.norm(pts[-1]-pts[0])<3: continue
     mid=P[len(P)//5:max(len(P)//5+1,len(P)*4//5)]
-    W=float(np.median(d_bld[mid[:,0],mid[:,1]]))*2
-    if W<4 or W>14: continue
-    pts=np.array([world(q) for q in P])
-    chord=np.linalg.norm(pts[-1]-pts[0])
-    if chord/Lm<0.8: continue
-    # 端が大通りの帯か、別の道につながっていること(行き止まりの空き地を除く)
-    def joined(q,d): return d>=3 or dist_road[tuple(q)]<16 or edge[tuple(q)]
-    if not (joined(P[0],da) and joined(P[-1],db)): continue
-    n=max(1,lanes_of(W))
-    narrow.append(dict(pts=rdp(pts,1.0).round(2).tolist(),W=round(W,2),lanes=n,walk=round(max(0,(W-n*LANE)/2),2),kind='narrow'))
-print('main',len(main),'narrow',len(narrow))
+    gap=float(np.median(d_bld[mid[:,0],mid[:,1]]))*2
+    wc=float(np.median(DTR[mid[:,0],mid[:,1]]))*2
+    W=min(max(gap,wc+2*MAINWALK),60)
+    n=max(1,lanes_of(W-2*MAINWALK))
+    walk=float(np.clip((W-n*LANE)/2,MAINWALK,8))
+    main.append(dict(pts=pts.round(2).tolist(),W=round(W,2),lanes=n,walk=round(walk,2),kind='main',a=int(a),b=int(b),ja=bool(da>=3),jb=bool(db>=3)))
+# 細い道: 大通りで囲まれた街区が大きい時、街区を40〜60mほどの区画に分ける道を通す
+# (日本橋・八重洲の碁盤目の路地のように、街区の長い向きに直角、とても幅の広い街区は真ん中にも1本)。
+from skimage.measure import find_contours as _fc
+landpoly=None
+for c_ in _fc(np.pad(land,1).astype(float),0.5):
+    pg=Polygon([(X0+(q[1]-1)*RES, Z0+(q[0]-1)*RES) for q in c_]).buffer(0)
+    if landpoly is None or pg.area>landpoly.area: landpoly=pg
+railpoly=unary_union([Polygon([(X0+(q[1]-1)*RES, Z0+(q[0]-1)*RES) for q in c_]).buffer(0) for c_ in _fc(np.pad(M['rail']|M['water'],1).astype(float),0.5) if len(c_)>4]).buffer(3)
+def cw_of(sg): return max(1,sg['lanes'])*LANE
+main_corr=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='flat') for sg in main]+
+    [Point(nodeW[k-1]).buffer(max(cw_of(sg)/2+sg['walk'] for sg in main if k in (sg['a'],sg['b']))) for k in set([sg['a'] for sg in main if sg['ja']]+[sg['b'] for sg in main if sg['jb']])])
+blocks=landpoly.difference(main_corr).difference(railpoly)
+narrow=[]
+def add_street(p0,p1,blk,n):
+    ln=LineString([p0,p1]).intersection(blk.buffer(9))
+    for g in (ln.geoms if hasattr(ln,'geoms') else [ln]):
+        if g.length>25: narrow.append(dict(pts=np.array(g.coords).round(2).tolist(),W=0,lanes=n,walk=0.8 if n==1 else 1.0,kind='narrow'))
+for blk in (blocks.geoms if hasattr(blocks,'geoms') else [blocks]):
+    if blk.area<2500: continue
+    rect=blk.minimum_rotated_rectangle; rc=np.array(rect.exterior.coords)[:4]
+    e1=rc[1]-rc[0]; e2=rc[2]-rc[1]
+    if np.linalg.norm(e1)<np.linalg.norm(e2): e1,e2=e2,e1
+    Lb=np.linalg.norm(e1); Sb=np.linalg.norm(e2); u=e1/Lb; v=e2/Sb; c0=np.array(rect.centroid.coords[0])
+    if blk.area/rect.area<0.55: continue        # 形のいびつな所(駅前広場など)は分けない
+    k=int(round(Lb/55))
+    for i_ in range(1,k):                        # 長い向きに直角な道
+        t=-Lb/2+Lb*i_/k; p=c0+u*t
+        add_street(p-v*(Sb/2+10),p+v*(Sb/2+10),blk,2 if i_%2==0 else 1)
+    if Sb>90:                                    # とても幅の広い街区は、長い向きにも1本
+        add_street(c0-u*(Lb/2+10),c0+u*(Lb/2+10),blk,1)
+# 道路の帯と車道
+# 交差点は円で埋める(半径はそこに来る車道の半幅の大きい方)。地図の端の道の終わりは平らに切る。
+jn=set([sg['a'] for sg in main if sg['ja']]+[sg['b'] for sg in main if sg['jb']])
+def jr(k,extra): return max(cw_of(sg)/2+extra(sg) for sg in main if k in (sg['a'],sg['b']))
+corridors=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='flat',join_style='mitre',mitre_limit=2) for sg in main+narrow]+
+    [Point(nodeW[k-1]).buffer(jr(k,lambda sg: sg['walk'])) for k in jn])
+carriage=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2,cap_style='flat',join_style='mitre',mitre_limit=2) for sg in main+narrow]+
+    [Point(nodeW[k-1]).buffer(jr(k,lambda sg: 0)) for k in jn])
+carriage=carriage.intersection(Polygon([(-380,-210),(360,-210),(360,300),(-380,300)]))
+def rings(g):
+    out=[]
+    for pg in (g.geoms if hasattr(g,'geoms') else [g]):
+        if pg.area<1: continue
+        pg=pg.simplify(0.15)
+        out.append(dict(o=np.array(pg.exterior.coords)[:-1].round(2).tolist(),h=[np.array(r.coords)[:-1].round(2).tolist() for r in pg.interiors]))
+    return out
+asphalt=rings(carriage)
+# 建物を削る
+blds=[]
+for b_ in CITY_B['buildings']:
+    pg=Polygon(b_['p'])
+    if not pg.is_valid: pg=pg.buffer(0)
+    pg=pg.difference(corridors)
+    for part in (pg.geoms if hasattr(pg,'geoms') else [pg]):
+        if part.is_empty or part.area<15 or part.buffer(-1.0).is_empty: continue   # 細切れ・細長い残りは捨てる
+        part=part.simplify(0.3)
+        blds.append(dict(id=b_['id'],h=b_['h'],p=np.array(part.exterior.coords)[:-1].round(2).tolist()))
+print('main',len(main),'narrow',len(narrow),'buildings',len(CITY_B['buildings']),'->',len(blds))
 from collections import Counter
-print('main lanes',Counter(s['lanes'] for s in main),'narrow lanes',Counter(s['lanes'] for s in narrow))
-print('main W',sorted(round(s['W']) for s in main))
-OUTD=dict(main=main,narrow=narrow,nodes=[world(c).round(2).tolist() for c in cen]); OUTD.update(CITY_B); json.dump(OUTD,open(OUT,'w'),separators=(',',':'))
+print('main lanes',Counter(s_['lanes'] for s_ in main),'narrow lanes',Counter(s_['lanes'] for s_ in narrow))
+OUTD=dict(main=main,narrow=narrow,nodes=[w.round(2).tolist() for w in nodeW],asphalt=asphalt,land=np.array(landpoly.simplify(0.5).exterior.coords)[:-1].round(2).tolist(),buildings=blds,elevated=CITY_B['elevated'])
+json.dump(OUTD,open(OUT,'w'),separators=(',',':'))
