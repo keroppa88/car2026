@@ -1,32 +1,51 @@
 import * as THREE from '../lib/three.module.js';
 
-// 東京駅〜日本橋のステージを three.js で組み立てる。
-//  - 元の地図(map_tokyoeki.glb)は地面・線路・川・緑だけ。走行面に使い、色だけ替えて見せる。
-//  - 建物の当たり判定は床の形で自前で行う(isBlocked)。
-//  - 見た目は map/tokyoeki-city.json(tools/tokyoeki_city.py が地図から作ったもの)から組み立てる。
-//      buildings: 建物の柱(床の形 p と高さ h、棟の番号 id)
-//      main / narrow: 大通りと細い道の中心線・幅 W・車線数 lanes・歩道の幅 walk
-//      asphalt: 車道(交差点を含む)の形(外周 o と穴 h)
-//      nodes: 道のつながる点(交差点)   elevated: 高架の三角形
-//  - 車線の幅は共通(3.25m)。建物の間に何本入るかで車線数を決め、余りは両側の歩道。
-// 地図は 1単位 = 1m、Y が上(tools/prep_tokyoeki.py で整えたもの)。
+// 東京駅〜日本橋(八重洲・日本橋・京橋)をモデルにした、碁盤の目のオフィス街を three.js でゼロから組み立てる。
+//  - 道はすべて東西(x)・南北(z)のまっすぐな線。交差点はすべて直角の十字路か丁字路で、行き止まりは無い。
+//  - 大通り(片側2〜3車線)は約165mおき。その間に55mおきの細い道(1車線)。
+//  - 地区は3つ: 西は東京のオフィス街、真ん中はニューヨーク風、東は香港風。
+//  - 北の端は日本橋川。首都高が東西の大通りの真上を通り、その下をくぐれる。
+//  - 横断歩道と信号は大通りどうしの交差点だけ。大通りの歩道には柵。
+//  - 走行面は地図(map_tokyoeki.glb)を使わず、main.js が敷く平らな面。建物・街の外へは isBlocked で出られない。
+// 北は -z。1単位 = 1m。
 
 const LANE = 3.25;
-const GROUND = {
-  M06_STEEL_SMOKE: 0x9a9b98,      // 元の大通りの路面。車道は自前で描くので、下地は歩道と同じ舗装の色
-  M05_GRAPHITE_HAZE: 0x9a9b98,    // 街区の地面(歩道・広場の舗装)
-  ASPHALT_06_1K: 0x6e6a64,        // 線路(東京駅の構内)
-  F08_FOREST_SHADOW: 0x5f7f46,    // 緑地
-  H06_OCEAN_DEPTH: 0x3d6b66,      // 川(日本橋川)
-  H07_DEEP_TEAL: 0x335c58,
-};
-const ASPHALT = 0x3d3f42, CURB = 0xbdbbb5, CONCRETE = 0x8c8f92;
+const ASPHALT = 0x3d3f42, CURB = 0xbdbbb5, WALK = 0xa7a8a4, CONCRETE = 0x8c8f92;
 
-// 壁の色(昼)。白・ベージュ・灰色・薄茶が中心。
+// ---- 街の設計 ----
+// 南北の道(位置は x)と東西の道(位置は z)。lanes: 両方向の車線の合計(1 は細い道)。
+export const EKI_NS = [
+  { x: -235, lanes: 4 },   // 外堀通り(西の端。向こうは東京駅)
+  { x: -180, lanes: 1 }, { x: -125, lanes: 1 },
+  { x: -70, lanes: 6 },    // 中央通り
+  { x: -15, lanes: 1 }, { x: 40, lanes: 1 },
+  { x: 95, lanes: 4 },
+  { x: 150, lanes: 1 }, { x: 205, lanes: 1 },
+  { x: 260, lanes: 6 },    // 昭和通り
+  { x: 330, lanes: 4 },    // 東の端
+];
+export const EKI_EW = [
+  { z: -230, lanes: 4 },   // 北の端(日本橋川沿い)
+  { z: -175, lanes: 1 }, { z: -120, lanes: 1 },
+  { z: -65, lanes: 6 },    // 永代通り
+  { z: -10, lanes: 1 }, { z: 45, lanes: 1 },
+  { z: 100, lanes: 4 },    // 八重洲通り
+  { z: 155, lanes: 1 }, { z: 210, lanes: 1 },
+  { z: 265, lanes: 4 },    // 南の端(鍛冶橋通り)
+];
+const WALK_MAJOR = 4.0, WALK_NARROW = 1.2;
+const halfCw = (r) => (r.lanes === 1 ? 4.5 : r.lanes * LANE) / 2;          // 車道の半幅
+const halfCorr = (r) => halfCw(r) + (r.lanes === 1 ? WALK_NARROW : WALK_MAJOR);   // 車道+歩道の半幅
+const X0 = EKI_NS[0].x, X1 = EKI_NS[EKI_NS.length - 1].x, Z0 = EKI_EW[0].z, Z1 = EKI_EW[EKI_EW.length - 1].z;
+const OUT = 45;                                     // 外周の道の外に並べる建物の帯の奥行き
+
 const WALL_COLORS = [
   0xe8e4da, 0xd9d3c4, 0xcfc8b8, 0xbfc5c9, 0xb4b8bb, 0xa9a49a, 0xd6cfbe,
   0xc9bfae, 0x9fa6ab, 0xe2dccd, 0xb9ab95, 0x8f9498, 0xcfd3d6, 0xa3988a,
 ];
+// ニューヨーク: れんが・砂岩・石灰岩。香港: 白・クリーム・淡い色のマンション。
+const NY_COLORS = [0x8a5a44, 0xa0654c, 0xb98a6a, 0xc9b79c, 0xb8a58a, 0x9b8b7a, 0x7d5242];
+const HK_COLORS = [0xe9e3d3, 0xd8e2e6, 0xe6d6c8, 0xcfd8c4, 0xe3d9e6, 0xf0ece2, 0xc9d3db];
 const GLASS_COLORS = [0x9fb4c4, 0x8ea6b8, 0xa9bccb, 0x7f97aa, 0xb3c3cf];
 
 // 窓の模様の種類。1枚の絵 = 横 bays 区画 × 縦 floors 階。tileW・tileH はその実寸(m)。
@@ -145,55 +164,6 @@ function flatMesh(positions, color) {
   return mesh;
 }
 
-// ---- 道路 ----
-// 中心線 pts に沿って、車道(幅 lanes×3.25m)・縁石・白線を作る。交差点では線を止め、横断歩道と停止線を引く。
-function polyLength(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
-function cutPoly(pts, s0, s1) {
-  // 中心線の s0〜s1 m の部分
-  const out = []; let s = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], L = Math.hypot(x1 - x0, z1 - z0);
-    const a = Math.max(s0, s), b = Math.min(s1, s + L);
-    if (b > a) {
-      const p = (t) => [x0 + (x1 - x0) * (t - s) / L, z0 + (z1 - z0) * (t - s) / L];
-      if (!out.length) out.push(p(a));
-      out.push(p(b));
-    }
-    s += L;
-  }
-  return out;
-}
-function pointAt(pts, t) {
-  let s = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], L = Math.hypot(x1 - x0, z1 - z0);
-    if (t <= s + L || i + 2 === pts.length) { const f = Math.min(1, Math.max(0, (t - s) / L)); return { x: x0 + (x1 - x0) * f, z: z0 + (z1 - z0) * f, tx: (x1 - x0) / L, tz: (z1 - z0) / L }; }
-    s += L;
-  }
-}
-function offsetPoly(pts, d) {
-  // 進む向きの左(x,z で (tz,-tx))へ d m ずらす
-  return pts.map((p, i) => {
-    const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, pts.length - 1)];
-    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tx = (b[0] - a[0]) / L, tz = (b[1] - a[1]) / L;
-    return [p[0] + tz * d, p[1] - tx * d];
-  });
-}
-function extendPoly(pts, e) {
-  // 両端を e m ずつ延ばす(細い道を大通りの車道までつなぐ)
-  const q = pts.map((p) => p.slice());
-  const ext = (i, j) => { const L = Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]) || 1; q[i][0] += (q[i][0] - q[j][0]) / L * e; q[i][1] += (q[i][1] - q[j][1]) / L * e; };
-  ext(0, 1); ext(q.length - 1, q.length - 2);
-  return q;
-}
-function disc(x, z, r, y, out) {
-  const N = 20;
-  for (let i = 0; i < N; i++) {
-    const a = i / N * Math.PI * 2, b = (i + 1) / N * Math.PI * 2;
-    out.push(x, y, z, x + Math.cos(b) * r, y, z + Math.sin(b) * r, x + Math.cos(a) * r, y, z + Math.sin(a) * r);
-  }
-}
-// 向きを持った箱を、まとめて描くための配列へ足す(ang は y 軸まわり、+z が前)。
 const _BOX = (() => {
   const g = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
   return { p: g.getAttribute('position').array, n: g.getAttribute('normal').array };
@@ -213,256 +183,200 @@ function solidMesh(o, mat) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
   const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; return m;
 }
-const distToSeg = (x, z, a, b) => {
-  const ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez || 1;
-  const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / L2));
-  return Math.hypot(a[0] + ex * t - x, a[1] + ez * t - z);
-};
 
-function buildRoads(data, group) {
-  const white = [], yellow = [], curb = [];
-  // 車道(交差点を含めた全体の形)は多角形で受け取る。縁石はその縁。
-  const shapes = data.asphalt.map((a) => {
-    const sh = new THREE.Shape(a.o.map(([x, z]) => new THREE.Vector2(x, z)));
-    a.h.forEach((h) => sh.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, z)))));
-    ribbon([...a.o, a.o[0]], 0.3, 0.03, curb);
-    a.h.forEach((h) => ribbon([...h, h[0]], 0.3, 0.03, curb));
-    return sh;
-  });
-  const ag = new THREE.ShapeGeometry(shapes);
-  ag.rotateX(Math.PI / 2);                       // (x, y) → (x, 0, y)
-  ag.translate(0, 0.012, 0);
-  // 交差点: 3本以上の大通りが集まる点。半径はそこに来る車道の半幅の大きい方。
-  const inc = new Map();
-  for (const s of data.main) for (const n of [s.a, s.b]) if (n) inc.set(n, [...(inc.get(n) || []), s]);
-  const radius = new Map();
-  for (const [n, list] of inc) if (list.length >= 3) radius.set(n, Math.max(...list.map((s) => Math.max(1, s.lanes) * LANE / 2)) + 0.5);
-  for (const s of data.main) {
-    const n = Math.max(1, s.lanes), cw = n * LANE, half = cw / 2, L = polyLength(s.pts);
-    const ra = radius.get(s.a) || 0, rb = radius.get(s.b) || 0;
-    const CW = 4;                                    // 横断歩道の幅
-    let s0 = ra ? ra + CW + 2.5 : 0, s1 = L - (rb ? rb + CW + 2.5 : 0);
-    const cross = s.lanes >= 2;                       // 横断歩道は片側1車線以上の道だけ(細い道には引かない)
-    const crossA = cross && ra && s1 - s0 > 8, crossB = cross && rb && s1 - s0 > 8;
-    if (!cross) { s0 = ra; s1 = L - rb; }
-    if (!(s1 - s0 > 8)) { s0 = ra; s1 = L - rb; }
-    if (s1 - s0 < 3) continue;
-    const body = cutPoly(s.pts, s0, s1);
-    if (s.lanes >= 2) {
-      ribbon(body, 0.15, 0.03, yellow);                                      // 中央線(黄)
-      for (let k = 1; k < n / 2; k++) for (const sd of [-1, 1]) ribbon(offsetPoly(body, sd * k * LANE), 0.12, 0.03, white, [5, 5]);   // 車線境界(破線)
-    }
-    for (const sd of [-1, 1]) ribbon(offsetPoly(body, sd * (half - 0.25)), 0.15, 0.03, white);   // 外側線
-    for (const [has, r, atStart] of [[crossA, ra, true], [crossB, rb, false]]) {
-      if (!has) continue;
-      const sc = atStart ? r + CW / 2 + 0.5 : L - (r + CW / 2 + 0.5);
-      const P = pointAt(s.pts, sc), ang = Math.atan2(P.tx, P.tz), nx = P.tz, nz = -P.tx;
-      for (let k = -half + 0.8; k < half - 0.6; k += 0.9) rect(P.x + nx * k, P.z + nz * k, ang, CW, 0.45, 0.035, white);
-      // 停止線: 交差点へ向かう車線(その向きの左側)。始点側の交差点へは中心線と逆向きに進む。
-      const ss = atStart ? sc + CW / 2 + 1.2 : sc - CW / 2 - 1.2;
-      const Q = pointAt(s.pts, ss), dx = atStart ? -Q.tx : Q.tx, dz = atStart ? -Q.tz : Q.tz;
-      const lx = dz, lz = -dx, w = half - 0.4;
-      if (s.lanes >= 2) rect(Q.x + lx * w / 2, Q.z + lz * w / 2, Math.atan2(dx, dz), 0.45, w, 0.035, white);
-    }
-  }
-  // ---- 歩道の柵(片側2車線以上の大通り) ----
-  // 縁石のすぐ内側(歩道側)に高さ0.9mの柵。交差点・横断歩道の所と、細い道の入口は空ける。
+// 道に沿った帯の四角(車道・歩道)を足す
+function quad(out, x0, z0, x1, z1, y) { out.push(x0, y, z0, x0, y, z1, x1, y, z0, x1, y, z0, x0, y, z1, x1, y, z1); }   // 上向きの面
+
+function buildStreets(group) {
+  const asphalt = [], walk = [], white = [], yellow = [], curb = [];
   const fence = { p: [], n: [] };
-  const nearNarrow = (x, z) => data.narrow.some((n) => { for (let i = 0; i + 1 < n.pts.length; i++) if (distToSeg(x, z, n.pts[i], n.pts[i + 1]) < 4.5) return true; return false; });
-  for (const s of data.main) {
-    if (s.lanes < 4) continue;
-    const half = s.lanes * LANE / 2, L = polyLength(s.pts);
-    const ra = radius.get(s.a) || 0, rb = radius.get(s.b) || 0;
-    const f0 = ra ? ra + 4 + 1.5 : 0, f1 = L - (rb ? rb + 4 + 1.5 : 0);
-    if (f1 - f0 < 6) continue;
-    for (const sd of [-1, 1]) {
-      const line = offsetPoly(cutPoly(s.pts, f0, f1), sd * (half + 0.6));
-      const Lf = polyLength(line), n = Math.max(1, Math.round(Lf / 2));
-      let prev = null;
-      for (let k = 0; k <= n; k++) {
-        const P = pointAt(line, Lf * k / n);
-        const ok = !nearNarrow(P.x, P.z);
-        if (ok) boxInto(fence, P.x, 0.45, P.z, 0.07, 0.9, 0.07);          // 支柱
-        if (ok && prev) {                                                   // 上と下の横棒
-          const mx = (P.x + prev.x) / 2, mz = (P.z + prev.z) / 2, len = Math.hypot(P.x - prev.x, P.z - prev.z), ang = Math.atan2(P.x - prev.x, P.z - prev.z);
+  const sig = { pole: { p: [], n: [] }, head: { p: [], n: [] }, lamps: [0, 1].map(() => [0, 1, 2].map(() => ({ p: [], n: [] }))) };
+  // 歩道(街の外周まで一面)
+  quad(walk, X0 - halfCorr(EKI_NS[0]), Z0 - halfCorr(EKI_EW[0]), X1 + halfCorr(EKI_NS.at(-1)), Z1 + halfCorr(EKI_EW.at(-1)), 0.0);
+  // 車道
+  for (const r of EKI_NS) quad(asphalt, r.x - halfCw(r), Z0 - halfCw(EKI_EW[0]), r.x + halfCw(r), Z1 + halfCw(EKI_EW.at(-1)), 0.04);
+  for (const r of EKI_EW) quad(asphalt, X0 - halfCw(EKI_NS[0]), r.z - halfCw(r), X1 + halfCw(EKI_NS.at(-1)), r.z + halfCw(r), 0.04);
+  // 道ごとに、交差点と交差点の間に線・縁石・柵を引く。
+  //  along: その道の向きの座標(南北の道なら z)。cross: 交わる道の並び。
+  const roadLines = (r, ns) => {
+    const at = r.x ?? r.z, cross = ns ? EKI_EW : EKI_NS, hw = halfCw(r);
+    const P = (a, o) => (ns ? [at + o, a] : [a, at + o]);       // 道の向きの座標 a、道の中心から横へ o
+    for (let i = 0; i + 1 < cross.length; i++) {
+      const A = cross[i], B = cross[i + 1];
+      const ca = (A.x ?? A.z), cb = (B.x ?? B.z);
+      const majA = A.lanes > 1 && r.lanes > 1, majB = B.lanes > 1 && r.lanes > 1;
+      // 線は交差点(と横断歩道)の手前で止める
+      const s0 = ca + halfCorr(A) + (majA ? 5 : 0.5), s1 = cb - halfCorr(B) - (majB ? 5 : 0.5);
+      if (s1 - s0 < 2) continue;
+      const seg = (o) => [P(s0, o), P(s1, o)];
+      if (r.lanes > 1) {
+        ribbon(seg(0), 0.15, 0.07, yellow);                                  // 中央線(黄)
+        for (let k = 1; k < r.lanes / 2; k++) for (const sd of [-1, 1]) ribbon(seg(sd * k * LANE), 0.12, 0.07, white, [5, 5]);
+        for (const sd of [-1, 1]) ribbon(seg(sd * (hw - 0.25)), 0.15, 0.07, white);   // 外側線
+      } else {
+        for (const sd of [-1, 1]) ribbon(seg(sd * (hw - 0.3)), 0.12, 0.07, white);    // 路側帯の線
+      }
+      // 縁石と柵(歩道の縁)。縁石は交差点の角まで、柵は大通りだけで交差点の手前まで。
+      const e0 = ca + halfCw(A), e1 = cb - halfCw(B);
+      for (const sd of [-1, 1]) {
+        ribbon([P(e0, sd * (hw + 0.15)), P(e1, sd * (hw + 0.15))], 0.3, 0.07, curb);
+        if (r.lanes > 1) {
+          const f0 = ca + halfCorr(A) + 2.5, f1 = cb - halfCorr(B) - 2.5;
+          if (f1 - f0 < 4) continue;
+          const n = Math.max(1, Math.round((f1 - f0) / 2));
+          for (let k = 0; k <= n; k++) { const [x, z] = P(f0 + (f1 - f0) * k / n, sd * (hw + 0.6)); boxInto(fence, x, 0.45, z, 0.07, 0.9, 0.07); }
+          const [mx, mz] = P((f0 + f1) / 2, sd * (hw + 0.6)), len = f1 - f0, ang = ns ? 0 : Math.PI / 2;
           boxInto(fence, mx, 0.85, mz, 0.06, 0.06, len, ang); boxInto(fence, mx, 0.4, mz, 0.04, 0.04, len, ang);
         }
-        prev = ok ? P : null;
       }
     }
-  }
-  // ---- 信号機(片側2車線以上の道が来る交差点) ----
-  // 来る道ごとに、交差点の向こう側の左の角に柱を立て、腕を車線の上へ出して灯を来る車へ向ける。
-  // 灯は来る車から見て左から青・黄・赤。交差点の中で向きの近い道どうしを同じ組にし、2組を交互に青にする。
-  const sig = { pole: { p: [], n: [] }, head: { p: [], n: [] }, lamps: [0, 1].map(() => [0, 1, 2].map(() => ({ p: [], n: [] }))) };
-  let signalCount = 0;
-  for (const [node, list] of inc) {
-    // 片側2車線以上の道と、片側1車線以上の道が交わる所だけ(細い道との交差には付けない)
-    if (list.length < 3 || !list.some((s) => s.lanes >= 4) || list.filter((s) => s.lanes >= 2).length < 3) continue;
-    const [cx, cz] = data.nodes[node - 1], r = radius.get(node);
-    // 交差点へ向かう向き(道の端の接線)
-    let app = list.map((s) => {
-      const atStart = s.a === node, L = polyLength(s.pts);
-      const P = pointAt(s.pts, atStart ? Math.min(L, r + 8) : Math.max(0, L - r - 8));
-      const dx = atStart ? -P.tx : P.tx, dz = atStart ? -P.tz : P.tz;
-      return { s, dx, dz };
-    });
-    // 中央分離帯で2本に分かれた道は、同じ向きの道として1つにまとめる(車線の多い方を残す)。
-    app.sort((p, q) => q.s.lanes - p.s.lanes);
-    for (let i = app.length - 1; i > 0; i--) if (app.slice(0, i).some((B) => B.dx * app[i].dx + B.dz * app[i].dz > 0.93)) app.splice(i, 1);
-    if (app.length < 3) continue;
-    const ax = app[0];
-    for (const A of app) {
-      const grp = Math.abs(A.dx * ax.dx + A.dz * ax.dz) > 0.7 ? 0 : 1;
-      const halfA = Math.max(1, A.s.lanes) * LANE / 2;
-      const lx = A.dz, lz = -A.dx;                       // 来る車の左
-      // 柱は交差点の向こう側の左の歩道。まっすぐ先に続く道があればその歩道、無ければ(丁字路)突き当たりの歩道。
-      let B = null, best = -0.7;
-      for (const C of app) { const d = A.dx * C.dx + A.dz * C.dz; if (C !== A && d < best) { best = d; B = C; } }
-      let px, pz, side;
-      if (B) {
-        const halfB = Math.max(1, B.s.lanes) * LANE / 2;
-        side = halfB + 1.0;
-        px = cx + A.dx * (r + 4) + lx * side; pz = cz + A.dz * (r + 4) + lz * side;
-      } else {
-        const halfC = Math.max(...app.filter((C) => C !== A).map((C) => Math.max(1, C.s.lanes) * LANE / 2));
-        side = halfA * 0.5 + 0.5;
-        px = cx + A.dx * (halfC + 1.5) + lx * side; pz = cz + A.dz * (halfC + 1.5) + lz * side;
-      }
-      const reach = Math.max(1.2, Math.min(8, side - halfA / 2));   // 腕: 来る車線(左半分)の真ん中の上まで
-      const ang = Math.atan2(lx, lz);
+  };
+  EKI_NS.forEach((r) => roadLines(r, true));
+  EKI_EW.forEach((r) => roadLines(r, false));
+  // 大通りどうしの交差点: 4方向に横断歩道・停止線・信号
+  let signals = 0;
+  for (const a of EKI_NS) for (const b of EKI_EW) {
+    if (a.lanes < 4 || b.lanes < 4) continue;
+    const cx = a.x, cz = b.z;
+    // 来る向き(dx,dz)ごと。来る道の半幅 hwIn、交わる道の半幅(+歩道) hwX。
+    for (const [dx, dz, inR, xR] of [[0, 1, a, b], [0, -1, a, b], [1, 0, b, a], [-1, 0, b, a]]) {
+      const hwIn = halfCw(inR), corrX = halfCorr(xR), hwX = halfCw(xR);
+      const lx = dz, lz = -dx;                                     // 来る車の左
+      // 横断歩道(交差点の手前、交わる道の歩道の延長線上)
+      const cwc = hwX + 2.5;                                       // 交差点の中心からの距離
+      const qx = cx - dx * cwc, qz = cz - dz * cwc, ang = Math.atan2(dx, dz);
+      for (let k = -hwIn + 0.7; k < hwIn - 0.5; k += 0.9) rect(qx + lx * k, qz + lz * k, ang, 4, 0.45, 0.075, white);
+      // 停止線(来る車線の側だけ)
+      const sl = cwc + 3.2;
+      rect(cx - dx * sl + lx * hwIn / 2, cz - dz * sl + lz * hwIn / 2, ang + Math.PI / 2, hwIn - 0.3, 0.45, 0.075, white);
+      // 信号: 交差点の向こう側の左の角。腕を来る車線の上へ。灯は来る車へ向け、左から青・黄・赤。
+      const px = cx + dx * (hwX + 2.5) + lx * (hwIn + 1.2), pz = cz + dz * (hwX + 2.5) + lz * (hwIn + 1.2);
+      const reach = Math.min(hwIn / 2 + 1.2, 7.5), arm = Math.atan2(lx, lz);
       boxInto(sig.pole, px, 2.8, pz, 0.22, 5.6, 0.22);
-      boxInto(sig.pole, px - lx * reach / 2, 5.45, pz - lz * reach / 2, 0.12, 0.12, reach, ang);
+      boxInto(sig.pole, px - lx * reach / 2, 5.45, pz - lz * reach / 2, 0.12, 0.12, reach, arm);
       const hx = px - lx * reach, hz = pz - lz * reach;
-      const faceAng = Math.atan2(-A.dx, -A.dz);          // 灯の面は来る車の方
-      boxInto(sig.head, hx, 5.15, hz, 0.32, 0.45, 1.35, ang);   // 灯の箱(来る車から見て横長)
-      for (let k = 0; k < 3; k++) {                       // 左から青・黄・赤
+      boxInto(sig.head, hx, 5.15, hz, 0.32, 0.45, 1.35, arm);
+      const grp = dx === 0 ? 0 : 1, face = Math.atan2(-dx, -dz);
+      for (let k = 0; k < 3; k++) {
         const off = 0.42 * (1 - k);
-        const qx = hx + lx * off - A.dx * 0.18, qz = hz + lz * off - A.dz * 0.18;
-        boxInto(sig.lamps[grp][k], qx, 5.15, qz, 0.3, 0.3, 0.05, faceAng);
+        boxInto(sig.lamps[grp][k], hx + lx * off - dx * 0.18, 5.15, hz + lz * off - dz * 0.18, 0.3, 0.3, 0.05, face);
       }
-      signalCount++;
+      signals++;
     }
   }
-  // 細い道: 両端は大通りの中まで延びているので、線は端から12m内側だけに引く。
-  // 1車線は路側帯の線だけ、片側1車線は白の破線の中央線も。
-  for (const s of data.narrow) {
-    const n = Math.max(1, s.lanes), cw = Math.min(n, 2) * LANE, L = polyLength(s.pts);
-    if (L < 30) continue;
-    const body = cutPoly(s.pts, 12, L - 12);
-    for (const sd of [-1, 1]) ribbon(offsetPoly(body, sd * (cw / 2 - 0.25)), 0.12, 0.03, white);
-    if (n >= 2) ribbon(body, 0.12, 0.03, white, [3, 3]);
-  }
-  const g = new THREE.Group(); g.name = 'tokyoeki-roads';
-  const road = new THREE.Mesh(ag, new THREE.MeshLambertMaterial({ color: ASPHALT, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-  road.matrixAutoUpdate = false;
-  g.add(road, flatMesh(curb, CURB), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
-  if (fence.p.length) g.add(solidMesh(fence, new THREE.MeshLambertMaterial({ color: 0xe8ebee })));
+  const g = new THREE.Group(); g.name = 'tokyoeki-streets';
+  const road = flatMesh(asphalt, ASPHALT), side = flatMesh(walk, WALK);
+  road.material.polygonOffsetFactor = -1; road.material.polygonOffsetUnits = -1;
+  side.material.polygonOffsetFactor = 0; side.material.polygonOffsetUnits = 0;
+  g.add(side, road, flatMesh(curb, CURB), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
+  g.add(solidMesh(fence, new THREE.MeshLambertMaterial({ color: 0xe8ebee })));
   const lampMats = [0, 1].map(() => [0x2fd28a, 0xffc23a, 0xff3a2a].map((c) => new THREE.MeshLambertMaterial({ color: 0x2b2f35, emissive: c, emissiveIntensity: 0 })));
-  if (sig.pole.p.length) {
-    g.add(solidMesh(sig.pole, new THREE.MeshLambertMaterial({ color: 0x8a8f96 })), solidMesh(sig.head, new THREE.MeshLambertMaterial({ color: 0x4f555c })));
-    sig.lamps.forEach((grp, i) => grp.forEach((o, k) => { if (o.p.length) g.add(solidMesh(o, lampMats[i][k])); }));
-  }
+  g.add(solidMesh(sig.pole, new THREE.MeshLambertMaterial({ color: 0x8a8f96 })), solidMesh(sig.head, new THREE.MeshLambertMaterial({ color: 0x4f555c })));
+  sig.lamps.forEach((grp, i) => grp.forEach((o, k) => g.add(solidMesh(o, lampMats[i][k]))));
   group.add(g);
-  document.body.dataset.tokyoEkiSignals = String(signalCount);
-  // 信号の切り替え(全部の交差点で同じ周期): 組0 青0-14 黄14-17 赤17-32 / 組1 赤0-17 青17-29 黄29-32
+  document.body.dataset.tokyoEkiSignals = String(signals);
+  // 信号の切り替え: 組0(南北の道) 青0-14 黄14-17 赤17-32 / 組1(東西の道) 赤0-17 青17-29 黄29-32
   let phase = '';
-  return {
-    update(t) {
-      const c = t % 32;
-      const st = [c < 14 ? 0 : c < 17 ? 1 : 2, c >= 17 && c < 29 ? 0 : c >= 29 ? 1 : 2];
-      const key = st.join();
-      if (key === phase) return; phase = key;
-      lampMats.forEach((mats, i) => mats.forEach((m, k) => { m.emissiveIntensity = k === st[i] ? 1.6 : 0; m.color.setHex(k === st[i] ? 0xffffff : 0x2b2f35); }));
-    },
-  };
-}
-
-// 建物の当たり判定: 床の形(多角形)を 16m 角の升目に登録し、点の周り半径 R に建物があるかを調べる。
-function makeBlocker(buildings) {
-  const CELL = 16, grid = new Map();
-  const polys = buildings.map((b) => {
-    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-    for (const [x, z] of b.p) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
-    return { p: b.p, x0, z0, x1, z1 };
-  });
-  polys.forEach((P, i) => {
-    for (let gx = Math.floor(P.x0 / CELL); gx <= Math.floor(P.x1 / CELL); gx++)
-      for (let gz = Math.floor(P.z0 / CELL); gz <= Math.floor(P.z1 / CELL); gz++) {
-        const k = gx + ',' + gz; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i);
-      }
-  });
-  const inside = (p, x, z) => {
-    let c = false;
-    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-      const [xi, zi] = p[i], [xj, zj] = p[j];
-      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
-    }
-    return c;
-  };
-  const nearEdge = (p, x, z, r) => {
-    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-      const [ax, az] = p[j], [bx, bz] = p[i], ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez || 1;
-      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L2));
-      if (Math.hypot(ax + ex * t - x, az + ez * t - z) < r) return true;
-    }
-    return false;
-  };
-  return (x, z, r = 0.3) => {
-    const list = grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL));
-    if (!list) return false;
-    for (const i of list) {
-      const P = polys[i];
-      if (x < P.x0 - r || x > P.x1 + r || z < P.z0 - r || z > P.z1 + r) continue;
-      if (inside(P.p, x, z) || nearEdge(P.p, x, z, r)) return true;
-    }
-    return false;
+  return (t) => {
+    const c = t % 32, st = [c < 14 ? 0 : c < 17 ? 1 : 2, c >= 17 && c < 29 ? 0 : c >= 29 ? 1 : 2], key = st.join();
+    if (key === phase) return; phase = key;
+    lampMats.forEach((mats, i) => mats.forEach((m, k) => { m.emissiveIntensity = k === st[i] ? 1.6 : 0; m.color.setHex(k === st[i] ? 0xffffff : 0x2b2f35); }));
   };
 }
 
 // ---- 建物 ----
-// 床の形 p を高さ h まで立ち上げた柱。壁は窓の模様(棟ごとに種類と色)、屋上は少し暗い単色。
-function buildBuildings(data, group, wallMats, roofMat) {
-  const tallest = new Map();
-  for (const b of data.buildings) tallest.set(b.id, Math.max(tallest.get(b.id) || 0, b.h));
-  const look = new Map();
-  const lookOf = (id) => {
-    if (look.has(id)) return look.get(id);
-    const R = seeded(id * 131 + 17), h = tallest.get(id);
-    let style;
-    if (h > 70) style = R() < 0.75 ? 2 : 0;
-    else if (h > 30) style = [0, 0, 1, 1, 4, 2][Math.floor(R() * 6)];
-    else style = [1, 1, 3, 3, 4, 0][Math.floor(R() * 6)];
-    const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
-    const L = { style, color: new THREE.Color(base), roof: new THREE.Color(base).multiplyScalar(0.72) };
-    look.set(id, L); return L;
+// 街区(道と道の間)を、道に面した敷地に分けてビルを建てる。街区が深ければ背中合わせの2列。
+// 高さは東京駅に近いほど・大通りに面するほど高い。広い街区の一部は低層部+塔の高層ビル。
+function planBuildings() {
+  const R = seeded(20261022), blds = [];
+  let dist = 'tokyo';                                  // いま建てている地区
+  const add = (x0, z0, x1, z1, h, style) => blds.push({ x0, z0, x1, z1, h, style, dist });
+  const FLOOR = 3.8;
+  const rows = (lo, hi, a, b, horiz, height) => {
+    // a..b を道に面した間口 12〜28m の敷地に分け、奥行き lo..hi に建てる
+    let s = a;
+    while (s < b - 6) {
+      const wmin = dist === 'hk' ? 8 : 12, wvar = dist === 'hk' ? 8 : 16;
+      let w = wmin + R() * wvar; if (b - (s + w) < wmin * 0.8) w = b - s;
+      const h = height(), g = dist === 'hk' ? 0.15 : 0.4;
+      if (horiz) add(s + g, lo, s + w - g, hi, h); else add(lo, s + g, hi, s + w - g, h);
+      // ニューヨーク: 高いビルは上の方を内側へ下げる(セットバック)
+      if (dist === 'ny' && h > 70) {
+        const top = blds.at(-1), ins = 2.5, h2 = h + Math.round((15 + R() * 40) / FLOOR) * FLOOR;
+        top.h = Math.round(h * 0.75 / FLOOR) * FLOOR;
+        add(top.x0 + ins, top.z0 + ins, top.x1 - ins, top.z1 - ins, h2);
+      }
+      s += w;
+    }
   };
+  for (let i = 0; i + 1 < EKI_NS.length; i++) for (let j = 0; j + 1 < EKI_EW.length; j++) {
+    const W = EKI_NS[i], E = EKI_NS[i + 1], N = EKI_EW[j], S = EKI_EW[j + 1];
+    const x0 = W.x + halfCorr(W) + 0.5, x1 = E.x - halfCorr(E) - 0.5, z0 = N.z + halfCorr(N) + 0.5, z1 = S.z - halfCorr(S) - 0.5;
+    // 地区: 西は東京のオフィス街、真ん中はニューヨーク(れんがと石の高層・セットバック)、東は香港(細く高い塔が密集)
+    const cxm = (x0 + x1) / 2;
+    dist = cxm < -70 ? 'tokyo' : cxm < 95 ? 'ny' : 'hk';
+    const near = dist === 'tokyo' ? Math.max(0, 1 - (x0 - X0) / 250) : 0.5;
+    const base = (major) => () => {
+      let tall;
+      if (dist === 'ny') tall = major ? 70 + R() * 60 : 35 + R() * 40;
+      else if (dist === 'hk') tall = major ? 90 + R() * 70 : 60 + R() * 60;
+      else tall = (major ? 30 + near * 50 : 18 + near * 20) * (0.6 + R() * 0.8);
+      return Math.max(3, Math.round(tall / FLOOR)) * FLOOR;
+    };
+    const major = (r) => r.lanes > 1;
+    // 大通りに面した広い街区は、ときどき1棟の高層ビル(低層部+塔)
+    if (dist !== 'hk' && (major(W) || major(E) || major(N) || major(S)) && R() < (dist === 'ny' ? 0.18 : 0.1 + near * 0.2)) {
+      const pod = (4 + Math.round(R() * 3)) * FLOOR;
+      add(x0, z0, x1, z1, pod, 'pod');
+      const ins = 5 + R() * 4, th = Math.round((90 + near * 90 + R() * 40) / FLOOR) * FLOOR;
+      add(x0 + ins, z0 + ins, x1 - ins, z1 - ins, th, 'tower');
+      continue;
+    }
+    // 南北に長い街区は、東西の道に面した端の列と、南北の道に面した2列
+    const depth = (z1 - z0) / 2;
+    rows(z0, z0 + Math.min(depth, 22), x0, x1, true, base(major(N)));          // 北の道に面する
+    rows(z1 - Math.min(depth, 22), z1, x0, x1, true, base(major(S)));          // 南の道に面する
+    if (z1 - z0 > 46) {                                                        // 間が空くなら東西の道に面した列で埋める
+      const m0 = z0 + 22.4, m1 = z1 - 22.4, half = (x1 - x0) / 2;
+      rows(x0, x0 + half - 0.2, m0, m1, false, base(major(W)));
+      rows(x0 + half + 0.2, x1, m0, m1, false, base(major(E)));
+    }
+  }
+  // 外周の道の外側(東・南・北の対岸)に並ぶ建物の帯(入れない)
+  const ring = (x0, z0, x1, z1, horiz) => rows(horiz ? z0 : x0, horiz ? z1 : x1, horiz ? x0 : z0, horiz ? x1 : z1, horiz, () => Math.round((20 + R() * 45) / FLOOR) * FLOOR);
+  dist = 'ring';
+  const e = EKI_NS.at(-1), s = EKI_EW.at(-1), n = EKI_EW[0], wr = EKI_NS[0];
+  ring(wr.x - halfCorr(wr) - OUT, Z0 - 60, wr.x - halfCorr(wr) - 0.5, Z1 + 60, false);
+  ring(e.x + halfCorr(e) + 0.5, Z0 - 60, e.x + halfCorr(e) + OUT, Z1 + 60, false);
+  ring(X0 - 10, s.z + halfCorr(s) + 0.5, X1 + 60, s.z + halfCorr(s) + OUT, true);
+  ring(X0 - 10, n.z - halfCorr(n) - 75 - OUT, X1 + 60, n.z - halfCorr(n) - 75, true);   // 川の向こう岸
+  return blds;
+}
+function buildBuildings(blds, group, wallMats, roofMat) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [] }));
   const roofs = { p: [], c: [], n: [] };
-  for (const b of data.buildings) {
-    const L = lookOf(b.id), S = STYLES[L.style], W = walls[L.style], h = b.h, pts = b.p;
+  blds.forEach((b, i) => {
+    const R = seeded(i * 131 + 17);
+    let style = b.style === 'tower' ? (R() < 0.8 ? 2 : 0) : b.h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
+    let base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
+    if (b.dist === 'ny' && b.style !== 'tower') { style = R() < 0.6 ? 1 : 4; base = NY_COLORS[Math.floor(R() * NY_COLORS.length)]; }
+    if (b.dist === 'hk') { style = 3; base = HK_COLORS[Math.floor(R() * HK_COLORS.length)]; }
+    const col = new THREE.Color(base), roof = new THREE.Color(base).multiplyScalar(0.72);
+    const S = STYLES[style], W = walls[style], h = b.h;
+    const pts = [[b.x0, b.z0], [b.x1, b.z0], [b.x1, b.z1], [b.x0, b.z1]];
     let s = 0;
-    for (let i = 0; i < pts.length; i++) {
-      const [x0, z0] = pts[i], [x1, z1] = pts[(i + 1) % pts.length], len = Math.hypot(x1 - x0, z1 - z0);
-      if (len < 0.05) continue;
-      const nx = (z1 - z0) / len, nz = -(x1 - x0) / len;
+    for (let k = 0; k < 4; k++) {
+      const [x0, z0] = pts[k], [x1, z1] = pts[(k + 1) % 4], len = Math.hypot(x1 - x0, z1 - z0);
+      const nx = -(z1 - z0) / len, nz = (x1 - x0) / len;          // 外向き
       const u0 = s / S.tileW, u1 = (s + len) / S.tileW, v1 = h / S.tileH;
-      W.p.push(x0, 0, z0, x1, 0, z1, x1, h, z1, x0, 0, z0, x1, h, z1, x0, h, z0);
-      W.u.push(u0, 0, u1, 0, u1, v1, u0, 0, u1, v1, u0, v1);
-      for (let k = 0; k < 6; k++) { W.c.push(L.color.r, L.color.g, L.color.b); W.n.push(nx, 0, nz); }
+      W.p.push(x0, 0, z0, x1, h, z1, x1, 0, z1, x0, 0, z0, x0, h, z0, x1, h, z1);
+      W.u.push(u0, 0, u1, v1, u1, 0, u0, 0, u0, v1, u1, v1);
+      for (let q = 0; q < 6; q++) { W.c.push(col.r, col.g, col.b); W.n.push(nx, 0, nz); }
       s += len;
     }
-    // 屋上
-    const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z)));
-    const sg = new THREE.ShapeGeometry(shape);
-    const sp = sg.getAttribute('position'), idx = sg.index ? sg.index.array : null;
-    const cnt = idx ? idx.length : sp.count;
-    for (let k = 0; k < cnt; k++) {
-      const v = idx ? idx[k] : k;
-      roofs.p.push(sp.getX(v), h, sp.getY(v)); roofs.c.push(L.roof.r, L.roof.g, L.roof.b); roofs.n.push(0, 1, 0);
-    }
-    sg.dispose();
-  }
+    roofs.p.push(b.x0, h, b.z0, b.x1, h, b.z1, b.x1, h, b.z0, b.x0, h, b.z0, b.x0, h, b.z1, b.x1, h, b.z1);
+    for (let q = 0; q < 6; q++) { roofs.c.push(roof.r, roof.g, roof.b); roofs.n.push(0, 1, 0); }
+  });
   const mk = (o, mat, uv) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
@@ -475,22 +389,54 @@ function buildBuildings(data, group, wallMats, roofMat) {
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i], true)); });
   g.add(mk(roofs, roofMat, false));
   group.add(g);
-  return look.size;
 }
 
-// 高架(高速道路)は元の地図の三角形をそのまま、コンクリートの色で描く。
-function buildElevated(data, group) {
-  const p = [];
-  for (const t of data.elevated) for (const v of t) p.push(v[0], v[1], v[2]);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide }));
-  m.name = 'tokyoeki-elevated'; m.matrixAutoUpdate = false;
-  group.add(m);
+// ---- 東京駅・日本橋川・首都高 ----
+export const EKI_ELEVATED_Z = -65;                     // 首都高はこの東西の大通りの真上を通る(下をくぐれる)
+const PIERS = [];                                      // 首都高の橋脚(中央線の上。当たり判定あり)
+function buildLandmarks(group) {
+  const solid = { p: [], n: [] }, deck = { p: [], n: [] }, water = [];
+  // 日本橋川(北の道の向こう)
+  const n = EKI_EW[0], wz1 = n.z - halfCorr(n) - 2, wz0 = wz1 - 70;
+  quad(water, X0 - 200, wz0, X1 + 200, wz1, -0.6);
+  boxInto(solid, (X0 + X1) / 2, -0.3, wz1 + 1, X1 - X0 + 400, 0.8, 2);        // 護岸
+  // 首都高: 大通りの真上、高さ9mに桁。橋脚は中央線の上に、交差点を避けて40mおき。
+  const r = EKI_EW.find((q) => q.z === EKI_ELEVATED_Z), w = halfCw(r) * 2 + 2;
+  boxInto(deck, (X0 + X1) / 2, 10, r.z, X1 - X0 + 300, 1.8, w);
+  for (const sd of [-1, 1]) boxInto(deck, (X0 + X1) / 2, 11.6, r.z + sd * (w / 2 - 0.2), X1 - X0 + 300, 1.2, 0.4);   // 壁高欄
+  for (let x = X0 - 140; x < X1 + 150; x += 40) {
+    if (EKI_NS.some((q) => Math.abs(q.x - x) < halfCorr(q) + 4)) continue;
+    boxInto(deck, x, 4.6, r.z, 1.4, 9.2, 1.4);
+    PIERS.push({ x0: x - 0.7, z0: r.z - 0.7, x1: x + 0.7, z1: r.z + 0.7 });
+  }
+  const g = new THREE.Group(); g.name = 'tokyoeki-landmarks';
+  g.add(solidMesh(solid, new THREE.MeshLambertMaterial({ color: CONCRETE })), solidMesh(deck, new THREE.MeshLambertMaterial({ color: 0x8e9196 })),
+    flatMesh(water, 0x3d6b66));
+  group.add(g);
 }
 
+// 当たり判定: 建物(軸にそろった四角)と、街の外(外周の道の外)。
+function makeBlocker(blds) {
+  const CELL = 20, grid = new Map();
+  blds.forEach((b, i) => {
+    for (let gx = Math.floor(b.x0 / CELL); gx <= Math.floor(b.x1 / CELL); gx++)
+      for (let gz = Math.floor(b.z0 / CELL); gz <= Math.floor(b.z1 / CELL); gz++) {
+        const k = gx + ',' + gz; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i);
+      }
+  });
+  const ex0 = X0 - halfCorr(EKI_NS[0]), ex1 = X1 + halfCorr(EKI_NS.at(-1)), ez0 = Z0 - halfCorr(EKI_EW[0]), ez1 = Z1 + halfCorr(EKI_EW.at(-1));
+  return (x, z, r = 0.3) => {
+    if (x < ex0 + r || x > ex1 - r || z < ez0 + r || z > ez1 - r) return true;
+    const list = grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL));
+    if (!list) return false;
+    for (const i of list) { const b = blds[i]; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
+    return false;
+  };
+}
+
+// root: 地図(走行面だけに使う)。見た目はすべて隠し、街を組み立てて同じ親に置く。
 export function decorateTokyoEki(root) {
+  root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
   const glowMaterials = [];
   const wallMats = STYLES.map((s, i) => {
@@ -502,42 +448,22 @@ export function decorateTokyoEki(root) {
     return m;
   });
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  // 元の地図: 地面などは色を替えて見せ、建物は隠す(当たり判定には残る)。
-  const groundMats = new Map();
-  root.traverse((mesh) => {
-    if (!mesh.isMesh) return;
-    const name = (mesh.material?.name || '').trim().toUpperCase();
-    if (name === 'F08_FOREST_SHADOW') { mesh.visible = false; return; }   // 元の植え込みは道路と重なるので見せない
-    if (GROUND[name] !== undefined) {
-      if (!groundMats.has(name)) { const m = new THREE.MeshLambertMaterial({ color: GROUND[name], side: THREE.DoubleSide }); m.name = mesh.material.name; groundMats.set(name, m); }
-      mesh.material = groundMats.get(name);
-    } else {
-      mesh.visible = false;
-    }
-  });
   const city = new THREE.Group(); city.name = 'tokyoeki-city';
-  let blocked = () => false;
-  let roads = null, clock = 0;
   (root.parent || root).add(city);
-  fetch('map/tokyoeki-city.json?v=20261022-6').then((r) => r.json()).then((data) => {
-    // 地面の下地(元の地図の地面には建物の跡の穴があるので、その下を舗装の色で埋める)
-    const lg = new THREE.ShapeGeometry(new THREE.Shape(data.land.map(([x, z]) => new THREE.Vector2(x, z))));
-    lg.rotateX(Math.PI / 2); lg.translate(0, -0.03, 0);
-    const land = new THREE.Mesh(lg, new THREE.MeshLambertMaterial({ color: GROUND.M05_GRAPHITE_HAZE, side: THREE.DoubleSide }));
-    land.matrixAutoUpdate = false; city.add(land);
-    roads = buildRoads(data, city);
-    blocked = makeBlocker(data.buildings);
-    const n = buildBuildings(data, city, wallMats, roofMat);
-    buildElevated(data, city);
-    document.body.dataset.tokyoEkiBuildings = String(n);
-    document.body.dataset.tokyoEkiRoads = String(data.main.length + data.narrow.length);
-  }).catch((e) => console.warn('[tokyoeki] city', e));
+  // 地面(街の外まで)
+  const ground = [];
+  quad(ground, X0 - 400, Z0 - 400, X1 + 400, Z1 + 400, -0.08);
+  city.add(flatMesh(ground, 0x8f918c));
+  const updateSignals = buildStreets(city);
+  const blds = planBuildings();
+  buildBuildings(blds, city, wallMats, roofMat);
+  buildLandmarks(city);
+  const blocked = makeBlocker([...blds, ...PIERS]);
+  document.body.dataset.tokyoEkiBuildings = String(blds.length);
+  let clock = 0;
   return {
-    // 建物にぶつかるか(半径 R の円)。データを読み込むまでは何も無い。
     isBlocked: (x, z, R) => blocked(x, z, R),
-    // 信号を進める
-    update(dt) { clock += dt; roads?.update(clock); },
-    // 夜は窓を光らせる。
+    update(dt) { clock += dt; updateSignals(clock); },
     setNight(on) { glowMaterials.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };
 }

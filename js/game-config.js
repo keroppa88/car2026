@@ -566,7 +566,7 @@ export const MAP_CONFIGS = {
   // 東京駅〜日本橋(八重洲・日本橋の街並み)。元の地図は tools/prep_tokyoeki.py で 1単位=1m・Yが上に整えてある。
   tokyoeki: {
     ...commonMap,
-    label: '東京駅',
+    label: 'メトロポリス',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/tokyoeki.png',
     scale: 1,
@@ -582,17 +582,15 @@ export const MAP_CONFIGS = {
     nonWallMaterialAliases: ['M05_Graphite_Haze', 'F08_Forest_Shadow', 'Asphalt_06_1K'],
     // 建物・川の護岸など、道路と地面以外の縦の面はぶつかる。
     supportSurfaceMode: 'drivable',
-    // 地図の端・川岸から外へは出られない(直前の位置で止まる)。
-    blockOutsideDrivableSurface: true,
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // 片側2車線の大通りの左車線、碁盤の向き(北東)へ。
-    spawnReferenceX: 40.95,
-    spawnReferenceZ: 108.2,
+    // 中央通り(片側3車線)の真ん中の車線を北へ。
+    spawnReferenceX: -74.9,
+    spawnReferenceZ: 72,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
-    spawnHeading: 1.09,
+    spawnHeading: Math.PI,
     treePlacement: { ...commonTrees, enabled: false, seed: 20261021 },
     mapWhiteGlow: false,
     roadNightEmissive: false,

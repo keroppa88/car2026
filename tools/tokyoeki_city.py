@@ -296,18 +296,42 @@ for f in (0,1):
         for t in range(1,k):
             o_=a_+(b_-a_)*t/k
             if all(abs(o_-m[0])>=30 for m in majors): lines.append((f,o_,0))
-# 線を地区の中で切り出す
+# 碁盤の範囲: 外側の大通り4本で囲んだ長方形。外周の道がすべて陸の上を通るまで内側の大通りへ縮める。
+# 道はすべてこの長方形の中で、端から端まで通す(行き止まりを作らない)。交差点はすべて直角。
+# 線路・駅と川は避ける。地図の外(切れ端の向こう)へは街を広げてよい。
+area=Polygon([(-700,-600),(700,-600),(700,700),(-700,700)]).difference(railpoly.buffer(22)).buffer(3)
+maj={f:sorted(off for g,off,W_ in lines if g==f and W_>0) for f in (0,1)}
+def corner(o0,o1): return V*o0+U*o1        # 0族の位置 o0(v座標)と1族の位置 o1(u座標)の交点
+def ok_rect(a0,b0,a1,b1):
+    ring=[corner(a0,a1),corner(a0,b1),corner(b0,b1),corner(b0,a1),corner(a0,a1)]
+    return all(area.contains(LineString([ring[k],ring[k+1]])) for k in range(4))
+i0,j0,i1,j1=0,len(maj[0])-1,0,len(maj[1])-1
+while not ok_rect(maj[0][i0],maj[0][j0],maj[1][i1],maj[1][j1]):
+    # はみ出しの大きい辺を1本内側へ
+    best=None
+    for side in range(4):
+        a0,b0,a1,b1=maj[0][i0],maj[0][j0],maj[1][i1],maj[1][j1]
+        ends=[(corner(a0,a1),corner(a0,b1)),(corner(b0,a1),corner(b0,b1)),(corner(a0,a1),corner(b0,a1)),(corner(a0,b1),corner(b0,b1))][side]
+        out=LineString(ends).difference(area).length
+        if best is None or out>best[0]: best=(out,side)
+    side=best[1]
+    if side==0: i0+=1
+    elif side==1: j0-=1
+    elif side==2: i1+=1
+    else: j1-=1
+    if j0-i0<1 or j1-i1<1: raise SystemExit('grid area too small')
+lo0,hi0,lo1,hi1=maj[0][i0],maj[0][j0],maj[1][i1],maj[1][j1]
+rectpoly=Polygon([corner(lo0,lo1),corner(lo0,hi1),corner(hi0,hi1),corner(hi0,lo1)]).buffer(8,join_style='mitre')
+landpoly=unary_union([landpoly,rectpoly]).difference(railpoly.difference(landpoly)) if False else unary_union([landpoly,rectpoly])
+print('grid rect',round(hi0-lo0),'x',round(hi1-lo1))
 main=[]; narrow=[]
 raw=[]
 for f,off,W_ in lines:
-    d=U if f==0 else V; nrm=V if f==0 else U
-    base=nrm*off
-    ln=LineString([base-d*2000,base+d*2000]).intersection(district)
-    for g in (ln.geoms if hasattr(ln,'geoms') else [ln]):
-        if g.geom_type!='LineString' or g.length<25: continue
-        n=max(1,lanes_of(W_)) if W_>0 else 1
-        if W_>0 and n<2: n=2
-        raw.append(dict(f=f,line=g,lanes=n,major=W_>0))
+    lo,hi=(lo0,hi0) if f==0 else (lo1,hi1)
+    if off<lo-0.5 or off>hi+0.5: continue
+    p0=corner(off,lo1) if f==0 else corner(lo0,off); p1=corner(off,hi1) if f==0 else corner(hi0,off)
+    n=max(2,lanes_of(W_)) if W_>0 else 1
+    raw.append(dict(f=f,line=LineString([p0,p1]),lanes=n,major=W_>0))
 # 交差点で分ける
 nodes=[]; nodeid={}
 def nid(pt):
@@ -333,7 +357,7 @@ nodeW=[np.array(q) for q in nodes]
 print('grid angle',round(np.degrees(th),1),'lines',len(lines),'segments',len(main))
 carriage=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2,cap_style='square' if (sg['ja'] or sg['jb']) else 'flat',join_style='mitre') for sg in main])
 corridors=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='square',join_style='mitre') for sg in main])
-carriage=carriage.intersection(district.buffer(0.5))
+carriage=carriage.intersection(landpoly.buffer(0.5))
 def rings(g):
     out=[]
     for pg in (g.geoms if hasattr(g,'geoms') else [g]):

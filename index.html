@@ -559,7 +559,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261022-eki-5';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261022-eki-7';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -873,7 +873,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261022-eki-16');
+    import('./js/main.js?v=20261022-eki-21');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);

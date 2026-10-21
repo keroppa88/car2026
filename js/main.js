@@ -7,12 +7,12 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
-import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-14';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-19';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261022-eki-5';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261022-eki-7';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -6051,7 +6051,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       !roadMeshes.includes(mesh) && !nonWallMeshes.includes(mesh));
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
     // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
-    if (TOKYOEKI_COURSE) tokyoEkiCity = decorateTokyoEki(wrap);
+    if (TOKYOEKI_COURSE) {
+      tokyoEkiCity = decorateTokyoEki(wrap);
+      // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
+      // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
+      const flat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ name: 'M06_Steel_Smoke', visible: false, side: THREE.DoubleSide }));
+      flat.position.set(50, 0, 20);
+      wrap.add(flat); flat.updateMatrixWorld(true);
+      for (const list of [mapSurfaceMeshes, nonWallMeshes, car2DrivableMeshes, roadMeshes, wallMeshes, sandMeshes, blockedSurfaceMeshes, treeSurfaceMeshes]) list.length = 0;
+      mapSurfaceMeshes.push(flat); car2DrivableMeshes.push(flat); roadMeshes.push(flat);
+    }
+
     car2RoadMeshes = roadMeshes;
     const edgeSegmentCount = addMapEdgeOutlines(wrap, roadNames);
     if (MAP_CONFIG.mapWhiteGlow !== false) {
