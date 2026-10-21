@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
-import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-6';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261022-eki-8';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';

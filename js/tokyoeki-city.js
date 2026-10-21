@@ -382,6 +382,7 @@ export function decorateTokyoEki(root) {
   root.traverse((mesh) => {
     if (!mesh.isMesh) return;
     const name = (mesh.material?.name || '').trim().toUpperCase();
+    if (name === 'F08_FOREST_SHADOW') { mesh.visible = false; return; }   // 元の植え込みは道路と重なるので見せない
     if (GROUND[name] !== undefined) {
       if (!groundMats.has(name)) { const m = new THREE.MeshLambertMaterial({ color: GROUND[name], side: THREE.DoubleSide }); m.name = mesh.material.name; groundMats.set(name, m); }
       mesh.material = groundMats.get(name);
@@ -392,7 +393,7 @@ export function decorateTokyoEki(root) {
   const city = new THREE.Group(); city.name = 'tokyoeki-city';
   let blocked = () => false;
   (root.parent || root).add(city);
-  fetch('map/tokyoeki-city.json?v=20261022-3').then((r) => r.json()).then((data) => {
+  fetch('map/tokyoeki-city.json?v=20261022-4').then((r) => r.json()).then((data) => {
     // 地面の下地(元の地図の地面には建物の跡の穴があるので、その下を舗装の色で埋める)
     const lg = new THREE.ShapeGeometry(new THREE.Shape(data.land.map(([x, z]) => new THREE.Vector2(x, z))));
     lg.rotateX(Math.PI / 2); lg.translate(0, -0.03, 0);

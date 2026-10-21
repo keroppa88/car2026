@@ -295,16 +295,72 @@ def rings(g):
         out.append(dict(o=np.array(pg.exterior.coords)[:-1].round(2).tolist(),h=[np.array(r.coords)[:-1].round(2).tolist() for r in pg.interiors]))
     return out
 asphalt=rings(carriage)
-# 建物を削る
+# ---- 建物を建て直す(日本のオフィス街らしく) ----
+#  - 東京駅の構内(線路のまわり)だけは元の建物の形を残す(道路の帯に食い込む所は削る)。
+#  - それ以外の街区は、道路に面して並ぶ敷地に分け、敷地いっぱいにビルを建てる(隣と0.6m空ける)。
+#    高さは元の地図のその場所の高さを受け継ぎ(少しばらつかせ、階の高さ3.8mでそろえる)、
+#    元が低い・建物の無かった所は6〜12階のオフィスにする。高いビルは低層部(基壇)の上に塔を載せる。
+from skimage.draw import polygon as _dp2
+rng=np.random.default_rng(20261022)
+station=railpoly.buffer(25)
 blds=[]
 for b_ in CITY_B['buildings']:
     pg=Polygon(b_['p'])
     if not pg.is_valid: pg=pg.buffer(0)
+    if not station.contains(pg.centroid): continue
     pg=pg.difference(corridors)
     for part in (pg.geoms if hasattr(pg,'geoms') else [pg]):
-        if part.is_empty or part.area<15 or part.buffer(-1.0).is_empty: continue   # 細切れ・細長い残りは捨てる
+        if part.is_empty or part.area<15 or part.buffer(-1.0).is_empty: continue
         part=part.simplify(0.3)
-        blds.append(dict(id=b_['id'],h=b_['h'],p=np.array(part.exterior.coords)[:-1].round(2).tolist()))
+        blds.append(dict(id=int(b_['id']),h=b_['h'],p=np.array(part.exterior.coords)[:-1].round(2).tolist()))
+def orig_height(pg):
+    x0,z0,x1,z1=pg.bounds
+    q=np.array(pg.exterior.coords)
+    rr,cc=_dp2((q[:,1]-Z0)/RES,(q[:,0]-X0)/RES,shape=hm.shape)
+    if len(rr)==0: return 0.0
+    v=hm[rr,cc]; v=v[v>0]
+    return float(np.percentile(v,90)) if len(v)>len(rr)*0.25 else 0.0
+def split(pg,depth=0):
+    """敷地を分ける: 外接長方形の長い向きに直角に切る。目標の広さになるまで繰り返す。"""
+    target=rng.uniform(250,900)
+    if pg.area<target or depth>8: return [pg]
+    rect=pg.minimum_rotated_rectangle; rc=np.array(rect.exterior.coords)[:4]
+    e1=rc[1]-rc[0]; e2=rc[2]-rc[1]
+    if np.linalg.norm(e1)<np.linalg.norm(e2): e1,e2=e2,e1
+    L=np.linalg.norm(e1); u=e1/L; v=e2/np.linalg.norm(e2); c=np.array(rect.centroid.coords[0])
+    t=rng.uniform(-0.15,0.15)*L
+    cut=Polygon([c+u*t+v*1000-u*0.3, c+u*t-v*1000-u*0.3, c+u*t-v*1000+u*0.3, c+u*t+v*1000+u*0.3])   # 0.6m の隙間
+    parts=pg.difference(cut)
+    out=[]
+    for q in (parts.geoms if hasattr(parts,'geoms') else [parts]):
+        if q.area>20: out+=split(q,depth+1)
+    return out
+FLOOR=3.8
+nid=100000
+blocks2=landpoly.difference(corridors).difference(station)
+for blk in (blocks2.geoms if hasattr(blocks2,'geoms') else [blocks2]):
+    if blk.area<60: continue
+    for lot in split(blk.buffer(-0.3,join_style='mitre')):
+        lot=lot.buffer(-0.3,join_style='mitre')
+        for part in (lot.geoms if hasattr(lot,'geoms') else [lot]):
+            if part.is_empty or part.area<60 or part.buffer(-2.5).is_empty: continue
+            part=part.simplify(0.4)
+            h0=orig_height(part)
+            if h0<12: h=rng.uniform(6,12)*FLOOR
+            else: h=max(4*FLOOR,h0*rng.uniform(0.85,1.15))
+            h=max(FLOOR*3,round(h/FLOOR)*FLOOR)
+            nid+=1
+            ring=np.array(part.exterior.coords)[:-1].round(2).tolist()
+            if h>=70 and part.area>900:
+                # 基壇(4〜8階)の上に、内側へ下げた塔
+                base=round(rng.uniform(4,8))*FLOOR
+                tower=part.buffer(-rng.uniform(4,8),join_style='mitre')
+                if not tower.is_empty and tower.area>250:
+                    blds.append(dict(id=nid,h=round(base,1),p=ring))
+                    tg=max(tower.geoms,key=lambda g:g.area) if hasattr(tower,'geoms') else tower
+                    blds.append(dict(id=nid,h=round(h,1),p=np.array(tg.simplify(0.4).exterior.coords)[:-1].round(2).tolist()))
+                    continue
+            blds.append(dict(id=nid,h=round(h,1),p=ring))
 print('main',len(main),'narrow',len(narrow),'buildings',len(CITY_B['buildings']),'->',len(blds))
 from collections import Counter
 print('main lanes',Counter(s_['lanes'] for s_ in main),'narrow lanes',Counter(s_['lanes'] for s_ in narrow))
