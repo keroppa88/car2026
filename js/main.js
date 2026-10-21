@@ -7,19 +7,20 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261021-eki-2';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261015-town-3';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261021-eki-2';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-town-73';
-import { createNeoCity } from './neo-city.js?v=20261018-town-73';
+import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
+import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
@@ -38,6 +39,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
   // 街並み(neo)も同じ無限の輪の生成道路。一直線の二車線で、沿道は日本の街。
   const NEO_COURSE = COURSE_KEY === 'neo';
+  const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki';
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
@@ -69,6 +71,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let moorFog = null;
   let route66Scenery = null;
   let neoCity = null;
+  let tokyoEkiCity = null;   // 東京駅: 建物の窓など(decorateTokyoEki)
   let neoLastFreePos = null;   // 街並み: 建物にぶつかる前の最後の位置
   const NEO_CPU_VIEW_DISTANCE = 200;   // 街並み: CPU車を描く距離(m)
   // 街並み: 交わる道から幹線へつなぐ。交差点の中心を軸に、車の位置・向き・速さをまとめて90度回して
@@ -6046,6 +6049,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const collisionMeshes = mapSurfaceMeshes.filter((mesh) =>
       !roadMeshes.includes(mesh) && !nonWallMeshes.includes(mesh));
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
+    // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
+    if (TOKYOEKI_COURSE) tokyoEkiCity = decorateTokyoEki(wrap);
     car2RoadMeshes = roadMeshes;
     const edgeSegmentCount = addMapEdgeOutlines(wrap, roadNames);
     if (MAP_CONFIG.mapWhiteGlow !== false) {
@@ -10897,6 +10902,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       // 建物の窓・看板・街灯を点ける。
       const neoLampsOn = nightMode || horizonMeter() <= NEO_LAMPS_ON_METER;
       neoCity?.update(camera, topView, neoLampsOn, dt, weatherDuskLevel());
+      tokyoEkiCity?.setNight(nightMode || horizonMeter() <= NEO_LAMPS_ON_METER);
       if (NEO_COURSE) {
         // 街並み: CPU車は見える範囲(約400m)の半分、カメラから200m以内だけ描く(真上表示は全部)。
         // 80mより遠い車は車体を隠し、同じ大きさ・平均の色の箱で代わりに描く(灯火はそのまま)。

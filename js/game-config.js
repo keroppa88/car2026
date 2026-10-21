@@ -563,6 +563,36 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 東京駅〜日本橋(八重洲・日本橋の街並み)。元の地図は tools/prep_tokyoeki.py で 1単位=1m・Yが上に整えてある。
+  tokyoeki: {
+    ...commonMap,
+    label: '東京駅',
+    file: 'map/map_tokyoeki.glb',
+    preview: 'picture/tokyoeki.png',
+    scale: 1,
+    assetRevision: '20261021-tokyoeki-1',
+    spawnSearchRadius: 40,
+    // 赤い M06 が大通りの路面。灰色 M05 は街区の地面(細い道もここ)。どちらも走れる。
+    roadMaterial: 'M06_Steel_Smoke',
+    roadMaterialAliases: ['M06_Steel_Smoke'],
+    drivableMaterialAliases: [
+      ...commonMap.drivableMaterialAliases,
+      'M05_Graphite_Haze', 'F08_Forest_Shadow', 'Asphalt_06_1K',
+    ],
+    nonWallMaterialAliases: ['M05_Graphite_Haze', 'F08_Forest_Shadow', 'Asphalt_06_1K'],
+    // 建物・川の護岸など、道路と地面以外の縦の面はぶつかる。
+    supportSurfaceMode: 'drivable',
+    // 地図の端・川岸から外へは出られない(直前の位置で止まる)。
+    blockOutsideDrivableSurface: true,
+    loopMode: 'none',
+    spawnSurfaceMode: 'mapSurface',
+    spawnReference: 'fixed',
+    spawnReferenceX: 40,
+    spawnReferenceZ: -110,
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261021 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'tokyoeki'];

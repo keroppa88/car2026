@@ -408,6 +408,8 @@
   .select-kicker { margin: 0 0 28px; color: #ff8c1a; letter-spacing: .38em; }
   .select-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
   .select-grid.cars { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
+  /* コースは9つ。1段5つにして2段に収める。 */
+  #course-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .select-card {
     min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
     gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
@@ -441,6 +443,7 @@
   }
   @media (max-width: 760px) {
     .select-grid, .select-grid.cars { grid-template-columns: 1fr 1fr; }
+    #course-grid { grid-template-columns: 1fr 1fr; }
     .select-card { min-height: 150px; }
     .select-preview, .select-fallback { height: 105px; }
     #game-select::before { top: 18%; }
@@ -556,7 +559,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261015-town-3';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261021-eki-2';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -870,7 +873,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261018-town-73');
+    import('./js/main.js?v=20261021-eki-4');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
