@@ -242,7 +242,9 @@ function buildRoads(data, group) {
     const ra = radius.get(s.a) || 0, rb = radius.get(s.b) || 0;
     const CW = 4;                                    // 横断歩道の幅
     let s0 = ra ? ra + CW + 2.5 : 0, s1 = L - (rb ? rb + CW + 2.5 : 0);
-    const crossA = ra && s1 - s0 > 8, crossB = rb && s1 - s0 > 8;
+    const cross = s.lanes >= 2;                       // 横断歩道は片側1車線以上の道だけ(細い道には引かない)
+    const crossA = cross && ra && s1 - s0 > 8, crossB = cross && rb && s1 - s0 > 8;
+    if (!cross) { s0 = ra; s1 = L - rb; }
     if (!(s1 - s0 > 8)) { s0 = ra; s1 = L - rb; }
     if (s1 - s0 < 3) continue;
     const body = cutPoly(s.pts, s0, s1);
@@ -295,7 +297,8 @@ function buildRoads(data, group) {
   const sig = { pole: { p: [], n: [] }, head: { p: [], n: [] }, lamps: [0, 1].map(() => [0, 1, 2].map(() => ({ p: [], n: [] }))) };
   let signalCount = 0;
   for (const [node, list] of inc) {
-    if (list.length < 3 || !list.some((s) => s.lanes >= 4)) continue;
+    // 片側2車線以上の道と、片側1車線以上の道が交わる所だけ(細い道との交差には付けない)
+    if (list.length < 3 || !list.some((s) => s.lanes >= 4) || list.filter((s) => s.lanes >= 2).length < 3) continue;
     const [cx, cz] = data.nodes[node - 1], r = radius.get(node);
     // 交差点へ向かう向き(道の端の接線)
     let app = list.map((s) => {
@@ -516,7 +519,7 @@ export function decorateTokyoEki(root) {
   let blocked = () => false;
   let roads = null, clock = 0;
   (root.parent || root).add(city);
-  fetch('map/tokyoeki-city.json?v=20261022-5').then((r) => r.json()).then((data) => {
+  fetch('map/tokyoeki-city.json?v=20261022-6').then((r) => r.json()).then((data) => {
     // 地面の下地(元の地図の地面には建物の跡の穴があるので、その下を舗装の色で埋める)
     const lg = new THREE.ShapeGeometry(new THREE.Shape(data.land.map(([x, z]) => new THREE.Vector2(x, z))));
     lg.rotateX(Math.PI / 2); lg.translate(0, -0.03, 0);

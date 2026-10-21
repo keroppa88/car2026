@@ -4,10 +4,9 @@
 #  1) 地図の面を 0.5m 角の升目に塗る(大通りの路面 M06・地面 M05・建物・線路・川・緑)
 #  2) 建物をつながった面ごとに棟に分け、屋上の高さごとに床の形(柱)を取り出す。
 #     道路の上にかかる低い構造物は高架として分け、三角形のまま出す。
-#  3) 道路は地図に縛られずに設計する(日本のオフィス街として自然な形):
-#     大通りは元の路面の中心線を直線的に整え、広い交差点は1点にまとめる。
-#     建物の間の幅から歩道(片側2.5m以上)を除いて 3.25m の車線が何本入るか(2本以上は偶数、最大8本)。
-#     細い道は大通りで囲まれた大きな街区を40〜60mごとに区切る碁盤目の道。
+#  3) 道路は碁盤の目: 地図の大通りの向きから碁盤の向きを決め、大通りをまっすぐな線にそろえる
+#     (28m以内の平行な道は1本に)。大通りの間は55mほどおきに1車線の細い道。交差点はすべて直角。
+#     車線は地図の路面の幅に 3.25m が何本入るか(2本以上は偶数、片側2車線まで)。歩道は大通り2.5m・細い道1m。
 #  4) 建物は道路の帯(車道+歩道)に食い込む所を削り、細切れは捨てる。
 import sys
 GLB, OUT = sys.argv[1], sys.argv[2]
@@ -237,16 +236,12 @@ for a,b,P,da,db in E:
     Lm=len(P)*RES
     dead=[(d<=1) and not edge[tuple(P[0 if k==0 else -1])] for k,d in ((0,da),(1,db))]
     if any(dead) and Lm<15: continue
-    pts=rdp(np.array([world(q) for q in P]),2.5)
-    if da>=3: pts[0]=nodeW[a-1]
-    if db>=3: pts[-1]=nodeW[b-1]
+    pts=rdp(np.array([world(q) for q in P]),1.0)          # 地図の路面の中心線のまま
     if len(pts)<2 or np.linalg.norm(pts[-1]-pts[0])<3: continue
     mid=P[len(P)//5:max(len(P)//5+1,len(P)*4//5)]
-    gap=float(np.median(d_bld[mid[:,0],mid[:,1]]))*2
-    wc=float(np.median(DTR[mid[:,0],mid[:,1]]))*2
-    W=min(max(gap,wc+2*MAINWALK),60)
-    n=max(1,lanes_of(W-2*MAINWALK))
-    walk=float(np.clip((W-n*LANE)/2,MAINWALK,8))
+    W=float(np.median(DTR[mid[:,0],mid[:,1]]))*2            # 地図の路面(車道)の幅
+    n=max(1,lanes_of(W))
+    walk=MAINWALK
     main.append(dict(pts=pts.round(2).tolist(),W=round(W,2),lanes=n,walk=round(walk,2),kind='main',a=int(a),b=int(b),ja=bool(da>=3),jb=bool(db>=3)))
 # 細い道: 大通りで囲まれた街区を、縦横55mほどの碁盤目に分ける道を通す(日本橋・八重洲・京橋の路地の並び)。
 from skimage.measure import find_contours as _fc
@@ -256,38 +251,89 @@ for c_ in _fc(np.pad(land,1).astype(float),0.5):
     if landpoly is None or pg.area>landpoly.area: landpoly=pg
 railpoly=unary_union([Polygon([(X0+(q[1]-1)*RES, Z0+(q[0]-1)*RES) for q in c_]).buffer(0) for c_ in _fc(np.pad(M['rail']|M['water'],1).astype(float),0.5) if len(c_)>4]).buffer(3)
 def cw_of(sg): return max(1,sg['lanes'])*LANE
-main_corr=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='flat') for sg in main]+
-    [Point(nodeW[k-1]).buffer(max(cw_of(sg)/2+sg['walk'] for sg in main if k in (sg['a'],sg['b']))) for k in set([sg['a'] for sg in main if sg['ja']]+[sg['b'] for sg in main if sg['jb']])])
-blocks=landpoly.difference(main_corr).difference(railpoly)
-narrow=[]
-def add_street(p0,p1,blk,n):
-    ln=LineString([p0,p1]).intersection(blk.buffer(9))
+# ---- 碁盤の目の道路網 ----
+# 地図の大通りの向きから碁盤の向き(u と、それに直角な v)を決め、大通りを u・v どちらかの
+# まっすぐな線にそろえる(ずれた交差点・斜めの合流は作らない)。大通りの間は55mほどおきに細い道。
+# 交差点はすべて直角の十字路か丁字路。東京駅の構内・川には道を通さない。
+segs=[(np.array(sg['pts']),sg['W']) for sg in main]
+ang=[];wts=[]
+for P_,W_ in segs:
+    d=P_[-1]-P_[0]; L=np.linalg.norm(d)
+    if L>30: ang.append(np.arctan2(d[1],d[0])%(np.pi/2)); wts.append(L)
+hist,edges_=np.histogram(ang,bins=90,range=(0,np.pi/2),weights=wts)
+th=(edges_[np.argmax(hist)]+edges_[np.argmax(hist)+1])/2
+U=np.array([np.cos(th),np.sin(th)]); V=np.array([-np.sin(th),np.cos(th)])
+fam={0:[],1:[]}                                  # 0: u向きの道(位置は v 座標)、1: v向きの道(位置は u 座標)
+for P_,W_ in segs:
+    d=P_[-1]-P_[0]; L=np.linalg.norm(d)
+    if L<20: continue
+    c=abs(np.dot(d/L,U))
+    m=P_.mean(0)
+    if c>0.94: fam[0].append((float(np.dot(m,V)),W_,L))
+    elif c<0.34: fam[1].append((float(np.dot(m,U)),W_,L))
+district=landpoly.difference(railpoly.buffer(22))
+dpts=np.array(district.envelope.exterior.coords)
+lines=[]                                         # (family, offset, W)
+for f in (0,1):
+    items=sorted(fam[f])
+    clusters=[]
+    for off,W_,L in items:
+        if clusters and off-clusters[-1][-1][0]<28: clusters[-1].append((off,W_,L))   # 28m以内の平行な道は1本に
+        else: clusters.append([(off,W_,L)])
+    majors=[]
+    for cl in clusters:
+        tot=sum(x[2] for x in cl)
+        if tot<60: continue
+        off=sum(x[0]*x[2] for x in cl)/tot; W_=max(x[1] for x in cl if x[2]>=0.3*max(y[2] for y in cl))
+        majors.append((off,min(W_,26)))
+    for off,W_ in majors: lines.append((f,off,W_))
+    # 大通りの間に細い道
+    axis=V if f==0 else U
+    lo=min(np.dot(dpts,axis)); hi=max(np.dot(dpts,axis))
+    stops=[lo]+[m[0] for m in majors]+[hi]
+    for a_,b_ in zip(stops[:-1],stops[1:]):
+        k=int(round((b_-a_)/55))
+        for t in range(1,k):
+            o_=a_+(b_-a_)*t/k
+            if all(abs(o_-m[0])>=30 for m in majors): lines.append((f,o_,0))
+# 線を地区の中で切り出す
+main=[]; narrow=[]
+raw=[]
+for f,off,W_ in lines:
+    d=U if f==0 else V; nrm=V if f==0 else U
+    base=nrm*off
+    ln=LineString([base-d*2000,base+d*2000]).intersection(district)
     for g in (ln.geoms if hasattr(ln,'geoms') else [ln]):
-        if g.length>25: narrow.append(dict(pts=np.array(g.coords).round(2).tolist(),W=0,lanes=n,walk=0.8 if n==1 else 1.0,kind='narrow'))
-for blk in (blocks.geoms if hasattr(blocks,'geoms') else [blocks]):
-    if blk.area<2500: continue
-    rect=blk.minimum_rotated_rectangle; rc=np.array(rect.exterior.coords)[:4]
-    e1=rc[1]-rc[0]; e2=rc[2]-rc[1]
-    if np.linalg.norm(e1)<np.linalg.norm(e2): e1,e2=e2,e1
-    Lb=np.linalg.norm(e1); Sb=np.linalg.norm(e2); u=e1/Lb; v=e2/Sb; c0=np.array(rect.centroid.coords[0])
-    if blk.area/rect.area<0.55: continue        # 形のいびつな所(駅前広場など)は分けない
-    k=int(round(Lb/55))
-    for i_ in range(1,k):                        # 長い向きに直角な道
-        t=-Lb/2+Lb*i_/k; p=c0+u*t
-        add_street(p-v*(Sb/2+10),p+v*(Sb/2+10),blk,2 if i_%2==0 else 1)
-    k2=int(round(Sb/55))                         # 幅のある街区は、長い向きにも55mほどおきに
-    for i_ in range(1,k2):
-        t=-Sb/2+Sb*i_/k2; p=c0+v*t
-        add_street(p-u*(Lb/2+10),p+u*(Lb/2+10),blk,1)
-# 道路の帯と車道
-# 交差点は円で埋める(半径はそこに来る車道の半幅の大きい方)。地図の端の道の終わりは平らに切る。
-jn=set([sg['a'] for sg in main if sg['ja']]+[sg['b'] for sg in main if sg['jb']])
-def jr(k,extra): return max(cw_of(sg)/2+extra(sg) for sg in main if k in (sg['a'],sg['b']))
-corridors=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='flat',join_style='mitre',mitre_limit=2) for sg in main+narrow]+
-    [Point(nodeW[k-1]).buffer(jr(k,lambda sg: sg['walk'])) for k in jn])
-carriage=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2,cap_style='flat',join_style='mitre',mitre_limit=2) for sg in main+narrow]+
-    [Point(nodeW[k-1]).buffer(jr(k,lambda sg: 0)) for k in jn])
-carriage=carriage.intersection(Polygon([(-380,-210),(360,-210),(360,300),(-380,300)]))
+        if g.geom_type!='LineString' or g.length<25: continue
+        n=max(1,lanes_of(W_)) if W_>0 else 1
+        if W_>0 and n<2: n=2
+        raw.append(dict(f=f,line=g,lanes=n,major=W_>0))
+# 交差点で分ける
+nodes=[]; nodeid={}
+def nid(pt):
+    key=(round(pt[0],1),round(pt[1],1))
+    for k_,q in nodeid.items():
+        if abs(k_[0]-key[0])<0.5 and abs(k_[1]-key[1])<0.5: return q
+    nodes.append([round(pt[0],2),round(pt[1],2)]); nodeid[key]=len(nodes); return len(nodes)
+for r in raw:
+    pts=[]
+    for o in raw:
+        if o['f']==r['f']: continue
+        x=r['line'].intersection(o['line'])
+        if x.geom_type=='Point': pts.append((r['line'].project(x),(x.x,x.y)))
+    pts.sort()
+    co=np.array(r['line'].coords)
+    stops=[(0.0,tuple(co[0]),False)]+[(t,p,True) for t,p in pts]+[(r['line'].length,tuple(co[-1]),False)]
+    for (t0,p0,j0),(t1,p1,j1) in zip(stops[:-1],stops[1:]):
+        if t1-t0<1: continue
+        a=nid(p0) if j0 else 0; b=nid(p1) if j1 else 0
+        main.append(dict(pts=[list(np.round(p0,2)),list(np.round(p1,2))],W=round(r['lanes']*LANE,2),lanes=r['lanes'],
+            walk=MAINWALK if r['major'] else 1.0,kind='main' if r['major'] else 'narrow',a=a,b=b,ja=bool(j0),jb=bool(j1)))
+nodeW=[np.array(q) for q in nodes]
+print('grid angle',round(np.degrees(th),1),'lines',len(lines),'segments',len(main))
+carriage=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2,cap_style='square' if (sg['ja'] or sg['jb']) else 'flat',join_style='mitre') for sg in main])
+corridors=unary_union([LineString(sg['pts']).buffer(cw_of(sg)/2+sg['walk'],cap_style='square',join_style='mitre') for sg in main])
+carriage=carriage.intersection(district.buffer(0.5))
 def rings(g):
     out=[]
     for pg in (g.geoms if hasattr(g,'geoms') else [g]):
