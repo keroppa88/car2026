@@ -1,6 +1,6 @@
 # 東京駅〜日本橋の地図(SimLab の GLB)をゲーム用に整える。
 #  - 元の GLB はルートの行列で横倒し・インチ換算(0.0254倍)になっているので外し、1単位=1m・Y が上にする。
-#  - 元の座標はそのままだと鏡像(東京駅が東側)になるので z を反転する(面の向きも裏返す)。
+#  - 元の座標はそのままで北が -z(日本橋川が北、東京駅が西)。反転はしない。
 # 使い方: python3 tools/prep_tokyoeki.py 元.glb tools/tokyoeki_src.glb map/map_tokyoeki.glb
 #  - tools/tokyoeki_src.glb: 建物も含む全部(tools/tokyoeki_city.py の入力)
 #  - map/map_tokyoeki.glb: ゲーム用。地面・路面・線路・川・緑だけ(建物は three.js で描き、当たり判定も自前)
@@ -22,22 +22,6 @@ def view(ai):
     off = bv.get('byteOffset', 0) + a.get('byteOffset', 0)
     assert not bv.get('byteStride') or bv['byteStride'] == n * np.dtype(comp).itemsize
     return np.frombuffer(B, dtype=comp, count=a['count'] * n, offset=off).reshape(a['count'], n)
-
-done = set()
-for m in j['meshes']:
-    for p in m['primitives']:
-        for key in ('POSITION', 'NORMAL'):
-            ai = p['attributes'].get(key)
-            if ai is None or ai in done: continue
-            done.add(ai)
-            v = view(ai); v[:, 2] *= -1
-            a = j['accessors'][ai]
-            if 'min' in a:
-                mn, mx = a['min'][2], a['max'][2]; a['min'][2], a['max'][2] = -mx, -mn
-        ii = p.get('indices')
-        if ii is not None and ii not in done:
-            done.add(ii)
-            t = view(ii).reshape(-1, 3); t[:, [1, 2]] = t[:, [2, 1]]
 
 # 変換は全部外す(メッシュの座標がそのまま m)
 for n in j['nodes']:

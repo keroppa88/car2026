@@ -516,7 +516,7 @@ export function decorateTokyoEki(root) {
   let blocked = () => false;
   let roads = null, clock = 0;
   (root.parent || root).add(city);
-  fetch('map/tokyoeki-city.json?v=20261022-4').then((r) => r.json()).then((data) => {
+  fetch('map/tokyoeki-city.json?v=20261022-5').then((r) => r.json()).then((data) => {
     // 地面の下地(元の地図の地面には建物の跡の穴があるので、その下を舗装の色で埋める)
     const lg = new THREE.ShapeGeometry(new THREE.Shape(data.land.map(([x, z]) => new THREE.Vector2(x, z))));
     lg.rotateX(Math.PI / 2); lg.translate(0, -0.03, 0);

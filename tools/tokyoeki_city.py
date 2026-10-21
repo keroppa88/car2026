@@ -248,8 +248,7 @@ for a,b,P,da,db in E:
     n=max(1,lanes_of(W-2*MAINWALK))
     walk=float(np.clip((W-n*LANE)/2,MAINWALK,8))
     main.append(dict(pts=pts.round(2).tolist(),W=round(W,2),lanes=n,walk=round(walk,2),kind='main',a=int(a),b=int(b),ja=bool(da>=3),jb=bool(db>=3)))
-# 細い道: 大通りで囲まれた街区が大きい時、街区を40〜60mほどの区画に分ける道を通す
-# (日本橋・八重洲の碁盤目の路地のように、街区の長い向きに直角、とても幅の広い街区は真ん中にも1本)。
+# 細い道: 大通りで囲まれた街区を、縦横55mほどの碁盤目に分ける道を通す(日本橋・八重洲・京橋の路地の並び)。
 from skimage.measure import find_contours as _fc
 landpoly=None
 for c_ in _fc(np.pad(land,1).astype(float),0.5):
@@ -276,8 +275,10 @@ for blk in (blocks.geoms if hasattr(blocks,'geoms') else [blocks]):
     for i_ in range(1,k):                        # 長い向きに直角な道
         t=-Lb/2+Lb*i_/k; p=c0+u*t
         add_street(p-v*(Sb/2+10),p+v*(Sb/2+10),blk,2 if i_%2==0 else 1)
-    if Sb>90:                                    # とても幅の広い街区は、長い向きにも1本
-        add_street(c0-u*(Lb/2+10),c0+u*(Lb/2+10),blk,1)
+    k2=int(round(Sb/55))                         # 幅のある街区は、長い向きにも55mほどおきに
+    for i_ in range(1,k2):
+        t=-Sb/2+Sb*i_/k2; p=c0+v*t
+        add_street(p-u*(Lb/2+10),p+u*(Lb/2+10),blk,1)
 # 道路の帯と車道
 # 交差点は円で埋める(半径はそこに来る車道の半幅の大きい方)。地図の端の道の終わりは平らに切る。
 jn=set([sg['a'] for sg in main if sg['ja']]+[sg['b'] for sg in main if sg['jb']])
@@ -322,7 +323,7 @@ def orig_height(pg):
     return float(np.percentile(v,90)) if len(v)>len(rr)*0.25 else 0.0
 def split(pg,depth=0):
     """敷地を分ける: 外接長方形の長い向きに直角に切る。目標の広さになるまで繰り返す。"""
-    target=rng.uniform(250,900)
+    target=rng.uniform(150,600)
     if pg.area<target or depth>8: return [pg]
     rect=pg.minimum_rotated_rectangle; rc=np.array(rect.exterior.coords)[:4]
     e1=rc[1]-rc[0]; e2=rc[2]-rc[1]
