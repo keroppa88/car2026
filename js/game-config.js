@@ -585,12 +585,12 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // 中央通り(片側3車線)の真ん中の車線を北へ。
-    spawnReferenceX: -74.9,
-    spawnReferenceZ: 72,
+    // 2マス幅の東西の道の左車線を東へ。
+    spawnReferenceX: -25,
+    spawnReferenceZ: -129.9,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
-    spawnHeading: Math.PI,
+    spawnHeading: Math.PI / 2,
     treePlacement: { ...commonTrees, enabled: false, seed: 20261021 },
     mapWhiteGlow: false,
     roadNightEmissive: false,
