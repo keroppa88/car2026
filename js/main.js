@@ -7,12 +7,12 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
-import { decorateTokyoEki, METRO_W, METRO_H } from './tokyoeki-city.js?v=20261022-eki-22';
+import { decorateTokyoEki } from './tokyoeki-city.js?v=20261023-eki-23';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261022-eki-8';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261023-eki-9';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -2848,17 +2848,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         if (bridgeSurface) return bridgeSurface;
       }
       seaSurfaceBridge = null;
-    }
-    if (TOKYOEKI_COURSE) {
-      // メトロポリス: 地図の端は反対側の端へつながる。
-      const wx = player.pos.x > METRO_W / 2 ? -METRO_W : player.pos.x < -METRO_W / 2 ? METRO_W : 0;
-      const wz = player.pos.z > METRO_H / 2 ? -METRO_H : player.pos.z < -METRO_H / 2 ? METRO_H : 0;
-      if (wx || wz) {
-        player.pos.x += wx; player.pos.z += wz;
-        if (neoLastFreePos) { neoLastFreePos.x += wx; neoLastFreePos.z += wz; }
-        car2LastRoadPos.x += wx; car2LastRoadPos.z += wz;
-        camera.position.x += wx; camera.position.z += wz;
-      }
     }
     if (TOUGE_COURSE && gunmaCourse?.route.length) {
       // Past either end the road is a copy of the other end: warp by one seam.

@@ -585,9 +585,9 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // 2マス幅の東西の道の左車線を東へ。
-    spawnReferenceX: -25,
-    spawnReferenceZ: -129.9,
+    // 片側3車線の東西の大通りの真ん中の車線を東へ。
+    spawnReferenceX: -10,
+    spawnReferenceZ: -21.1,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI / 2,
