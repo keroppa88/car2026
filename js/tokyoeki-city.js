@@ -123,7 +123,7 @@ export const CELL = 6.5;
 const ROWS = METRO_GRID.length, COLS = METRO_GRID[0].length;
 export const METRO_W = COLS * CELL, METRO_H = ROWS * CELL;
 const OX = -METRO_W / 2, OZ = -METRO_H / 2;            // 地図の左上(北西)の角
-const LANE = CELL / 2, WALKW = 2.5;
+const LANE = CELL / 2, WALKW = LANE / 2;   // 歩道の幅は1車線の半分(基本仕様)
 const ASPHALT = 0x3d3f42, WALK = 0xa7a8a4, CURB = 0xbdbbb5, SAND = 0xd8c48e, GRASS = 0x6f9a4f, WATER = 0x3d6b66;
 
 // ---- 斜めの道 ----
