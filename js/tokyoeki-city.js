@@ -101,8 +101,74 @@ const OX = -METRO_W / 2, OZ = -METRO_H / 2;            // 地図の左上(北西
 const LANE = CELL / 2, WALKW = 2.5;
 const ASPHALT = 0x3d3f42, WALK = 0xa7a8a4, CURB = 0xbdbbb5, SAND = 0xd8c48e, GRASS = 0x6f9a4f, WATER = 0x3d6b66;
 
-const at = (r, c) => (r < 0 || c < 0 || r >= ROWS || c >= COLS ? '~' : METRO_GRID[r][c]);
+// ---- 斜めの道 ----
+// マス目の都合で階段になった1マス幅の斜めの道を見つけ、まっすぐな斜めの道にする。
+//  段差: 道のマス A と、その斜め下の道のマス B があり、間の2マスが道でない所。
+//  段差どうしを横の道のマスでつないだものを1本の斜めの道とし、段の角を通る直線で引き直す。
+//  階段のマスは地面(w: 歩道の舗装、走れる)にし、斜めの道の近くの建物のマスも地面にする。
+const G = METRO_GRID.map((row) => row.split(''));
+const at = (r, c) => (r < 0 || c < 0 || r >= ROWS || c >= COLS ? '~' : G[r][c]);
 const isRoad = (r, c) => at(r, c) === '#';
+const DIAGONALS = (() => {
+  const raw = (r, c) => r >= 0 && c >= 0 && r < ROWS && c < COLS && METRO_GRID[r][c] === '#';
+  const vrun = (r, c) => { let n = 1; for (let k = 1; raw(r + k, c); k++) n++; for (let k = 1; raw(r - k, c); k++) n++; return n; };
+  const steps = [];
+  for (let r = 0; r + 1 < ROWS; r++) for (let c = 0; c < COLS; c++) for (const dc of [1, -1]) {
+    if (raw(r, c) && raw(r + 1, c + dc) && !raw(r, c + dc) && !raw(r + 1, c)) steps.push({ r, c, dc });
+  }
+  // 段差を、横の並びでつながるものどうし(次の段の A が前の段の B と同じ行、向きも同じ)で鎖にする
+  const used = new Set(), chains = [];
+  for (const st of steps) {
+    if (used.has(st)) continue;
+    const chain = [st]; used.add(st);
+    let cur = st;
+    for (;;) {
+      const nx = steps.find((q) => !used.has(q) && q.dc === cur.dc && q.r === cur.r + 1 && Math.sign(q.c - (cur.c + cur.dc)) !== -cur.dc
+        && Math.abs(q.c - (cur.c + cur.dc)) <= 6 && [...Array(Math.abs(q.c - (cur.c + cur.dc)) + 1)].every((_, k) => raw(q.r, cur.c + cur.dc + cur.dc * k)));
+      if (!nx) break;
+      chain.push(nx); used.add(nx); cur = nx;
+    }
+    if (chain.length >= 2) chains.push(chain);
+  }
+  const lines = [];
+  for (const ch of chains) {
+    const dc = ch[0].dc;
+    // 段の角(セルの座標で行・列)
+    const corners = ch.map((q) => [q.r + 1, q.c + (dc > 0 ? 1 : 0)]);
+    // 直線のあてはめ(列 = a + b * 行)
+    const n = corners.length, mr = corners.reduce((s, p) => s + p[0], 0) / n, mc = corners.reduce((s, p) => s + p[1], 0) / n;
+    let sxx = 0, sxy = 0; for (const [rr, cc] of corners) { sxx += (rr - mr) ** 2; sxy += (rr - mr) * (cc - mc); }
+    const b = sxy / sxx, a = mc - b * mr;
+    // 階段のマス(段と段の間の横の並び。縦の道の一部のマスは交差点として残す)を地面に
+    const cells = [];
+    for (let i = 0; i < ch.length; i++) {
+      const B = { r: ch[i].r + 1, c: ch[i].c + dc };
+      const endC = i + 1 < ch.length ? ch[i + 1].c : null;
+      for (let c = B.c, k = 0; k < 8; c += dc, k++) {
+        if (!raw(B.r, c)) break;
+        if (endC === null && vrun(B.r, c) >= 3) break;
+        if (vrun(B.r, c) < 3) cells.push([B.r, c]);
+        if (endC !== null && c === endC) break;
+      }
+    }
+    // 端は、つながる道の中まで1.5マス延ばす
+    const r0 = corners[0][0] - 1.5, r1 = corners[n - 1][0] + 1.5;
+    lines.push({ p0: [a + b * r0, r0], p1: [a + b * r1, r1], cells });
+  }
+  // 階段のマスと、斜めの道に近い建物のマスを地面(w)に
+  for (const L of lines) {
+    for (const [r, c] of L.cells) G[r][c] = 'w';
+    const [c0, r0] = L.p0, [c1, r1] = L.p1, len = Math.hypot(c1 - c0, r1 - r0);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (G[r][c] !== '.') continue;
+      const pr = r + 0.5, pc = c + 0.5;
+      const t = Math.max(0, Math.min(1, ((pc - c0) * (c1 - c0) + (pr - r0) * (r1 - r0)) / (len * len)));
+      const d = Math.hypot(c0 + (c1 - c0) * t - pc, r0 + (r1 - r0) * t - pr);   // マス単位
+      if (d < 1.25) G[r][c] = 'w';
+    }
+  }
+  return lines;
+})();
 const cellX = (c) => OX + c * CELL, cellZ = (r) => OZ + r * CELL;
 
 const WALL_COLORS = [
@@ -287,10 +353,11 @@ function buildRoads(g) {
     const x0 = cellX(c), z0 = cellZ(r), x1 = x0 + CELL, z1 = z0 + CELL;
     quad(asphalt, x0, z0, x1, z1, 0.04);
     // 縁石: 道路でないマスとの境
-    if (!isRoad(r - 1, c)) ribbon([[x0, z0 + 0.15], [x1, z0 + 0.15]], 0.3, 0.08, curb);
-    if (!isRoad(r + 1, c)) ribbon([[x0, z1 - 0.15], [x1, z1 - 0.15]], 0.3, 0.08, curb);
-    if (!isRoad(r, c - 1)) ribbon([[x0 + 0.15, z0], [x0 + 0.15, z1]], 0.3, 0.08, curb);
-    if (!isRoad(r, c + 1)) ribbon([[x1 - 0.15, z0], [x1 - 0.15, z1]], 0.3, 0.08, curb);
+    const cut = (rr, cc) => !isRoad(rr, cc) && at(rr, cc) !== 'w';
+    if (cut(r - 1, c)) ribbon([[x0, z0 + 0.15], [x1, z0 + 0.15]], 0.3, 0.08, curb);
+    if (cut(r + 1, c)) ribbon([[x0, z1 - 0.15], [x1, z1 - 0.15]], 0.3, 0.08, curb);
+    if (cut(r, c - 1)) ribbon([[x0 + 0.15, z0], [x0 + 0.15, z1]], 0.3, 0.08, curb);
+    if (cut(r, c + 1)) ribbon([[x1 - 0.15, z0], [x1 - 0.15, z1]], 0.3, 0.08, curb);
     const I = info[r][c];
     if (I.kind !== 'H' && I.kind !== 'V') continue;
     const H = I.kind === 'H', thick = I.thick, half = thick * CELL / 2;
@@ -322,8 +389,34 @@ function buildRoads(g) {
       else rect(mid + side * half / 2, sl, ang + Math.PI / 2, half - 0.3, 0.45, 0.085, white);
     }
   }
-  const road = flatMesh(asphalt, ASPHALT);
-  g.add(road, flatMesh(curb, CURB), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
+  // 斜めの道: 幅1マス(片側1車線)の帯と、白の破線の中央線・外側線・縁石
+  const diag = [];
+  for (const L of DIAGONALS) {
+    const P = [[cellX(L.p0[0]), cellZ(L.p0[1])], [cellX(L.p1[0]), cellZ(L.p1[1])]];
+    ribbon(P, CELL, 0.07, diag);
+    const off = (o) => { const [[x0, z0], [x1, z1]] = P, l = Math.hypot(x1 - x0, z1 - z0), nx = (z1 - z0) / l, nz = -(x1 - x0) / l; return [[x0 + nx * o, z0 + nz * o], [x1 + nx * o, z1 + nz * o]]; };
+    ribbon(P, 0.12, 0.1, white, [5, 5]);
+    // 端の線と縁石は、つながる道の中に入る両端の1.2マス分を除く
+    const inner = (o) => { const [[x0, z0], [x1, z1]] = off(o), f = 1.6 / Math.hypot(L.p1[0] - L.p0[0], L.p1[1] - L.p0[1]); return [[x0 + (x1 - x0) * f, z0 + (z1 - z0) * f], [x1 - (x1 - x0) * f, z1 - (z1 - z0) * f]]; };
+    // 交わる道の所では端の線・縁石を切る(線の上の点が道路のマスにある間は引かない)
+    const broken = (seg2, w, y, out) => {
+      const [[x0, z0], [x1, z1]] = seg2, l = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(l);
+      let start = null;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+        const onRoad = isRoad(Math.floor((z - OZ) / CELL), Math.floor((x - OX) / CELL));
+        if (!onRoad && start === null) start = t;
+        if ((onRoad || i === n) && start !== null) {
+          const e = onRoad ? (i - 1) / n : t;
+          if (e > start) ribbon([[x0 + (x1 - x0) * start, z0 + (z1 - z0) * start], [x0 + (x1 - x0) * e, z0 + (z1 - z0) * e]], w, y, out);
+          start = null;
+        }
+      }
+    };
+    for (const sd of [-1, 1]) { broken(off(sd * (CELL / 2 - 0.25)), 0.15, 0.1, white); broken(off(sd * (CELL / 2 + 0.15)), 0.3, 0.095, curb); }
+  }
+  const road = flatMesh(asphalt, ASPHALT), droad = flatMesh(diag, ASPHALT);
+  g.add(road, droad, flatMesh(curb, CURB), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
 }
 
 // ---- 建物 ----
@@ -420,7 +513,7 @@ function buildGround(g, trees) {
     if (k === '~') quad(water, x0, z0, x1, z1, -0.8);
     else if (k === 'S') quad(sand, x0, z0, x1, z1, 0.02);
     else if (k === 'G' || k === 'O') quad(grass, x0, z0, x1, z1, 0.03);
-    else if (k === '.') quad(walk, x0, z0, x1, z1, 0.06);              // 建物の区画(歩道と敷地)
+    else if (k === '.' || k === 'w') quad(walk, x0, z0, x1, z1, 0.06);  // 建物の区画(歩道と敷地)・斜めの道のまわり
   }
   g.add(flatMesh(walk, WALK), flatMesh(sand, SAND), flatMesh(grass, GRASS), flatMesh(water, WATER));
   // 木: 芝生のマスに、1マスおきに少しずらして植える
@@ -482,6 +575,7 @@ export function decorateTokyoEki(root) {
   buildBuildings(lots, city, wallMats, roofMat);
   const blocked = makeBlocker(lots, trees);
   document.body.dataset.tokyoEkiBuildings = String(lots.length);
+  document.body.dataset.tokyoEkiDiagonals = String(DIAGONALS.length);
   return {
     isBlocked: (x, z, R) => blocked(x, z, R),
     update() {},
