@@ -8,11 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
+import { decorateOsmCity } from './osm-city.js?v=20261024-osm-3';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261024-eki-10';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261024-osm-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -39,7 +40,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
   // 街並み(neo)も同じ無限の輪の生成道路。一直線の二車線で、沿道は日本の街。
   const NEO_COURSE = COURSE_KEY === 'neo';
-  const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki';
+  const OSM_COURSE = COURSE_KEY === 'nihonbashi';   // 日本橋: OpenStreetMap から組み立てる街
+  const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
@@ -6052,10 +6054,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
     // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
     if (TOKYOEKI_COURSE) {
-      tokyoEkiCity = decorateTokyoEki(wrap);
+      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData) : decorateTokyoEki(wrap);
       // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
       // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
-      const flat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2),
+      const flat = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2),
         new THREE.MeshBasicMaterial({ name: 'M06_Steel_Smoke', visible: false, side: THREE.DoubleSide }));
       flat.position.set(50, 0, 20);
       wrap.add(flat); flat.updateMatrixWorld(true);

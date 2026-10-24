@@ -595,6 +595,33 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 日本橋(八重洲〜日本橋〜茅場町)。OpenStreetMap のデータから組み立てる(tools/osm_to_city.py)。
+  // 地図ファイルは読み込みの仕組みのために東京駅のものを使い、見た目と当たり判定は osm-city.js。
+  nihonbashi: {
+    ...commonMap,
+    label: '日本橋',
+    file: 'map/map_tokyoeki.glb',
+    preview: 'picture/nihonbashi.png',
+    cityData: 'map/nihonbashi-city.json?v=20261024-1',
+    scale: 1,
+    assetRevision: '20261022-tokyoeki-3',
+    spawnSearchRadius: 40,
+    roadMaterial: 'M06_Steel_Smoke',
+    roadMaterialAliases: ['M06_Steel_Smoke'],
+    supportSurfaceMode: 'drivable',
+    loopMode: 'none',
+    spawnSurfaceMode: 'mapSurface',
+    spawnReference: 'fixed',
+    // 永代通り(上り・片側3車線)の真ん中の車線
+    spawnReferenceX: 543.2,
+    spawnReferenceZ: 202.3,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: 0.95,
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261024 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'tokyoeki'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'tokyoeki', 'nihonbashi'];
