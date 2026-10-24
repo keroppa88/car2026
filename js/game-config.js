@@ -586,8 +586,8 @@ export const MAP_CONFIGS = {
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
     // 片側3車線の東西の大通りの真ん中の車線を東へ。
-    spawnReferenceX: -10,
-    spawnReferenceZ: -21.1,
+    spawnReferenceX: 0,
+    spawnReferenceZ: -212.9,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
     spawnHeading: Math.PI / 2,

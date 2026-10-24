@@ -2,12 +2,12 @@
 # 使い方: python3 tools/metropolis_from_xlsx.py tools/metropolis-map.xlsx
 # 色 → 文字:
 #   灰色=道路 #   水色=水 ~   黄色=砂地(地面) S   黄緑=木と芝生 G   薄いオレンジ=公園の中の建物 O
-#   塗りなし(白)=建物 .
+#   白=建物 . (白を塗っていない古い地図では、塗りなし=建物。白を塗った地図では、塗りなし=地図の外で水)
 # 範囲は塗られたセルを含む長方形。要るもの: openpyxl
 import sys
 import openpyxl
 ws = openpyxl.load_workbook(sys.argv[1]).active
-THEME = {(4, 0.6): '~', (0, -0.25): '#', (0, -0.15): '#', (6, 0.4): 'G', (6, 0.6): 'G', (7, 0.4): 'O'}
+THEME = {(0, 0.0): '.', (4, 0.6): '~', (0, -0.25): '#', (6, 0.4): 'G', (6, 0.6): 'G', (7, 0.4): 'O'}
 RGB = {'FFFFFF00': 'S'}
 def code(c):
     f = c.fill
@@ -19,11 +19,13 @@ for row in ws.iter_rows():
     for c in row:
         k = code(c)
         if k: cells[(c.row, c.column)] = k
-# 水に囲まれた本体の範囲(離れた飛び地の1マスは無視): 水のマスの外接長方形
-water = [p for p, k in cells.items() if k == '~']
-r0 = min(p[0] for p in water); r1 = max(p[0] for p in water)
-c0 = min(p[1] for p in water); c1 = max(p[1] for p in water)
-rows = [''.join(cells.get((r, c), '.') for c in range(c0, c1 + 1)) for r in range(r0, r1 + 1)]
+# 白を塗りで指定している地図では、塗りなしは地図の外(水)として扱う。
+white_filled = any(k == '.' for k in cells.values())
+# 範囲: 陸(水以外のマス)の外接長方形に、まわりの水を6マス足したもの
+land = [p for p, k in cells.items() if k != '~']
+r0 = min(p[0] for p in land) - 6; r1 = max(p[0] for p in land) + 6
+c0 = min(p[1] for p in land) - 6; c1 = max(p[1] for p in land) + 6
+rows = [''.join(cells.get((r, c), '~' if white_filled else '.') for c in range(c0, c1 + 1)) for r in range(r0, r1 + 1)]
 open('map/metropolis-grid.txt', 'w').write('\n'.join(rows) + '\n')
 print(len(rows), 'x', len(rows[0]))
 
