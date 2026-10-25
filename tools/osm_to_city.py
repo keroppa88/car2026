@@ -494,7 +494,22 @@ for poly in _bld:
         _try(q.x, q.y, 3.0, (math.atan2(q2.x - q.x, q2.y - q.y), 4.0, 2.0))
 print('街路樹', len(trees))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+# ---- 敷地(ビルのまわりの空き地): 建物の外側 7m までを敷地とみなし、歩道(車道 + 4.5m)とは重ねない ----
+from shapely.ops import unary_union as _UU2
+SIDEWALK = 4.5
+_band = _UU2([_L(r['pts']).buffer(_road_w(r) / 2 + SIDEWALK) for r in roads if len(r['pts']) > 1 and not r['bridge']])
+_lots = _UU2([p.buffer(7, join_style=2) for p in _bld if p.area > 60]).difference(_band)
+_lots = _lots.difference(_UU2([_P(w['o']).buffer(0) for w in water] + [_P(p['o']).buffer(0) for p in parks]))
+lots = []
+for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
+    if g_.geom_type != 'Polygon' or g_.area < 30: continue
+    g_ = g_.simplify(0.6)
+    if g_.is_empty or g_.geom_type != 'Polygon': continue
+    lots.append({'o': [[round(x, 1), round(z, 1)] for x, z in list(g_.exterior.coords)[:-1]],
+                 'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
+print('敷地', len(lots))
+
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

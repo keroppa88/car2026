@@ -10,7 +10,7 @@ import * as THREE from '../lib/three.module.js';
 // 地図データ © OpenStreetMap contributors (ODbL)
 
 const LANE = 3.25;
-const ASPHALT = 0x3d3f42, WALK = 0xa7a8a4, GRASS = 0x6f9a4f, WATER = 0x3d6b66, CONCRETE = 0x8e9196;
+const ASPHALT = 0x3d3f42, SIDEWALK_COLOR = 0x45474a, WALK = 0x8d8c88, GRASS = 0x6f9a4f, WATER = 0x3d6b66, CONCRETE = 0x8e9196;
 const WALL_COLORS = [
   0xe8e4da, 0xd9d3c4, 0xcfc8b8, 0xbfc5c9, 0xb4b8bb, 0xa9a49a, 0xd6cfbe,
   0xc9bfae, 0x9fa6ab, 0xe2dccd, 0xb9ab95, 0x8f9498, 0xcfd3d6, 0xa3988a,
@@ -234,7 +234,7 @@ function offset(p, d) {
 }
 
 function buildRoads(data, g) {
-  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [];
+  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [];
   // 交差点の点と、その半径(集まる道の半幅の最大)
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
@@ -243,6 +243,11 @@ function buildRoads(data, g) {
   for (const r of data.roads) {
     const w = roadWidth(r), half = w / 2, p = r.pts;
     if (r.bridge) ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
+    else {
+      const sw = data.sidewalk ?? 4.5;
+      ribbon(p, w + sw * 2, 0.012, walk);                                    // 歩道(アスファルト色)
+      for (let i = 1; i + 1 < p.length; i++) disc(p[i][0], p[i][1], half + sw, 0.012, walk);
+    }
     ribbon(p, w, r.bridge ? 0.06 : 0.04, asphalt);
     for (let i = 1; i + 1 < p.length; i++) disc(p[i][0], p[i][1], half, r.bridge ? 0.06 : 0.04, asphalt);   // 折れ目のすき間を埋める
     // 線を引く区間: 交差点の点のまわり(半径 + 1.5m)を除く
@@ -256,6 +261,7 @@ function buildRoads(data, g) {
       if (b - a < 3) continue;
       const body = cut(p, s, a, b);
       if (body.length < 2) continue;
+      if (!r.bridge) for (const sd of [-1, 1]) ribbon(offset(body, sd * (half + 0.12)), 0.24, 0.03, curb);   // 縁石
       if (r.oneway) {
         for (let k = 1; k < r.lanes; k++) ribbon(offset(body, half - k * LANE), 0.12, 0.08, white, [5, 5]);
         ribbon(offset(body, half - 0.25), 0.15, 0.08, white);              // 左の外側線
@@ -289,6 +295,7 @@ function buildRoads(data, g) {
       }
     }
   }
+  g.add(flatMesh(walk, SIDEWALK_COLOR), flatMesh(curb, 0x9d9e9b));
   g.add(flatMesh(deck, 0xb4b4ae), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
 }
 
@@ -584,6 +591,57 @@ function buildForests(data, g) {
     m.matrixAutoUpdate = false; m.name = 'forest'; g.add(m); n++;
   }
   document.body.dataset.osmForests = String(n);
+}
+
+// ---- 敷地(ビルのまわりの空き地): いくつかの色の舗装を混ぜる ----
+const LOT_COLORS = [0x6e7073, 0x7c7e80, 0x8f8a80, 0xa59a86, 0x9c8a74, 0x8a6e5c, 0xb3aea4, 0x797670, 0x9fa3a6];
+function buildLots(data, g) {
+  const groups = LOT_COLORS.map(() => []);
+  (data.lots || []).forEach((L) => {
+    let cx = 0, cz = 0; for (const [x, z] of L.o) { cx += x; cz += z; }
+    const R = seeded(Math.round(cx / L.o.length * 7 + cz / L.o.length * 3));
+    groups[Math.floor(R() * LOT_COLORS.length)].push(L);
+  });
+  groups.forEach((list, i) => { if (list.length) g.add(polyFill(list, 0.008, LOT_COLORS[i])); });
+}
+
+// ---- 歩道の柵: 片側2車線以上の道路の、車道と歩道の間 ----
+function buildFences(data, g, onRoad) {
+  const post = { p: [], n: [] }, bar = { p: [], n: [] };
+  const J = new Map();
+  for (const r of data.roads) for (const i of r.junctions) {
+    const k = r.pts[i].join(','); J.set(k, Math.max(J.get(k) || 0, roadWidth(r) / 2));
+  }
+  for (const r of data.roads) {
+    if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4)) continue;
+    const half = roadWidth(r) / 2, p = r.pts, s = cumLen(p), L = s.at(-1), holes = [];
+    for (const i of r.junctions) { const R = (J.get(p[i].join(',')) || half) + 6; holes.push([s[i] - R, s[i] + R]); }   // 交差点と横断歩道の所はあける
+    holes.sort((a, b) => a[0] - b[0]);
+    const spans = []; let x = 0;
+    for (const [a, b] of holes) { if (a > x) spans.push([x, a]); x = Math.max(x, b); }
+    if (L > x) spans.push([x, L]);
+    for (const [a, b] of spans) {
+      if (b - a < 6) continue;
+      const body = cut(p, s, a, b); if (body.length < 2) continue;
+      for (const sd of [-1, 1]) {
+        const e = offset(body, sd * (half + 0.45));
+        let acc = 0;
+        for (let i = 0; i + 1 < e.length; i++) {
+          const [x0, z0] = e[i], [x1, z1] = e[i + 1], len = Math.hypot(x1 - x0, z1 - z0); if (len < 0.1) continue;
+          const tx = (x1 - x0) / len, tz = (z1 - z0) / len, nx = tz * sd, nz = -tx * sd, ang = Math.atan2(tx, tz);   // 外向き(offset と同じ向き)
+          // 外側が別の車道(中央分離帯)なら柵は作らない
+          const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+          if (onRoad(mx + nx * 1.6, mz + nz * 1.6)) { acc += len; continue; }
+          boxInto(bar, mx, 0.95, mz, 0.06, 0.08, len, ang);
+          boxInto(bar, mx, 0.45, mz, 0.04, 0.05, len, ang);
+          for (let d = (3 - acc % 3) % 3; d < len; d += 3) boxInto(post, x0 + tx * d, 0.5, z0 + tz * d, 0.07, 1.0, 0.07, ang);
+          acc += len;
+        }
+      }
+    }
+  }
+  const mat = new THREE.MeshLambertMaterial({ color: 0xd9dcdd });
+  g.add(solidMesh(post, mat), solidMesh(bar, mat));
 }
 
 // ---- 街路樹(位置は osm_to_city.py が決める) ----
@@ -888,6 +946,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     city.add(gm);
     city.add(polyFill(data.parks, 0.02, GRASS));
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
+    buildLots(data, city);
     buildWater(data, city);
     buildForests(data, city);
     buildTrees(data, city);
@@ -903,6 +962,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     }
     blocked = makeBlocker(data);
     buildRailways(data, city, blocked.onRoad);
+    buildFences(data, city, blocked.onRoad);
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
     // 地図に使う範囲: 走れる範囲(area)の外枠 + 少し
