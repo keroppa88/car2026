@@ -293,14 +293,14 @@ function buildRoads(data, g) {
 }
 
 function buildElevated(data, g) {
-  const deck = { p: [], n: [] };
+  const deck = { p: [], n: [] }, EH = data.elevH ?? 9.5;
   for (const e of data.elevated) {
     const w = e.lanes * LANE + 1.5, p = e.pts;
     for (let i = 0; i + 1 < p.length; i++) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
       const ang = Math.atan2(x1 - x0, z1 - z0);
-      boxInto(deck, (x0 + x1) / 2, 9.5, (z0 + z1) / 2, w, 1.4, L + 0.6, ang);
-      for (const sd of [-1, 1]) boxInto(deck, (x0 + x1) / 2 + Math.cos(ang) * sd * (w / 2 - 0.2), 10.8, (z0 + z1) / 2 - Math.sin(ang) * sd * (w / 2 - 0.2), 0.35, 1.1, L + 0.6, ang);
+      boxInto(deck, (x0 + x1) / 2, EH, (z0 + z1) / 2, w, 1.4, L + 0.6, ang);
+      for (const sd of [-1, 1]) boxInto(deck, (x0 + x1) / 2 + Math.cos(ang) * sd * (w / 2 - 0.2), EH + 1.3, (z0 + z1) / 2 - Math.sin(ang) * sd * (w / 2 - 0.2), 0.35, 1.1, L + 0.6, ang);
     }
   }
   const m = solidMesh(deck, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'shutoko'; g.add(m);
@@ -321,16 +321,18 @@ function slab(rings, y0, depth, out) {
 function buildRailways(data, g, onRoad) {
   const deck = { p: [], n: [] }, rail = [];
   for (const rl of data.rails || []) {
-    const p = rl.pts, H = rl.h; let acc = 0;
+    const p = rl.pts; let acc = 0;
     for (let i = 0; i + 1 < p.length; i++) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
+      const H = rl.hs ? (rl.hs[i] + rl.hs[i + 1]) / 2 : rl.h;
       const ang = Math.atan2(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L;
       boxInto(deck, (x0 + x1) / 2, H - 0.8, (z0 + z1) / 2, 5.4, 1.6, L + 0.5, ang);
       for (const sd of [-0.75, 0.75]) rect((x0 + x1) / 2 + tz * sd, (z0 + z1) / 2 - tx * sd, ang, L, 0.14, H + 0.04, rail);
-      // 橋脚: 道路の上には立てない
-      for (let s = (18 - acc % 18) % 18; s < L; s += 18) {
-        const px = x0 + tx * s, pz = z0 + tz * s;
-        if (!onRoad(px, pz)) boxInto(deck, px, (H - 1.6) / 2, pz, 1.6, H - 1.6, 1.6, ang);
+      // 高架の下: 道路が通る所だけあけて、ほかは下までふさぐ(4m ごとに判定)
+      const n = Math.max(1, Math.round(L / 4)), sl = L / n;
+      for (let k = 0; k < n; k++) {
+        const s = (k + 0.5) * sl, px = x0 + tx * s, pz = z0 + tz * s;
+        if (!onRoad(px, pz)) boxInto(deck, px, (H - 1.6) / 2, pz, 5.0, H - 1.6, sl + 0.05, ang);
       }
       acc += L;
     }
@@ -343,6 +345,22 @@ function buildRailways(data, g, onRoad) {
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
   if (rail.length) g.add(flatMesh(rail, 0x4a4540));
+}
+
+// ---- 首都高・KK線(PLATEAU の橋梁モデルの形)。見た目だけで、下はくぐれる ----
+function buildBridges(br, g) {
+  const top = { p: [], n: [] }, side = { p: [], n: [] };
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), T = new THREE.Vector3();
+  const put = (arr, o) => {
+    for (let k = 0; k + 8 < arr.length; k += 9) {
+      A.set(arr[k], arr[k + 1], arr[k + 2]); B.set(arr[k + 3], arr[k + 4], arr[k + 5]); C.set(arr[k + 6], arr[k + 7], arr[k + 8]);
+      N.subVectors(B, A).cross(T.subVectors(C, A)); if (N.lengthSq() < 1e-8) continue; N.normalize();
+      for (const P of [A, B, C]) { o.p.push(P.x, P.y, P.z); o.n.push(N.x, N.y, N.z); }
+    }
+  };
+  for (const b of br.bridges) { put(b.top, top); put(b.side, side); }
+  const m1 = solidMesh(top, new THREE.MeshLambertMaterial({ color: 0x5d6064, side: THREE.DoubleSide })); m1.name = 'shutoko-deck'; g.add(m1);
+  const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }
 
 const SMALL_AREA = 150;   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
@@ -564,7 +582,7 @@ function makeBlocker(data) {
   return fn;
 }
 
-export function decorateOsmCity(root, url, landmarkUrl) {
+export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
   const glow = [];
@@ -574,7 +592,8 @@ export function decorateOsmCity(root, url, landmarkUrl) {
   (root.parent || root).add(city);
   let blocked = () => false, night = false;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
-  Promise.all([fetch(url).then((r) => r.json()), lmFetch]).then(([data, lm]) => {
+  const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
+  Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch]).then(([data, lm, br]) => {
     const [X0, Z0, X1, Z1] = data.bounds;
     const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
     const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
@@ -590,6 +609,7 @@ export function decorateOsmCity(root, url, landmarkUrl) {
     city.add(flatMesh(riv, WATER));
     buildRoads(data, city);
     buildElevated(data, city);
+    if (br) buildBridges(br, city);
     buildBuildings(data, city, wallMats, roofMat);
     if (lm) {
       buildLandmarks(lm, city, wallMats, roofMat);

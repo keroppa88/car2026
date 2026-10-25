@@ -18,6 +18,10 @@ import xml.etree.ElementTree as ET
 LMK = None
 if '--landmarks' in sys.argv:
     i = sys.argv.index('--landmarks'); LMK = sys.argv[i + 1]; del sys.argv[i:i + 2]
+# --bridges 本物の形の高架.json を付けると、それと重なる首都高(見た目の板)を外す
+BRG = None
+if '--bridges' in sys.argv:
+    i = sys.argv.index('--bridges'); BRG = sys.argv[i + 1]; del sys.argv[i:i + 2]
 src, out = sys.argv[1], sys.argv[2]
 root = ET.parse(src).getroot()
 b = root.find('bounds').attrib
@@ -260,6 +264,25 @@ if LMK:
     print('ランドマークと重なる OSM の建物を外す:', len(buildings) - len(keep))
     buildings[:] = keep
 
+if BRG:
+    from shapely.geometry import Polygon, Point
+    from shapely.ops import unary_union
+    cover = unary_union([Polygon(r).buffer(4) for B_ in json.load(open(BRG))['bridges'] for r in B_['fp'] if len(r) >= 4])
+    kept = []
+    for e in elevated:
+        run = []
+        for i in range(len(e['pts']) - 1):
+            a, b = e['pts'][i], e['pts'][i + 1]
+            if cover.contains(Point((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)):
+                if len(run) >= 2: kept.append({**e, 'pts': run})
+                run = []
+            else:
+                if not run: run = [a]
+                run.append(b)
+        if len(run) >= 2: kept.append({**e, 'pts': run})
+    print('本物の高架に置き換えた首都高:', len(elevated), '→ 残り', len(kept))
+    elevated[:] = kept
+
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
 for r in roads:
@@ -270,6 +293,53 @@ for r in roads:
     r['junctions'] = [i for i, n in enumerate(r['nodes']) if use.get(n, 0) >= 2 or (n in ends and use.get(n, 0) >= 2)]
     del r['nodes']
 
+# 線路の高さ: 首都高の高さの 4/5 くらい。首都高と交わる所では線路が下をくぐる
+ELEV_H = 9.5   # 本物の形が無い首都高(OSM の線から作る板)の高さ
+if BRG:
+    import statistics
+    tops_all = []
+    for B_ in json.load(open(BRG))['bridges']:
+        ys = B_['top'][1::3]
+        if ys: tops_all.append(statistics.median(ys))
+    tops_all.sort()
+    E_ = tops_all[int(len(tops_all) * 0.75)] if tops_all else 10.5
+    ELEV_H = round(max(9.5, E_ * 1.15), 1)
+    base = round(E_ * 0.8, 1)
+    grid = {}
+    for B_ in json.load(open(BRG))['bridges']:
+        a = B_['top']
+        for k in range(0, len(a), 3):
+            grid.setdefault((int(a[k] // 20), int(a[k + 2] // 20)), []).append((a[k], a[k + 1], a[k + 2]))
+    def deck_near(x, z):
+        best = None
+        for gx in range(int(x // 20) - 1, int(x // 20) + 2):
+            for gz in range(int(z // 20) - 1, int(z // 20) + 2):
+                for (px, py, pz) in grid.get((gx, gz), []):
+                    if (px - x) ** 2 + (pz - z) ** 2 < 15 ** 2 and py > 3 and (best is None or py < best): best = py
+        for e in elevated:
+            p = e['pts']
+            for i in range(len(p) - 1):
+                (ax, az), (bx, bz) = p[i], p[i + 1]; dx, dz = bx - ax, bz - az; L2 = dx * dx + dz * dz or 1
+                u = max(0, min(1, ((x - ax) * dx + (z - az) * dz) / L2))
+                if (x - ax - dx * u) ** 2 + (z - az - dz * u) ** 2 < 15 ** 2: best = ELEV_H if best is None else min(best, ELEV_H)
+        return best
+    for r in rails:   # 交わる所を取りこぼさないよう 8m ごとに点を足す
+        q = [r['pts'][0]]
+        for (ax, az), (bx, bz) in zip(r['pts'], r['pts'][1:]):
+            n = max(1, int(math.hypot(bx - ax, bz - az) // 8))
+            q += [[round(ax + (bx - ax) * k / n, 2), round(az + (bz - az) * k / n, 2)] for k in range(1, n + 1)]
+        r['pts'] = q
+    for r in rails:
+        hs = []
+        for x, z in r['pts']:
+            d = deck_near(x, z)
+            hs.append(round(max(5.0, min(base, d - 5.0)) if d else base, 1))
+        r['h'] = base; r['hs'] = hs
+    RAIL_H = {1: base, 2: base, 3: base}
+    for c in canopies:
+        if c['y'] > 6: c['y'] = base + 6.0
+    print('線路の高さ', base, 'm / 首都高(本物の形)の高さの目安', E_, 'm / OSM の首都高の板', ELEV_H, 'm')
+
 # ホームは近くの高架の高さに合わせる
 def _near_h(o):
     cx, cz = centroid(o); best = (1e9, RAIL_H[1])
@@ -279,7 +349,7 @@ def _near_h(o):
             if d < best[0]: best = (d, r['h'])
     return best[1] if best[0] < 60 ** 2 else 0.0
 for pf in platforms: pf['y'] = _near_h(pf['o'])
-json.dump({'bounds': [X0, Z0, X1, Z1], 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
