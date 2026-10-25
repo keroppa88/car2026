@@ -234,7 +234,7 @@ function offset(p, d) {
 }
 
 function buildRoads(data, g) {
-  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [];
+  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] };
   // 交差点の点と、その半径(集まる道の半幅の最大)
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
@@ -242,7 +242,18 @@ function buildRoads(data, g) {
   }
   for (const r of data.roads) {
     const w = roadWidth(r), half = w / 2, p = r.pts;
-    if (r.bridge) ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
+    if (r.bridge) {
+      ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
+      for (const sd of [-1, 1]) {      // 両側に石の欄干(厚めの低い壁)
+        const e = offset(p, sd * (half + 3.2));
+        for (let i = 0; i + 1 < e.length; i++) {
+          const [x0, z0] = e[i], [x1, z1] = e[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
+          const ang = Math.atan2(x1 - x0, z1 - z0);
+          boxInto(parapet, (x0 + x1) / 2, 0.6, (z0 + z1) / 2, 0.55, 1.2, L + 0.3, ang);
+          boxInto(parapet, (x0 + x1) / 2, 1.27, (z0 + z1) / 2, 0.7, 0.14, L + 0.3, ang);   // 笠石
+        }
+      }
+    }
     else {
       const sw = data.sidewalk ?? 4.5;
       ribbon(p, w + sw * 2, 0.012, walk);                                    // 歩道(アスファルト色)
@@ -296,7 +307,8 @@ function buildRoads(data, g) {
     }
   }
   g.add(flatMesh(walk, SIDEWALK_COLOR), flatMesh(curb, 0x9d9e9b));
-  g.add(flatMesh(deck, 0xb4b4ae), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
+  if (parapet.p.length) g.add(solidMesh(parapet, new THREE.MeshLambertMaterial({ color: 0xb3ada1 })));
+  g.add(flatMesh(deck, SIDEWALK_COLOR), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
 }
 
 function buildElevated(data, g) {
@@ -353,7 +365,8 @@ function addWallUV(o, tileW, tileH) {
   o.u = u;
 }
 function buildRailways(data, g, onRoad) {
-  const overWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)))
+  // 川・濠の上とそのまわり 8m には柱・壁を立てない
+  const inWater0 = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)))
     || (data.rivers || []).some((rv) => {
       for (let i = 0; i + 1 < rv.pts.length; i++) {
         const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
@@ -362,6 +375,7 @@ function buildRailways(data, g, onRoad) {
       }
       return false;
     });
+  const overWater = (x, z) => inWater0(x, z) || [[8, 0], [-8, 0], [0, 8], [0, -8], [5.7, 5.7], [-5.7, 5.7], [5.7, -5.7], [-5.7, -5.7]].some(([a, b]) => inWater0(x + a, z + b));
   const deck = { p: [], n: [] }, rail = [];
   // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
   for (const v of data.viaducts || []) {
@@ -605,6 +619,66 @@ function buildLots(data, g) {
   groups.forEach((list, i) => { if (list.length) g.add(polyFill(list, 0.008, LOT_COLORS[i])); });
 }
 
+// ---- 工事中の敷地: 白い仮囲い、建設中のビル(柱と床の骨組み)、タワークレーン ----
+function buildSites(data, g) {
+  const wall = { p: [], n: [] }, steel = { p: [], n: [] }, slab = { p: [], n: [] }, crane = { p: [], n: [] }, ground = [];
+  for (const s of data.sites || []) {
+    const o = s.o;
+    let A = 0, cx = 0, cz = 0, x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let k = 0; k < o.length; k++) {
+      const [ax, az] = o[k], [bx, bz] = o[(k + 1) % o.length], c = ax * bz - bx * az;
+      A += c; cx += (ax + bx) * c; cz += (az + bz) * c;
+      x0 = Math.min(x0, ax); z0 = Math.min(z0, az); x1 = Math.max(x1, ax); z1 = Math.max(z1, az);
+      // 仮囲い(白い壁 3m)
+      const L = Math.hypot(bx - ax, bz - az); if (L < 0.1) continue;
+      boxInto(wall, (ax + bx) / 2, 1.5, (az + bz) / 2, 0.15, 3, L + 0.15, Math.atan2(bx - ax, bz - az));
+    }
+    const area = Math.abs(A) / 2; if (area < 1) continue;
+    cx /= 3 * A; cz /= 3 * A;
+    ground.push({ o, h: [] });
+    if (area < 1500) continue;            // 小さい工事は囲いだけ
+    const R = seeded(Math.round(cx * 13 + cz * 7));
+    // 建設中のビル: 敷地の中に入る格子状の柱、3.8m ごとの床。上の方ほど柱だけ
+    const side = Math.min(Math.sqrt(area) * 0.55, 60), floors = 4 + Math.floor(R() * Math.min(20, area / 600)), done = Math.floor(floors * (0.5 + R() * 0.3));
+    const step = 7.2, n = Math.max(2, Math.round(side / step));
+    const bx0 = cx - (n * step) / 2, bz0 = cz - (n * step) / 2;
+    const inside = (x, z) => pointIn(o, x, z);
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const x = bx0 + i * step, z = bz0 + j * step; if (!inside(x, z)) continue;
+      boxInto(steel, x, floors * 3.8 / 2, z, 0.6, floors * 3.8, 0.6);
+    }
+    for (let f = 1; f <= floors; f++) {
+      const y = f * 3.8;
+      for (let i = 0; i <= n; i++) for (let j = 0; j < n; j++) {
+        const x = bx0 + i * step, za = bz0 + j * step;
+        if (inside(x, za) && inside(x, za + step)) boxInto(steel, x, y, za + step / 2, 0.4, 0.5, step, 0);
+        const zb = bz0 + i * step, xa = bx0 + j * step;
+        if (inside(xa, zb) && inside(xa + step, zb)) boxInto(steel, xa + step / 2, y, zb, step, 0.5, 0.4, 0);
+      }
+      if (f <= done) for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        const x = bx0 + (i + 0.5) * step, z = bz0 + (j + 0.5) * step;
+        if (inside(x, z)) boxInto(slab, x, y, z, step, 0.3, step);
+      }
+    }
+    // タワークレーン: マスト、運転室、長いジブとカウンタージブ
+    const top = floors * 3.8 + 22, mx = bx0 + n * step * (0.3 + R() * 0.4), mz = bz0 + n * step * (0.3 + R() * 0.4), ang = R() * Math.PI * 2;
+    const ux = Math.sin(ang), uz = Math.cos(ang), jl = Math.min(55, side + 15);
+    boxInto(crane, mx, top / 2, mz, 2, top, 2);
+    boxInto(crane, mx, top + 1.5, mz, 3, 3, 3);
+    boxInto(crane, mx + ux * jl / 2, top + 3.5, mz + uz * jl / 2, 1.4, 1.4, jl, ang);
+    boxInto(crane, mx - ux * 8, top + 3.5, mz - uz * 8, 1.4, 1.4, 16, ang);
+    boxInto(crane, mx - ux * 13, top + 2, mz - uz * 13, 3, 3, 4, ang);   // おもり
+    boxInto(crane, mx, top + 8, mz, 0.8, 9, 0.8);                         // 頭の塔
+    boxInto(crane, mx + ux * jl * 0.7, top - 6, mz + uz * jl * 0.7, 0.15, 18, 0.15);   // 吊りワイヤー
+  }
+  if (ground.length) g.add(polyFill(ground, 0.009, 0x8c8172));                 // 土
+  g.add(solidMesh(wall, new THREE.MeshLambertMaterial({ color: 0xf0f0ec })));
+  g.add(solidMesh(steel, new THREE.MeshLambertMaterial({ color: 0x8a7f74 })));
+  g.add(solidMesh(slab, new THREE.MeshLambertMaterial({ color: 0xb9b7b1 })));
+  g.add(solidMesh(crane, new THREE.MeshLambertMaterial({ color: 0xe0b52c })));
+  document.body.dataset.osmSites = String((data.sites || []).length);
+}
+
 // ---- 歩道の柵: 片側2車線以上の道路の、車道と歩道の間 ----
 function buildFences(data, g, onRoad) {
   const post = { p: [], n: [] }, bar = { p: [], n: [] };
@@ -631,7 +705,7 @@ function buildFences(data, g, onRoad) {
           const tx = (x1 - x0) / len, tz = (z1 - z0) / len, nx = tz * sd, nz = -tx * sd, ang = Math.atan2(tx, tz);   // 外向き(offset と同じ向き)
           // 外側が別の車道(中央分離帯)なら柵は作らない
           const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-          if (onRoad(mx + nx * 1.6, mz + nz * 1.6)) { acc += len; continue; }
+          if ([1.6, 3, 5, 8, 11, 14].some((d) => onRoad(mx + nx * d, mz + nz * d))) { acc += len; continue; }   // 中央分離帯(向こうも車道)には柵なし
           boxInto(bar, mx, 0.95, mz, 0.06, 0.08, len, ang);
           boxInto(bar, mx, 0.45, mz, 0.04, 0.05, len, ang);
           for (let d = (3 - acc % 3) % 3; d < len; d += 3) boxInto(post, x0 + tx * d, 0.5, z0 + tz * d, 0.07, 1.0, 0.07, ang);
@@ -806,11 +880,19 @@ function buildFront(f, g) {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute([1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1], 2));
     const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; g.add(m);
   };
-  const W = Math.min(f.w * 0.3, 14);
-  quad(W + 5, 0, 27, 0.35, new THREE.MeshLambertMaterial({ color: 0xf2f1ee, side: THREE.DoubleSide }));   // 白い枠
-  quad(W, 0, 24, 0.45, new THREE.MeshLambertMaterial({ color: 0x15171a, side: THREE.DoubleSide }));       // 黒い開口
-  quad(W * 0.78, 6.5, 6.5 + W * 0.78 * 1.45, 0.55, new THREE.MeshLambertMaterial({ map: makeJpxSign(), side: THREE.DoubleSide }));   // 看板(入口の上)
-  quad(W * 0.5, 0, 4.5, 0.55, new THREE.MeshLambertMaterial({ color: 0x3a4148, side: THREE.DoubleSide }));   // 入口のガラス戸
+  const W = Math.min(f.w * 0.62, 14);
+  // 白い枠の両側の袖壁(建物から 2.6m 張り出す)
+  for (const sd of [-1, 1]) {
+    const px = f.x + tx * sd * (W + 5) / 2 + f.nx * 1.3, pz = f.z + tz * sd * (W + 5) / 2 + f.nz * 1.3;
+    const bx = { p: [], n: [] }; boxInto(bx, px, 13.5, pz, 0.4, 27, 2.6, Math.atan2(f.nx, f.nz));
+    g.add(solidMesh(bx, new THREE.MeshLambertMaterial({ color: 0xf2f1ee })));
+  }
+  const top = { p: [], n: [] }; boxInto(top, f.x + f.nx * 1.3, 27.2, f.z + f.nz * 1.3, W + 5.4, 0.6, 2.6, Math.atan2(f.nx, f.nz));
+  g.add(solidMesh(top, new THREE.MeshLambertMaterial({ color: 0xf2f1ee })));
+  quad(W + 5, 0, 27, 2.6, new THREE.MeshLambertMaterial({ color: 0xf2f1ee, side: THREE.DoubleSide }));   // 白い枠
+  quad(W, 0, 24, 2.7, new THREE.MeshLambertMaterial({ color: 0x15171a, side: THREE.DoubleSide }));       // 黒い開口
+  quad(W * 0.78, 6.5, 6.5 + W * 0.78 * 1.45, 2.8, new THREE.MeshLambertMaterial({ map: makeJpxSign(), side: THREE.DoubleSide }));   // 看板(入口の上)
+  quad(W * 0.5, 0, 4.5, 2.8, new THREE.MeshLambertMaterial({ color: 0x3a4148, side: THREE.DoubleSide }));   // 入口のガラス戸
 }
 
 // ---- ランドマーク(PLATEAU の本物の形) ----
@@ -829,6 +911,11 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
     for (let k = 0; k + 8 < w.length; k += 9) {
       A.set(w[k], w[k + 1], w[k + 2]); B.set(w[k + 3], w[k + 4], w[k + 5]); C.set(w[k + 6], w[k + 7], w[k + 8]);
       N.subVectors(B, A).cross(T.subVectors(C, A)); if (N.lengthSq() < 1e-8) continue; N.normalize();
+      if (L.front) {   // 正面玄関の前に張り出した部分は消す(玄関の枠と看板を見せる)
+        const f = L.front, mx = (A.x + B.x + C.x) / 3, mz = (A.z + B.z + C.z) / 3;
+        const d = (mx - f.x) * f.nx + (mz - f.z) * f.nz, s = (mx - f.x) * -f.nz + (mz - f.z) * f.nx;
+        if (d > -1.5 && d < 8 && Math.abs(s) < f.w / 2 + 1 && (A.y + B.y + C.y) / 3 < 30) continue;
+      }
       if (Math.abs(N.y) > 0.5) {   // 傾いた面・水平な面は窓を貼らず屋根の色で
         for (const P of [A, B, C]) { RP.push(P.x, P.y, P.z); RC.push(rcol.r, rcol.g, rcol.b); }
         continue;
@@ -883,6 +970,7 @@ function makeBlocker(data) {
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
   for (const v of data.viaducts || []) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
+  for (const s of data.sites || []) add(s.o, [], 'b');   // 工事中の敷地には入れない
   for (const [x, z] of data.trees || []) add([[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]], [], 'b');   // 街路樹の幹
   const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
@@ -963,6 +1051,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     blocked = makeBlocker(data);
     buildRailways(data, city, blocked.onRoad);
     buildFences(data, city, blocked.onRoad);
+    buildSites(data, city);
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
     // 地図に使う範囲: 走れる範囲(area)の外枠 + 少し

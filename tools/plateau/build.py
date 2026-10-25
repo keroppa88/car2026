@@ -80,7 +80,7 @@ COLOR = {
     'コレド室町3': c('#c8bba4', G),
     'コレド日本橋': c('#9eb0bd', C),
     'KABUTO ONE': c('#b7c3ca', C),
-    '東京証券取引所': {**c('#e4e2dc', P, '#cfcdc6'), 'front': 'jpx'},   # 白い建物。一番狭い面が正面玄関
+    '東京証券取引所': {**c('#e4e2dc', P, '#cfcdc6'), 'front': 'jpx', 'frontSeg': ((838.5, -684.5), (849.0, -699.5))},   # 北東の角の細い面   # 白い建物。一番狭い面が正面玄関
     '日証館': c('#b39478', K),
     'パシフィックセンチュリープレイス丸の内': c('#96aabb', C),
     '首都高速道路 鍛冶橋換気所': c('#a8a8a4', P),
@@ -128,8 +128,17 @@ def tri(poly, y0, out, uv=None):  # uv は使わない(窓の模様は JS 側で
 _city = json.load(open('/home/claude/car2026/map/nihonbashi-city.json'))
 from shapely.geometry import LineString as _LS, Point as _PT
 _rank = {'trunk': 4, 'primary': 3, 'secondary': 2, 'tertiary': 1}
-def front_of(fp, kind):
+def front_of(fp, kind, near=None):
     poly = max(fp.geoms, key=lambda g: g.area) if hasattr(fp, 'geoms') else fp
+    if near:   # 指定した点に一番近い外壁の辺を正面にする
+        cs = list(poly.exterior.coords)
+        best = min(((_LS([cs[i], cs[i + 1]]).distance(_PT(near)), i) for i in range(len(cs) - 1) if math.dist(cs[i], cs[i + 1]) > 6))
+        a, b = cs[best[1]], cs[best[1] + 1]
+        mx, mz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        sx, sz = b[0] - a[0], b[1] - a[1]; L = math.hypot(sx, sz); nx, nz = -sz / L, sx / L
+        c = poly.centroid
+        if nx * (mx - c.x) + nz * (mz - c.y) < 0: nx, nz = -nx, -nz
+        return {'x': round(mx, 2), 'z': round(mz, 2), 'nx': round(nx, 4), 'nz': round(nz, 4), 'w': round(L, 1), 'kind': kind}
     rc = list(poly.minimum_rotated_rectangle.exterior.coords)[:4]
     sides = sorted([(math.dist(rc[i], rc[(i + 1) % 4]), rc[i], rc[(i + 1) % 4]) for i in range(4)])[:2]
     c = poly.centroid
@@ -164,7 +173,15 @@ for s in SEL:
         print('LOD2なし', s['label']); continue
     extra = COLOR.get(s['label'], {})
     if extra.get('front'):
-        extra = {**extra, 'front': front_of(fp, extra['front'])}
+        if extra.get('frontSeg'):
+            (ax_, az_), (bx_, bz_) = extra['frontSeg']; c_ = fp.centroid
+            L_ = math.hypot(bx_ - ax_, bz_ - az_); nx_, nz_ = -(bz_ - az_) / L_, (bx_ - ax_) / L_
+            mx_, mz_ = (ax_ + bx_) / 2, (az_ + bz_) / 2
+            if nx_ * (mx_ - c_.x) + nz_ * (mz_ - c_.y) < 0: nx_, nz_ = -nx_, -nz_
+            extra = {k: v for k, v in extra.items() if k != 'frontSeg'}
+            extra['front'] = {'x': round(mx_ + nx_ * 0.3, 2), 'z': round(mz_ + nz_ * 0.3, 2), 'nx': round(nx_, 4), 'nz': round(nz_, 4), 'w': round(L_, 1), 'kind': extra['front']}
+        else:
+            extra = {**extra, 'front': front_of(fp, extra['front'], extra.pop('frontNear', None))}
     res.append({**extra, 'label': s['label'], 'walls': walls, 'roofs': roofs,
                 'fp': [[[round(x, 2), round(z, 2)] for x, z in r] for r in fps]})
     print(s['label'], '壁', len(walls) // 9, '屋根', len(roofs) // 9)

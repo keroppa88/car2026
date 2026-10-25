@@ -123,7 +123,7 @@ def lanes_of(t, kind):
     return max(1, min(n, 8))
 
 roads, elevated, buildings, water, parks, rivers = [], [], [], [], [], []
-rails, platforms, canopies = [], [], []   # 線路の高架・ホーム・ホームの屋根(見た目)
+rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
 RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
 def layer_of(t):
     try: return int(t.get('layer', '0'))
@@ -220,6 +220,8 @@ for wid, (refs, t) in WAYS.items():
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
         o = clip_poly(pts[:-1])
         if o: water.append({'o': o, 'h': [], 'moat': is_moat(t)})
+    elif refs[0] == refs[-1] and len(pts) >= 4 and t.get('landuse') == 'construction':
+        if not CLIP or inside(centroid(pts[:-1])): sites.append({'o': pts[:-1]})
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_park(t):
         o = clip_poly(pts[:-1])
         if o: parks.append({'o': o, 'h': []})
@@ -233,7 +235,9 @@ for rel in root.findall('relation'):
     for o in outs:
         o = o[:-1] if o[0] == o[-1] else o
         hs = [h[:-1] if h[0] == h[-1] else h for h in ins]
-        if 'building' in t:
+        if t.get('landuse') == 'construction' or '再開発' in t.get('name', ''):
+            if not CLIP or inside(centroid(o)): sites.append({'o': o})
+        elif 'building' in t:
             if CLIP and not inside(centroid(o)): continue
             buildings.append({'p': o, 'h': height_of(t, o), 'holes': hs})
         elif is_water(t) or is_park(t):
@@ -286,6 +290,12 @@ if BRG:
         if len(run) >= 2: kept.append({**e, 'pts': run})
     print('本物の高架に置き換えた首都高:', len(elevated), '→ 残り', len(kept))
     elevated[:] = kept
+
+# 工事中の敷地の中の建物は外す(外観を指定した建物は残す)
+if sites:
+    from shapely.geometry import Polygon as _SP, Point as _SPt
+    _sp = [_SP(s_['o']).buffer(0) for s_ in sites]
+    buildings[:] = [b for b in buildings if b.get('look') or not any(sp.contains(_SPt(centroid(b['p']))) for sp in _sp)]
 
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
@@ -377,6 +387,12 @@ if rails:
         viaducts.append({'top': top, 'rings': [[[round(x, 1), round(z, 1), round(_h_at(x, z), 1)] for x, z in r_] for r_ in rings]})
     print('高架(まとめた形)', len(viaducts))
 
+# 屋根だけのもの(building=roof)は駅のホームの近くだけ残す(街中のは宙に浮いて見えるので消す)
+def _near_pf(o):
+    cx, cz = centroid(o)
+    return any(min((p[0] - cx) ** 2 + (p[1] - cz) ** 2 for p in pf['o']) < 40 ** 2 for pf in platforms)
+canopies[:] = [c for c in canopies if _near_pf(c['o'])]
+
 # ホームは近くの高架の高さに合わせる
 def _near_h(o):
     cx, cz = centroid(o); best = (1e9, RAIL_H[1])
@@ -404,6 +420,7 @@ _wat = [_P(w['o']).buffer(0) for w in water] + [_L(rv['pts']).buffer(rv['w'] / 2
 # 高架(線路・首都高・KK線)の下とそのまわり 4m には植えない
 _wat += [_L(r['pts']).buffer(2.7 + 4) for r in rails if len(r['pts']) > 1] + [_P(p['o']).buffer(4) for p in platforms]
 _wat += [_L(e['pts']).buffer(e['lanes'] * 1.63 + 0.8 + 4) for e in elevated if len(e['pts']) > 1]
+_wat += [_P(s_['o']).buffer(2) for s_ in sites]   # 工事中の敷地には植えない
 if BRG:
     _wat += [_P(r_).buffer(4) for B_ in json.load(open(BRG))['bridges'] for r_ in B_['fp'] if len(r_) >= 4]
 TB, TA, TW = _T(_bld), _T(_asp), _T(_wat)
@@ -492,7 +509,7 @@ for poly in _bld:
         d0 = k * ring.length / n
         q, q2 = ring.interpolate(d0), ring.interpolate(min(ring.length, d0 + 1))
         _try(q.x, q.y, 3.0, (math.atan2(q2.x - q.x, q2.y - q.y), 4.0, 2.0))
-print('街路樹', len(trees))
+print('街路樹', len(trees), '工事中', len(sites))
 
 # ---- 敷地(ビルのまわりの空き地): 建物の外側 7m までを敷地とみなし、歩道(車道 + 4.5m)とは重ねない ----
 from shapely.ops import unary_union as _UU2
@@ -509,7 +526,7 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
