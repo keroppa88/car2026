@@ -13,7 +13,7 @@ def xz(la, lo): return ((lo - lon0) * KX, -(la - lat0) * KZ)
 # PLATEAU が完成前の古い姿・位置が不確かなものは OSM の建物のままにする
 SKIP = {'日本橋野村ビルディング', 'TOFROM YAESU', '東京ミッドタウン日本橋', 'Ginza Sony Park'}
 # 色と窓の模様を決めておく建物(style は osm-city.js の STYLES の番号)
-COLOR = {'東京駅 丸の内駅舎': {'color': '#9c4a32', 'style': 1}}
+COLOR = {'東京駅 丸の内駅舎': {'color': '#9c4a32', 'style': 1, 'roofColor': '#3a4150'}}
 SEL = pickle.load(open('/home/claude/plateau/selected.pkl', 'rb'))
 
 def tri(poly, y0, out, uv=None):  # uv は使わない(窓の模様は JS 側で面の向きから計算)

@@ -355,7 +355,7 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
         W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH);
       }
     }
-    const rc = col.clone().multiplyScalar(0.72);
+    const rc = L.roofColor ? new THREE.Color(L.roofColor) : col.clone().multiplyScalar(0.72);
     for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rc.r, rc.g, rc.b); }
   });
   walls.forEach((o, i) => {
