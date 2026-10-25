@@ -234,7 +234,7 @@ for wid, (refs, t) in WAYS.items():
         if not CLIP or inside(centroid(pts[:-1])): sites.append({'o': pts[:-1]})
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_park(t):
         o = clip_poly(pts[:-1])
-        if o: parks.append({'o': o, 'h': []})
+        if o: parks.append({'o': o, 'h': [], 'name': t.get('name', '')})
 
 for rel in root.findall('relation'):
     t = tags(rel)
@@ -255,7 +255,7 @@ for rel in root.findall('relation'):
             if not o: continue
             hs = [h for h in (clip_poly(h) for h in hs) if h]
             if is_water(t): water.append({'o': o, 'h': hs, 'moat': is_moat(t)})
-            else: parks.append({'o': o, 'h': hs})
+            else: parks.append({'o': o, 'h': hs, 'name': t.get('name', '')})
 
 # 同じ形の建物が重なって登録されていたら1つにする(高さの分かる方を残す)
 def _key(b):
@@ -316,7 +316,21 @@ for rel in root.findall('relation'):
 _n0 = len(buildings)
 buildings[:] = [b for b in buildings if not any(p_.contains(_NPt(centroid(b['p']))) for p_ in _nb)]
 print('皇居まわりの緑地の建物を外す', _n0 - len(buildings))
-sites[:] = [s_ for s_ in sites if not any(p_.contains(_NPt(centroid(s_['o']))) for p_ in _nb)]   # 工事中の敷地も置かない
+# 大きな緑地(日比谷公園以外)の中は、工事中の敷地も細い道路も置かない
+_green = list(_nb) + [_NP(p_['o']).buffer(0) for p_ in parks if p_.get('name') != '日比谷公園' and len(p_['o']) >= 4 and _NP(p_['o']).buffer(0).area > 20000]
+sites[:] = [s_ for s_ in sites if not any(g_.buffer(5).contains(_NPt(centroid(s_['o']))) for g_ in _green)]
+from shapely.geometry import LineString as _NL
+_gu = None
+from shapely.ops import unary_union as _NU
+_gu = _NU(_green).buffer(3) if _green else None
+_n1 = len(roads)
+if _gu is not None:
+    def _in_green(r):
+        if r['kind'] in ('trunk', 'primary', 'secondary', 'tertiary'): return False
+        ln = _NL(r['pts'])
+        return ln.length > 0 and ln.intersection(_gu).length > 0.6 * ln.length
+    roads[:] = [r for r in roads if not _in_green(r)]
+print('緑地の中の細い道路を外す', _n1 - len(roads))
 
 # 工事中の敷地の中の建物は外す(外観を指定した建物は残す)
 if sites:
