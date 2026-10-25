@@ -147,6 +147,10 @@ def area(p): return abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p
 def is_water(t): return t.get('natural') == 'water' or t.get('waterway') in ('riverbank',) or 'water' in t and t.get('natural') == 'water'
 def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse') in ('grass', 'forest', 'recreation_ground')
 
+# 外観を指定する建物(OSM の名前): wall=壁 base=1階 top=最上階 の色、style=窓の模様の番号
+LOOK = {
+    '日本橋野村ビル旧館': {'wall': '#5b3a2c', 'base': '#d6d5d0', 'baseH': 4.5, 'top': '#ecebe6', 'topH': 3.5, 'style': 1},
+}
 # OSM に高さが無い高層ビルの高さ(m)
 HEIGHT_FIX = {'TOFROM YAESU TOWER': 250}
 def height_of(t, pts):
@@ -186,6 +190,7 @@ for wid, (refs, t) in WAYS.items():
     if 'building' in t and refs[0] == refs[-1] and len(pts) >= 4:
         if CLIP and not inside(centroid(pts[:-1])): continue   # 建物は中心が範囲内のものだけ
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
+        if t.get('name') in LOOK: buildings[-1]['look'] = LOOK[t['name']]
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
         o = clip_poly(pts[:-1])
         if o: water.append({'o': o, 'h': []})

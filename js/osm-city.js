@@ -308,8 +308,8 @@ function buildElevated(data, g) {
 
 const SMALL_AREA = 150;   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 function buildBuildings(data, g, wallMats, roofMat) {
-  const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [] }));
-  const plain = { p: [], u: [], c: [], n: [] };   // 小さい構築物: 窓なしのグレー一色
+  const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [] }));
+  const plain = { p: [], u: [], c: [], n: [], f: [] };   // 小さい構築物: 窓なしのグレー一色
   const roofShapes = [];
   data.buildings.forEach((b, i) => {
     const R = seeded(i * 131 + 17);
@@ -319,20 +319,29 @@ function buildBuildings(data, g, wallMats, roofMat) {
     // 高さが分からない建物: 小さいもの(出入口・小屋・住宅)は低く
     let h = b.h ?? (area < 400 ? 4 + R() * 5 : Math.min(70, 10 + Math.sqrt(area) * 0.9 * (0.6 + R() * 0.8)));
     h = Math.max(4, h);
-    const style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
+    const lk = b.look;
+    let style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
-    const small = area < SMALL_AREA;
-    const col = new THREE.Color(small ? 0x9a9c9e : base), S = STYLES[style], W = small ? plain : walls[style];
+    if (lk && lk.style != null) style = lk.style;
+    const small = area < SMALL_AREA && !lk;
+    const col = new THREE.Color(small ? 0x9a9c9e : (lk?.wall ?? base)), S = STYLES[style], W = small ? plain : walls[style];
+    // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
+    const bands = lk
+      ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
+      : [[0, h, col, 1]];
     const ccw = a > 0;      // x-z 平面での向き
     const wall = (ring) => {
       let s = 0;
       for (let k = 0; k < ring.length; k++) {
         const [x0, z0] = ring[k], [x1, z1] = ring[(k + 1) % ring.length], len = Math.hypot(x1 - x0, z1 - z0); if (len < 0.05) continue;
         let nx = (z1 - z0) / len, nz = -(x1 - x0) / len; if (ccw) { nx = -nx; nz = -nz; }
-        const u0 = s / S.tileW, u1 = (s + len) / S.tileW, v1 = h / S.tileH;
-        W.p.push(x0, 0, z0, x1, 0, z1, x1, h, z1, x0, 0, z0, x1, h, z1, x0, h, z0);
-        W.u.push(u0, 0, u1, 0, u1, v1, u0, 0, u1, v1, u0, v1);
-        for (let q = 0; q < 6; q++) { W.c.push(col.r, col.g, col.b); W.n.push(nx, 0, nz); }
+        const u0 = s / S.tileW, u1 = (s + len) / S.tileW;
+        for (const [ya, yb, bc, sf] of bands) {
+          const va = ya / S.tileH, vb = yb / S.tileH;
+          W.p.push(x0, ya, z0, x1, ya, z1, x1, yb, z1, x0, ya, z0, x1, yb, z1, x0, yb, z0);
+          W.u.push(u0, va, u1, va, u1, vb, u0, va, u1, vb, u0, vb);
+          for (let q = 0; q < 6; q++) { W.c.push(bc.r, bc.g, bc.b); W.n.push(nx, 0, nz); W.f.push(sf); }
+        }
         s += len;
       }
     };
@@ -345,6 +354,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
+    geo.setAttribute('sf', new THREE.Float32BufferAttribute(o.f, 1));
     const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; return m;
   };
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i])); });
@@ -371,12 +381,12 @@ function addStorefront(mat, tileW) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTileW = { value: tileW };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX;\nuniform float uTileW;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWY = (modelMatrix * vec4(transformed, 1.0)).y; vWX = uv.x * uTileW;');
+      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX; varying float vSF;\nuniform float uTileW;\nattribute float sf;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWY = (modelMatrix * vec4(transformed, 1.0)).y; vWX = uv.x * uTileW; vSF = sf;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX;\nfloat sfGlass = 0.0;')
+      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX; varying float vSF;\nfloat sfGlass = 0.0;')
       .replace('#include <map_fragment>', `#include <map_fragment>
-        if (vWY < 4.2) {
+        if (vWY < 4.2 && vSF > 0.5) {
           vec3 wallC = diffuseColor.rgb;
           #ifdef USE_COLOR
           wallC = vColor.rgb;
@@ -390,16 +400,20 @@ function addStorefront(mat, tileW) {
             diffuseColor.rgb = mix(vec3(0.20, 0.25, 0.30), vec3(0.62, 0.64, 0.66), clamp(edge + transom, 0.0, 1.0));
             sfGlass = 1.0 - clamp(edge + transom, 0.0, 1.0);
           }
+          if (vSF > 1.5 && vWY > 2.6 && vWY < 3.6) {                              // 赤い日よけ(百貨店)
+            diffuseColor.rgb = vec3(0.78, 0.09, 0.12) * (0.9 + 0.1 * step(0.5, fract(vWX / 2.4)));
+            sfGlass = 0.0;
+          }
         }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        if (vWY < 4.2) totalEmissiveRadiance = emissive * vec3(1.0, 0.86, 0.62) * sfGlass;   // 夜は店の明かり`);
+        if (vWY < 4.2 && vSF > 0.5) totalEmissiveRadiance = emissive * vec3(1.0, 0.86, 0.62) * sfGlass;   // 夜は店の明かり`);
   };
 }
 
 // ---- ランドマーク(PLATEAU の本物の形) ----
 // walls/roofs は三角形の頂点(x, y, z)の並び。窓の模様は面の向きから横方向と高さで貼る。
 function buildLandmarks(lm, g, wallMats, roofMat) {
-  const walls = STYLES.map(() => ({ p: [], n: [], c: [], u: [] }));
+  const walls = STYLES.map(() => ({ p: [], n: [], c: [], u: [], f: [] }));
   const RP = [], RC = [];
   const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), T = new THREE.Vector3();
   lm.landmarks.forEach((L, i) => {
@@ -420,7 +434,7 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
       let hx = -N.z, hz = N.x; const hl = Math.hypot(hx, hz); if (hl < 1e-3) { hx = 1; hz = 0; } else { hx /= hl; hz /= hl; }
       for (const P of [A, B, C]) {
         W.p.push(P.x, P.y, P.z); W.n.push(N.x, N.y, N.z); W.c.push(col.r, col.g, col.b);
-        W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH);
+        W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH); W.f.push(L.awning ? 2 : 1);
       }
     }
     for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rcol.r, rcol.g, rcol.b); }
@@ -432,6 +446,7 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
+    geo.setAttribute('sf', new THREE.Float32BufferAttribute(o.f, 1));
     const m = new THREE.Mesh(geo, wallMats[i]); m.matrixAutoUpdate = false; m.name = 'plateau-landmarks'; g.add(m);
   });
   const rg = new THREE.BufferGeometry();
