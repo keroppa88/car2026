@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261026-osm-64';
+import { decorateOsmCity } from './osm-city.js?v=20261026-osm-66';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261026-osm-64';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261026-osm-66';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -6075,7 +6075,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
     // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
     if (TOKYOEKI_COURSE) {
-      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData, MAP_CONFIG.bridgeData) : decorateTokyoEki(wrap);
+      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData, MAP_CONFIG.bridgeData, MAP_CONFIG.terrainData) : decorateTokyoEki(wrap);
       // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
       // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
       const flatSize = COURSE_KEY === 'shonan' ? 24000 : OSM_COURSE ? 6400 : 2400;
@@ -6085,6 +6085,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       wrap.add(flat); flat.updateMatrixWorld(true);
       for (const list of [mapSurfaceMeshes, nonWallMeshes, car2DrivableMeshes, roadMeshes, wallMeshes, sandMeshes, blockedSurfaceMeshes, treeSurfaceMeshes]) list.length = 0;
       mapSurfaceMeshes.push(flat); car2DrivableMeshes.push(flat); roadMeshes.push(flat);
+      // 江の島の地形: 読み込めたら走る面に加える(坂を上り下りできる)
+      tokyoEkiCity.onTerrain?.((ms) => {
+        for (const m of ms) { m.updateMatrixWorld(true); mapSurfaceMeshes.push(m); car2DrivableMeshes.push(m); roadMeshes.push(m); }
+        mapRayTop = Math.max(mapRayTop, 90);   // 島の上(最高 約60m)まで下向きの光線が届くように
+      });
     }
 
     car2RoadMeshes = roadMeshes;
@@ -6165,6 +6170,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     for (const mesh of roadMeshes) roadBounds.expandByObject(mesh);
     mapRoadBounds = roadBounds.clone();
     mapRayTop = fin.max.y + 10;
+    if (MAP_CONFIG.terrainData) mapRayTop = Math.max(mapRayTop, 90);   // 江の島の地形
     mapRayBottom = fin.min.y - 10;
     BOUND_X_MIN = fin.min.x - 5;
     BOUND_X_MAX = fin.max.x + 5;

@@ -539,6 +539,64 @@ function buildBridges(br, g) {
   const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }
 
+// ---- 地形(江の島だけ): 2m の升目の高さ。読み込んだら TERRAIN に入れ、建物・木・道路を持ち上げる ----
+let TERRAIN = null;
+function makeTerrain(T) {
+  const { x0, z0, c, w, h } = T, d = T.d;
+  const at = (x, z) => {
+    const fx = (x - x0) / c, fz = (z - z0) / c;
+    if (fx < 0 || fz < 0 || fx >= w - 1 || fz >= h - 1) return 0;
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, k = j * w + i;
+    return ((d[k] * (1 - u) + d[k + 1] * u) * (1 - v) + (d[k + w] * (1 - u) + d[k + w + 1] * u) * v) / 10;
+  };
+  const inBox = (x, z) => x >= x0 && z >= z0 && x <= x0 + (w - 1) * c && z <= z0 + (h - 1) * c;
+  return { at, inBox, min: (pts) => Math.min(...pts.map(([x, z]) => at(x, z))), T };
+}
+function buildTerrainMesh(g) {
+  // 16x16 升目ごとの小さなメッシュに分ける(車の真下を調べる時に、近くの小片だけを見るように)
+  const { x0, z0, c, w, h, d } = TERRAIN.T, col = new THREE.Color(), out = [];
+  const hv = (i, j) => d[j * w + i] / 10;
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
+  const B = 16;
+  for (let bj = 0; bj + 1 < h; bj += B) for (let bi = 0; bi + 1 < w; bi += B) {
+    const P = [], C = [];
+    const put = (i, j) => {
+      const y = hv(i, j); P.push(x0 + i * c, y, z0 + j * c);
+      if (y < 1.2) col.set(0xd8c9a3); else col.setHSL(0.24 + Math.min(0.06, y / 900), 0.32, 0.36 - Math.min(0.08, y / 600));
+      C.push(col.r, col.g, col.b);
+    };
+    for (let j = bj; j < Math.min(bj + B, h - 1); j++) for (let i = bi; i < Math.min(bi + B, w - 1); i++) {
+      if (Math.max(hv(i, j), hv(i + 1, j), hv(i, j + 1), hv(i + 1, j + 1)) < 0.05) continue;
+      put(i, j); put(i, j + 1); put(i + 1, j); put(i + 1, j); put(i, j + 1); put(i + 1, j + 1);
+    }
+    if (!P.length) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+    geo.computeVertexNormals(); geo.computeBoundingSphere(); geo.computeBoundingBox();
+    const m = new THREE.Mesh(geo, mat);
+    m.matrixAutoUpdate = false; m.name = 'M06_Steel_Smoke'; m.userData.noLift = true; g.add(m); out.push(m);
+  }
+  return out;
+}
+// 島の上にある平らなもの(道路・白線・敷地など)の頂点を地形の高さだけ上げる
+function liftToTerrain(g) {
+  const { x0, z0, c, w, h } = TERRAIN.T, X1 = x0 + (w - 1) * c, Z1 = z0 + (h - 1) * c;
+  g.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.userData.noLift) return;
+    const pos = o.geometry.getAttribute('position'); if (!pos) return;
+    o.geometry.computeBoundingBox();
+    const bb = o.geometry.boundingBox;
+    if (bb.max.x < x0 || bb.min.x > X1 || bb.max.z < z0 || bb.min.z > Z1) return;
+    let changed = false;
+    for (let k = 0; k < pos.count; k++) {
+      const x = pos.getX(k), z = pos.getZ(k), y = TERRAIN.at(x, z);
+      if (y > 0) { pos.setY(k, pos.getY(k) + y + 0.02); changed = true; }
+    }
+    if (changed) { pos.needsUpdate = true; o.geometry.computeBoundingSphere(); }
+  });
+}
+
 const SMALL_AREA = 150;
 // 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
 const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce, 0x8a5a44, 0x7b4f3d];   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
@@ -555,6 +613,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     let h = b.h ?? (area < 400 ? 4 + R() * 5 : Math.min(70, 10 + Math.sqrt(area) * 0.9 * (0.6 + R() * 0.8)));
     h = Math.max(4, h);
     const lk = b.look;
+    const gy = TERRAIN ? TERRAIN.min(pts) : 0;   // 江の島: 地面の高さ
     let style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
     if (lk && lk.style != null) style = lk.style;
@@ -573,7 +632,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
         const u0 = s / S.tileW, u1 = (s + len) / S.tileW;
         for (const [ya, yb, bc, sf] of bands) {
           const va = ya / S.tileH, vb = yb / S.tileH;
-          W.p.push(x0, ya, z0, x1, ya, z1, x1, yb, z1, x0, ya, z0, x1, yb, z1, x0, yb, z0);
+          W.p.push(x0, ya + gy, z0, x1, ya + gy, z1, x1, yb + gy, z1, x0, ya + gy, z0, x1, yb + gy, z1, x0, yb + gy, z0);
           W.u.push(u0, va, u1, va, u1, vb, u0, va, u1, vb, u0, vb);
           for (let q = 0; q < 6; q++) { W.c.push(bc.r, bc.g, bc.b); W.n.push(nx, 0, nz); W.f.push(sf); }
         }
@@ -581,7 +640,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
       }
     };
     wall(pts); (b.holes || []).forEach(wall);
-    roofShapes.push({ o: pts, h: b.holes || [], y: h, col: col.clone().multiplyScalar(0.72) });
+    roofShapes.push({ o: pts, h: b.holes || [], y: h + gy, col: col.clone().multiplyScalar(0.72) });
   });
   const mk = (o, mat) => {
     const geo = new THREE.BufferGeometry();
@@ -590,7 +649,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
     geo.setAttribute('sf', new THREE.Float32BufferAttribute(o.f, 1));
-    const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; return m;
+    const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; m.userData.noLift = true; return m;
   };
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i])); });
   if (plain.p.length) g.add(mk(plain, roofMat));
@@ -607,7 +666,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
   const rg = new THREE.BufferGeometry();
   rg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
   rg.computeVertexNormals();
-  const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; g.add(rm);
+  const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; rm.userData.noLift = true; g.add(rm);
 }
 
 // ---- 濠と川: 地面より下げて、岸に壁 ----
@@ -649,7 +708,7 @@ function buildWater(data, g) {
         }
       }
     }
-    const add = (m, order) => { m.renderOrder = order; g.add(m); };
+    const add = (m, order) => { m.renderOrder = order; m.userData.noLift = true; g.add(m); };
     if (s.rings.length) {
       add(polyFill(s.rings, -s.d, s.color ?? WATER), -1.8);
       const mk = polyFill(s.rings, 0, WATER); mk.material = maskMat; add(mk, -1.6);
@@ -994,7 +1053,7 @@ function buildTrees(data, g, big = 1) {
     const m = new THREE.InstancedMesh(treeGeometry(kind), mat, list.length);
     list.forEach(([x, z, R], i) => {
       const s = 0.8 + R() * 0.45;
-      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s * big, 10 * s * big * (big === 1 ? 0.8 : 1), 10 * s * big)); m.setMatrixAt(i, M);   // 街路樹は高さ 0.8 倍
+      M.compose(P.set(x, TERRAIN ? TERRAIN.at(x, z) : 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s * big, 10 * s * big * (big === 1 ? 0.8 : 1), 10 * s * big)); m.setMatrixAt(i, M);   // 街路樹は高さ 0.8 倍
       C.setHSL(0, 0, 0.88 + R() * 0.2); m.setColorAt(i, C);   // 木ごとに少し明るさを変える
     });
     m.frustumCulled = false; m.name = 'street-trees'; g.add(m);
@@ -1232,7 +1291,8 @@ function makeBlocker(data) {
   return fn;
 }
 
-export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
+export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
+  let terrainMesh = null, onTerrain = null;
   root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
   const glow = [];
@@ -1243,6 +1303,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   let blocked = () => false, night = false, cityBounds = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
+  const trFetch = terrainUrl ? fetch(terrainUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   // 読み込み中の表示
   const loading = document.createElement('div');
   loading.id = 'osm-loading';
@@ -1252,14 +1313,15 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   const step = (s) => { const el = document.getElementById('osm-loading-step'); if (el) el.textContent = s; };
   const t0 = performance.now(), times = {};
   const T = (name, fn) => { const a = performance.now(); fn(); times[name] = Math.round(performance.now() - a); };
-  Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch]).then(async ([data, lm, br]) => {
+  Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch, trFetch]).then(async ([data, lm, br, tr]) => {
+    TERRAIN = tr ? makeTerrain(tr) : null;
     times.fetch = Math.round(performance.now() - t0);
     step('街を組み立て中…');
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));   // 文字を先に描かせる
     const [X0, Z0, X1, Z1] = data.bounds;
     const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
     const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
-    gm.material.polygonOffsetFactor = 4; gm.material.polygonOffsetUnits = 4;
+    gm.material.polygonOffsetFactor = 4; gm.material.polygonOffsetUnits = 4; gm.userData.noLift = true;
     city.add(gm);
     city.add(polyFill(data.parks, 0.02, GRASS));
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
@@ -1291,6 +1353,10 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
       for (const [x, z] of data.area) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
       cityBounds = [a - 80, b - 80, c + 80, d + 80];
     } else cityBounds = data.bounds;
+    if (TERRAIN) {
+      T('terrain', () => { liftToTerrain(city); terrainMesh = buildTerrainMesh(city); });
+      if (onTerrain) onTerrain(terrainMesh);   // 小片の配列
+    }
     times.total = Math.round(performance.now() - t0);
     document.body.dataset.osmLoadMs = JSON.stringify(times);
     console.info('[osm-city] load ms', times);
@@ -1300,6 +1366,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     isBlocked: (x, z, R) => blocked(x, z, R),
     isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
+    onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
     update() {},
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };

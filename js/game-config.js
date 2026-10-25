@@ -651,6 +651,8 @@ export const MAP_CONFIGS = {
     // Y の自動運転: 行き先(大磯/稲村ヶ崎)まで国道134号を左側の車線で走る
     autoDriveMode: 'shonanRoute',
     routeData: 'map/shonan-routes.json?v=20261026-4',
+    // 江の島だけ高低差(PLATEAU の地形 dem から)
+    terrainData: 'map/shonan-terrain.json?v=20261026-1',
     spawnReferenceX: 9583.63,
     spawnReferenceZ: 822.45,
     spawnExactReference: true,
