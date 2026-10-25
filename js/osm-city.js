@@ -722,6 +722,39 @@ function addStorefront(mat, tileW) {
   };
 }
 
+// ---- 正面玄関(東京証券取引所): 白い枠に囲まれた黒い大きな開口、入口の上に旗のような看板 ----
+function makeJpxSign() {
+  // 白地に、上に赤い縦線4本、下に赤い半円(文字は入れない)
+  const W = 256, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f4f2'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#d7262e';
+  for (let i = 0; i < 4; i++) {   // 少し傾いた平行四辺形の縦線
+    const x = 62 + i * 36;
+    g.beginPath(); g.moveTo(x, 70); g.lineTo(x + 22, 62); g.lineTo(x + 22, 170); g.lineTo(x, 178); g.closePath(); g.fill();
+  }
+  g.beginPath(); g.arc(W / 2, H - 40, 96, Math.PI, 0); g.closePath(); g.fill();   // 赤い半円(日の出)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function buildFront(f, g) {
+  const tx = -f.nz, tz = f.nx;   // 壁に沿った横向き
+  const quad = (w, y0, y1, out, mat) => {
+    const cx = f.x + f.nx * out, cz = f.z + f.nz * out, hx = tx * w / 2, hz = tz * w / 2;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([
+      cx - hx, y0, cz - hz, cx + hx, y0, cz + hz, cx + hx, y1, cz + hz,
+      cx - hx, y0, cz - hz, cx + hx, y1, cz + hz, cx - hx, y1, cz - hz], 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute([f.nx, 0, f.nz, f.nx, 0, f.nz, f.nx, 0, f.nz, f.nx, 0, f.nz, f.nx, 0, f.nz, f.nx, 0, f.nz], 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute([1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1], 2));
+    const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; g.add(m);
+  };
+  const W = Math.min(f.w * 0.3, 14);
+  quad(W + 5, 0, 27, 0.35, new THREE.MeshLambertMaterial({ color: 0xf2f1ee, side: THREE.DoubleSide }));   // 白い枠
+  quad(W, 0, 24, 0.45, new THREE.MeshLambertMaterial({ color: 0x15171a, side: THREE.DoubleSide }));       // 黒い開口
+  quad(W * 0.78, 6.5, 6.5 + W * 0.78 * 1.45, 0.55, new THREE.MeshLambertMaterial({ map: makeJpxSign(), side: THREE.DoubleSide }));   // 看板(入口の上)
+  quad(W * 0.5, 0, 4.5, 0.55, new THREE.MeshLambertMaterial({ color: 0x3a4148, side: THREE.DoubleSide }));   // 入口のガラス戸
+}
+
 // ---- ランドマーク(PLATEAU の本物の形) ----
 // walls/roofs は三角形の頂点(x, y, z)の並び。窓の模様は面の向きから横方向と高さで貼る。
 function buildLandmarks(lm, g, wallMats, roofMat) {
@@ -751,6 +784,7 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
     }
     for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rcol.r, rcol.g, rcol.b); }
   });
+  for (const L of lm.landmarks) if (L.front) buildFront(L.front, g);
   walls.forEach((o, i) => {
     if (!o.p.length) return;
     const geo = new THREE.BufferGeometry();

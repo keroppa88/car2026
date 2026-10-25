@@ -604,7 +604,7 @@ export const MAP_CONFIGS = {
     preview: 'picture/nihonbashi.png',
     cityData: 'map/nihonbashi-city.json?v=20261025-22',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
-    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-9',
+    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-10',
     // 首都高・東京高速道路(KK線)は PLATEAU の橋梁モデルの形
     bridgeData: 'map/nihonbashi-bridges.json?v=20261025-1',
     scale: 1,

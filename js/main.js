@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261025-osm-38';
+import { decorateOsmCity } from './osm-city.js?v=20261025-osm-40';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-38';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-40';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -518,7 +518,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 4000 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -2356,7 +2356,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   window.addEventListener('pointercancel', scheduleHideDemoBackButton);
   window.addEventListener('wheel', (e) => {
     if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
-    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, 28);
+    // 日本橋はビルを眺められるよう、ずっと遠くまで引ける
+    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, OSM_COURSE ? 600 : 28);
   }, { passive: true });
 
   window.addEventListener('resize', () => {
@@ -10662,16 +10663,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     miniMap.mode = (miniMap.mode + 1) % 3;
     if (!miniMap.el) {
       const el = document.createElement('div'); el.id = 'mini-map';
-      el.style.cssText = 'position:fixed;z-index:40;pointer-events:none;background:rgba(10,14,18,0.82);border:2px solid rgba(255,255,255,0.7);border-radius:6px;overflow:hidden;';
+      el.style.cssText = 'position:fixed;z-index:40;pointer-events:none;border:2px solid rgba(255,255,255,0.7);border-radius:6px;overflow:hidden;box-sizing:border-box;';
       const cv = document.createElement('canvas'); cv.style.cssText = 'width:100%;height:100%;display:block;';
       el.appendChild(cv); document.body.appendChild(el); miniMap.el = el; miniMap.cv = cv;
     }
     const osmNow = !!tokyoEkiCity?.bounds?.();
     if (miniMap.mode && (!miniMap.img || (osmNow && !miniMap.osmReady))) { buildMiniMapImage(); miniMap.osmReady = osmNow; }
-    const s = miniMap.el.style;
-    if (miniMap.mode === 1) Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto', bottom: 'auto', width: '50vw', height: '50vh' });
-    else if (miniMap.mode === 2) Object.assign(s, { display: 'block', top: '0', right: '0', left: '0', bottom: '0', width: '100vw', height: '100vh' });
-    else s.display = 'none';
+    // 地図の縦横比に合わせた枠にする(余白の黒い部分を作らない)
+    const s = miniMap.el.style, ar = miniMap.img ? miniMap.img.width / miniMap.img.height : 1;
+    const fit = (maxW, maxH) => { let w = maxW, h = w / ar; if (h > maxH) { h = maxH; w = h * ar; } return [Math.round(w), Math.round(h)]; };
+    if (miniMap.mode === 1) {
+      const [w, h] = fit(window.innerWidth * 0.5, window.innerHeight * 0.5);
+      Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto', width: w + 'px', height: h + 'px' });
+    } else if (miniMap.mode === 2) {
+      const [w, h] = fit(window.innerWidth, window.innerHeight);
+      Object.assign(s, { display: 'block', top: Math.round((window.innerHeight - h) / 2) + 'px', left: Math.round((window.innerWidth - w) / 2) + 'px', right: 'auto', width: w + 'px', height: h + 'px' });
+    } else s.display = 'none';
     document.body.dataset.miniMap = String(miniMap.mode);
   }
   function drawMiniMap() {

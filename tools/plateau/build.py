@@ -80,7 +80,7 @@ COLOR = {
     'コレド室町3': c('#c8bba4', G),
     'コレド日本橋': c('#9eb0bd', C),
     'KABUTO ONE': c('#b7c3ca', C),
-    '東京証券取引所': c('#a99a86', P),
+    '東京証券取引所': {**c('#e4e2dc', P, '#cfcdc6'), 'front': 'jpx'},   # 白い建物。一番狭い面が正面玄関
     '日証館': c('#b39478', K),
     'パシフィックセンチュリープレイス丸の内': c('#96aabb', C),
     '首都高速道路 鍛冶橋換気所': c('#a8a8a4', P),
@@ -124,6 +124,30 @@ def tri(poly, y0, out, uv=None):  # uv は使わない(窓の模様は JS 側で
         for p in (a, b, c):
             out.extend(round(float(v), 1) for v in p)
 
+# 正面玄関: 足元の形の外接長方形の短い辺のうち、太い道路に近い方。実際の壁の位置まで寄せる
+_city = json.load(open('/home/claude/car2026/map/nihonbashi-city.json'))
+from shapely.geometry import LineString as _LS, Point as _PT
+_rank = {'trunk': 4, 'primary': 3, 'secondary': 2, 'tertiary': 1}
+def front_of(fp, kind):
+    poly = max(fp.geoms, key=lambda g: g.area) if hasattr(fp, 'geoms') else fp
+    rc = list(poly.minimum_rotated_rectangle.exterior.coords)[:4]
+    sides = sorted([(math.dist(rc[i], rc[(i + 1) % 4]), rc[i], rc[(i + 1) % 4]) for i in range(4)])[:2]
+    c = poly.centroid
+    def score(s):
+        m = _PT((s[1][0] + s[2][0]) / 2, (s[1][1] + s[2][1]) / 2)
+        return min(m.distance(_LS(r['pts'])) - 6 * _rank.get(r['kind'], 0) for r in _city['roads'] if len(r['pts']) > 1 and m.distance(_LS(r['pts'])) < 60)
+    w, a, b = min(sides, key=score)
+    mx, mz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+    sx, sz = b[0] - a[0], b[1] - a[1]; L = math.hypot(sx, sz); nx, nz = -sz / L, sx / L   # 辺に直角
+    if nx * (mx - c.x) + nz * (mz - c.y) < 0: nx, nz = -nx, -nz                         # 外向きに
+    # 外側から中心へ進んで、最初に建物に入る所が壁
+    ray = _LS([(mx + nx * 30, mz + nz * 30), (c.x, c.y)])
+    hit = ray.intersection(poly.exterior)
+    pts = [hit] if hit.geom_type == 'Point' else list(getattr(hit, 'geoms', []))
+    if pts:
+        p = min(pts, key=lambda q: q.distance(_PT(mx + nx * 30, mz + nz * 30))); mx, mz = p.x, p.y
+    return {'x': round(mx, 2), 'z': round(mz, 2), 'nx': round(nx, 4), 'nz': round(nz, 4), 'w': round(w, 1), 'kind': kind}
+
 res = []
 for s in SEL:
     if not s['parts'] or s['label'] in SKIP: continue
@@ -139,6 +163,8 @@ for s in SEL:
     if not walls:   # LOD2 が無い建物は外す(普通の建物のまま)
         print('LOD2なし', s['label']); continue
     extra = COLOR.get(s['label'], {})
+    if extra.get('front'):
+        extra = {**extra, 'front': front_of(fp, extra['front'])}
     res.append({**extra, 'label': s['label'], 'walls': walls, 'roofs': roofs,
                 'fp': [[[round(x, 2), round(z, 2)] for x, z in r] for r in fps]})
     print(s['label'], '壁', len(walls) // 9, '屋根', len(roofs) // 9)
