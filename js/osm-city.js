@@ -1322,7 +1322,9 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     step('街を組み立て中…');
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));   // 文字を先に描かせる
     const [X0, Z0, X1, Z1] = data.bounds;
-    const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
+    // 地面: 東の端に海がある湘南は、東側を範囲の端で切る(その先は何も描かない)
+    const gEast = data.water.some((w) => w.sea) ? X1 : X1 + 300;
+    const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [gEast, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
     const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
     gm.material.polygonOffsetFactor = 4; gm.material.polygonOffsetUnits = 4; gm.userData.noLift = true;
     city.add(gm);

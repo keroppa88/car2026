@@ -489,8 +489,13 @@ if EXTRA:
 
 if SEA:
     for s_ in json.load(open(SEA))['sea']:
-        o = [xy(p[1], p[0]) for p in s_['o']]   # 海は範囲で切らない(遠くまで見える)
-        if o: water.append({'o': o, 'h': [[xy(p[1], p[0]) for p in h] for h in s_['h'] if len(h) >= 3], 'sea': True})
+        # 海は範囲で切らない(遠くまで見える)。ただし東の端(稲村ヶ崎)より先は切る
+        from shapely.geometry import Polygon as _SP2, box as _SB
+        _sg = _SP2([xy(p[1], p[0]) for p in s_['o']], [[xy(p[1], p[0]) for p in h] for h in s_['h'] if len(h) >= 3]).buffer(0).intersection(_SB(-1e6, -1e6, X1, 1e6))
+        for _pg in getattr(_sg, 'geoms', [_sg]):
+            if _pg.geom_type != 'Polygon' or _pg.area < 100: continue
+            water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(_pg.exterior.coords)[:-1]],
+                          'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in _pg.interiors], 'sea': True})
     _sj = json.load(open(SEA))
     for key_, lst_ in (('beach', beaches), ('rock', rocks)):
         for b_ in _sj.get(key_, []):
@@ -723,6 +728,8 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     _n = len(parks); parks[:] = _clip_list(parks)
     woods[:] = _clip_list(woods)
     beaches[:] = _clip_list(beaches)
+    _wn = [w for w in water if not w.get('sea')]
+    water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
 json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
