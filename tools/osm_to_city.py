@@ -19,6 +19,9 @@ LMK = None
 if '--landmarks' in sys.argv:
     i = sys.argv.index('--landmarks'); LMK = sys.argv[i + 1]; del sys.argv[i:i + 2]
 # --bridges 本物の形の高架.json を付けると、それと重なる首都高(見た目の板)を外す
+SEA = None   # --sea 海.json: 海の多角形(経度緯度)を水面として足す(浅く・砂浜色の岸)
+if '--sea' in sys.argv:
+    i = sys.argv.index('--sea'); SEA = sys.argv[i + 1]; del sys.argv[i:i + 2]
 BRG = None
 if '--bridges' in sys.argv:
     i = sys.argv.index('--bridges'); BRG = sys.argv[i + 1]; del sys.argv[i:i + 2]
@@ -122,7 +125,7 @@ def lanes_of(t, kind):
         if oneway: n = 2 if kind in ('trunk', 'primary', 'secondary') else 1   # 上下線が別の道(片側)・一方通行の細い道
     return max(1, min(n, 8))
 
-roads, elevated, buildings, water, parks, rivers = [], [], [], [], [], []
+roads, elevated, buildings, water, parks, rivers, beaches = [], [], [], [], [], [], []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
 RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
 def layer_of(t):
@@ -165,6 +168,7 @@ def area(p): return abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p
 def is_moat(t):   # 皇居などの濠
     n = t.get('name', '')
     return t.get('water') == 'moat' or n.endswith('濠') or n.endswith('堀') or 'お堀' in n
+def is_beach(t): return t.get('natural') in ('beach', 'sand')
 def is_water(t): return t.get('natural') == 'water' or t.get('waterway') in ('riverbank',) or 'water' in t and t.get('natural') == 'water'
 def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse') in ('grass', 'forest', 'recreation_ground')
 
@@ -231,6 +235,9 @@ for wid, (refs, t) in WAYS.items():
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
         o = clip_poly(pts[:-1])
         if o: water.append({'o': o, 'h': [], 'moat': is_moat(t)})
+    elif refs[0] == refs[-1] and len(pts) >= 4 and is_beach(t):
+        o = clip_poly(pts[:-1])
+        if o: beaches.append({'o': o, 'h': []})
     elif refs[0] == refs[-1] and len(pts) >= 4 and t.get('landuse') == 'construction':
         if not CLIP or inside(centroid(pts[:-1])): sites.append({'o': pts[:-1]})
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_park(t):
@@ -434,6 +441,12 @@ def _near_pf(o):
     cx, cz = centroid(o)
     return any(min((p[0] - cx) ** 2 + (p[1] - cz) ** 2 for p in pf['o']) < 40 ** 2 for pf in platforms)
 canopies[:] = [c for c in canopies if _near_pf(c['o'])]
+
+if SEA:
+    for s_ in json.load(open(SEA))['sea']:
+        o = [xy(p[1], p[0]) for p in s_['o']]   # 海は範囲で切らない(遠くまで見える)
+        if o: water.append({'o': o, 'h': [[xy(p[1], p[0]) for p in h] for h in s_['h'] if len(h) >= 3], 'sea': True})
+    print('海', sum(1 for w in water if w.get('sea')))
 
 # 首都高(OSM の板)の高さ: 高架の部分は一定、地上の部分(上り下り口)は高架とつながる端から 6% の坂で地面へ
 _tris, _trh = [], []

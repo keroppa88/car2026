@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261025-osm-53';
+import { decorateOsmCity } from './osm-city.js?v=20261025-osm-54';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-53';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-54';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -40,7 +40,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
   // 街並み(neo)も同じ無限の輪の生成道路。一直線の二車線で、沿道は日本の街。
   const NEO_COURSE = COURSE_KEY === 'neo';
-  const OSM_COURSE = COURSE_KEY === 'nihonbashi';   // 日本橋: OpenStreetMap から組み立てる街
+  const OSM_COURSE = COURSE_KEY === 'nihonbashi' || COURSE_KEY === 'shonan';   // 日本橋・湘南: OpenStreetMap から組み立てる街
   const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
@@ -518,7 +518,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 4000 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 5000 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -6060,7 +6060,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData, MAP_CONFIG.bridgeData) : decorateTokyoEki(wrap);
       // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
       // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
-      const flatSize = OSM_COURSE ? 6400 : 2400;
+      const flatSize = COURSE_KEY === 'shonan' ? 24000 : OSM_COURSE ? 6400 : 2400;
       const flat = new THREE.Mesh(new THREE.PlaneGeometry(flatSize, flatSize).rotateX(-Math.PI / 2),
         new THREE.MeshBasicMaterial({ name: 'M06_Steel_Smoke', visible: false, side: THREE.DoubleSide }));
       if (OSM_COURSE) flat.position.set(0, 0, 0); else flat.position.set(50, 0, 20);

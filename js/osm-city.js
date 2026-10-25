@@ -611,12 +611,14 @@ function buildBuildings(data, g, wallMats, roofMat) {
 // 地面は1枚の板なので、水の所に「穴」をあける代わりに、
 //  1) 水面と岸の壁を先に描き、2) 水の形を地面の高さに「見えない板」で描いて奥行きだけ書き込み、
 //  3) そのあと地面を描く(見えない板より奥なので水の所には描かれない)。
-const MOAT_DEPTH = 3, RIVER_DEPTH = 5;
+const MOAT_DEPTH = 3, RIVER_DEPTH = 5, SEA_DEPTH = 0.8;
+const SAND = 0xd8c9a3, SEA = 0x2f6f8a;
 const STONE = 0xa39a88, RIVER_WALL = 0x6c6e70;
 function buildWater(data, g) {
   const sets = [
     { rings: data.water.filter((w) => w.moat), lines: [], d: MOAT_DEPTH, wall: STONE },
-    { rings: data.water.filter((w) => !w.moat), lines: data.rivers || [], d: RIVER_DEPTH, wall: RIVER_WALL },
+    { rings: data.water.filter((w) => !w.moat && !w.sea), lines: data.rivers || [], d: RIVER_DEPTH, wall: RIVER_WALL },
+    { rings: data.water.filter((w) => w.sea), lines: [], d: SEA_DEPTH, wall: SAND, color: SEA },
   ];
   const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
   const inAnyWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)));
@@ -646,7 +648,7 @@ function buildWater(data, g) {
     }
     const add = (m, order) => { m.renderOrder = order; g.add(m); };
     if (s.rings.length) {
-      add(polyFill(s.rings, -s.d, WATER), -1.8);
+      add(polyFill(s.rings, -s.d, s.color ?? WATER), -1.8);
       const mk = polyFill(s.rings, 0, WATER); mk.material = maskMat; add(mk, -1.6);
     }
     if (floor.length) {
@@ -1164,6 +1166,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
     T('buildLots', () => buildLots(data, city));
     T('buildWater', () => buildWater(data, city));
+    if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.015, SAND));   // 砂浜
     T('buildForests', () => buildForests(data, city));
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));

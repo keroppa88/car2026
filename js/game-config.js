@@ -626,6 +626,32 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 湘南(稲村ヶ崎〜大磯): 国道134号に沿った細長いステージ。OpenStreetMap から組み立てる
+  shonan: {
+    ...commonMap,
+    label: '湘南',
+    file: 'map/map_tokyoeki.glb',
+    preview: 'picture/shonan.png',
+    cityData: 'map/shonan-city.json?v=20261025-1',
+    scale: 1,
+    assetRevision: '20261022-tokyoeki-3',
+    spawnSearchRadius: 40,
+    roadMaterial: 'M06_Steel_Smoke',
+    roadMaterialAliases: ['M06_Steel_Smoke'],
+    supportSurfaceMode: 'drivable',
+    loopMode: 'none',
+    spawnSurfaceMode: 'mapSurface',
+    spawnReference: 'fixed',
+    // 国道134号、江の島の西(鵠沼)
+    spawnReferenceX: 4809.4,
+    spawnReferenceZ: -101.3,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: 0.7,
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261025 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'tokyoeki', 'nihonbashi'];
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi'];   // メトロポリス(tokyoeki)は湘南に置き換え
