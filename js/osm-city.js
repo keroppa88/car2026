@@ -233,14 +233,42 @@ function offset(p, d) {
   });
 }
 
+// 2つ以上の道路が重なる所(合流・並走・短い取り付け道路)を調べる升目(2m)。そこには線を引かない
+function makeCoverage(data) {
+  const [X0, Z0, X1, Z1] = data.bounds, C = 2, W = Math.ceil((X1 - X0) / C), H = Math.ceil((Z1 - Z0) / C);
+  const m = new Uint16Array(W * H);   // 0=なし / 1..=道路番号+1 / 65535=重なり
+  data.roads.forEach((r, id) => {
+    const half = roadWidth(r) / 2, p = r.pts, me = id + 1;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(L / 1.5);
+      for (let k = 0; k <= n; k++) {
+        const cx = x0 + (x1 - x0) * k / n, cz = z0 + (z1 - z0) * k / n;
+        for (let dz = -half; dz <= half; dz += 1.5) for (let dx = -half; dx <= half; dx += 1.5) {
+          if (dx * dx + dz * dz > half * half) continue;
+          const ix = Math.floor((cx + dx - X0) / C), iz = Math.floor((cz + dz - Z0) / C);
+          if (ix < 0 || iz < 0 || ix >= W || iz >= H) continue;
+          const v = m[iz * W + ix];
+          m[iz * W + ix] = v === 0 || v === me ? me : 65535;
+        }
+      }
+    }
+  });
+  return (x, z, id) => {
+    const ix = Math.floor((x - X0) / C), iz = Math.floor((z - Z0) / C);
+    if (ix < 0 || iz < 0 || ix >= W || iz >= H) return false;
+    const v = m[iz * W + ix]; return v !== 0 && v !== id + 1;
+  };
+}
+
 function buildRoads(data, g) {
+  const shared = makeCoverage(data);
   const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] };
   // 交差点の点と、その半径(集まる道の半幅の最大)
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
     const k = r.pts[i].join(','); J.set(k, Math.max(J.get(k) || 0, roadWidth(r) / 2));
   }
-  for (const r of data.roads) {
+  data.roads.forEach((r, rid) => {
     const w = roadWidth(r), half = w / 2, p = r.pts;
     if (r.bridge) {
       ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
@@ -264,6 +292,18 @@ function buildRoads(data, g) {
     // 線を引く区間: 交差点の点のまわり(半径 + 1.5m)を除く
     const s = cumLen(p), L = s.at(-1), holes = [];
     for (const i of r.junctions) { const R = (J.get(p[i].join(',')) || half) + 1.5; holes.push([s[i] - R, s[i] + R]); }
+    // ほかの道路と重なる区間(と短い道路)は線を引かない
+    if (L < 20 || /_link$/.test(r.kind)) holes.push([-1, L + 1]);
+    else {
+      let st = null;
+      for (let d = 0; d <= L; d += 2) {
+        const q = cut(p, s, Math.max(0, d - 0.01), Math.min(L, d + 0.01))[0] || p[0];
+        const sh = shared(q[0], q[1], rid);
+        if (sh && st === null) st = d - 3;
+        if (!sh && st !== null) { holes.push([st, d + 3]); st = null; }
+      }
+      if (st !== null) holes.push([st, L + 1]);
+    }
     holes.sort((a, b) => a[0] - b[0]);
     const spans = []; let x = 0;
     for (const [a, b] of holes) { if (a > x) spans.push([x, a]); x = Math.max(x, b); }
@@ -294,6 +334,7 @@ function buildRoads(data, g) {
           if (sc < 4 || sc > L - 4) continue;
           const seg = cut(p, s, sc - 0.01, sc + 0.01); if (seg.length < 2) continue;
           const [[ax, az], [bx, bz]] = seg, dl = Math.hypot(bx - ax, bz - az) || 1, tx = (bx - ax) / dl, tz = (bz - az) / dl;
+          if (shared(ax, az, rid)) continue;
           const ang = Math.atan2(tx, tz);
           // 同じ向きの横断歩道が近くにあれば作らない
           if (placedCw.some(c => {
@@ -305,7 +346,7 @@ function buildRoads(data, g) {
         }
       }
     }
-  }
+  });
   g.add(flatMesh(walk, SIDEWALK_COLOR), flatMesh(curb, 0x9d9e9b));
   if (parapet.p.length) g.add(solidMesh(parapet, new THREE.MeshLambertMaterial({ color: 0xb3ada1 })));
   g.add(flatMesh(deck, SIDEWALK_COLOR), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
@@ -1052,10 +1093,22 @@ function makeBlocker(data) {
       }
     }
   }
+  // 交差点の角も道路にする(角を曲がる時に引っ掛からないように)
+  const JR = new Map();
+  for (const r of data.roads) for (const i of r.junctions) { const k = r.pts[i].join(','); JR.set(k, Math.max(JR.get(k) || 0, roadWidth(r) / 2 + 2.5)); }
+  for (const [k, R] of JR) {
+    const [jx, jz] = k.split(',').map(Number);
+    for (let dz = -R; dz <= R; dz += 0.7) for (let dx = -R; dx <= R; dx += 0.7) {
+      if (dx * dx + dz * dz > R * R) continue;
+      const ix = Math.floor(jx + dx - X0), iz = Math.floor(jz + dz - Z0);
+      if (ix >= 0 && iz >= 0 && ix < RW && iz < RH) road[iz * RW + ix] = 1;
+    }
+  }
   const onRoad = (x, z) => { const ix = Math.floor(x - X0), iz = Math.floor(z - Z0); return ix >= 0 && iz >= 0 && ix < RW && iz < RH && road[iz * RW + ix] === 1; };
   const fn = (x, z, r = 0.3) => {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) return true;
     if (area && !pointIn(area, x, z)) return true;   // 走れる範囲(川や幹線道路で区切った多角形)の外
+    if (onRoad(x, z)) return false;                  // 車道の上は何があっても通れる(引っ掛かり防止)
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C));
     if (!list) return false;
     const road_ = onRoad(x, z);
