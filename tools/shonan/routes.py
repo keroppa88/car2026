@@ -92,6 +92,6 @@ def start_at(route, k):
 # 湘南大橋(相模川)
 sx, sz = xy(35.31964, 139.37360)   # 湘南大橋の東の端
 kb = min(range(len(west)), key=lambda i: math.dist(west[i], (sx, sz)))
-starts = {'inamuragasaki': start_at(west, 15), 'shonanohashi': start_at(west, max(0, kb - 25)), 'oiso': start_at(east, 4)}
+starts = {'inamuragasaki': start_at(west, 6), 'shonanohashi': start_at(west, max(0, kb - 25)), 'oiso': start_at(east, 4)}
 json.dump({'west': west, 'east': east, 'starts': starts}, open('map/shonan-routes.json', 'w'), separators=(',', ':'))
 print('西行き', len(west), '点', round(sum(math.dist(west[i], west[i + 1]) for i in range(len(west) - 1))), 'm / 東行き', len(east), '点', starts)

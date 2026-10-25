@@ -57,7 +57,7 @@ br = [LineString(p).buffer(12) for p in bridges if len(p) > 1 and LineString(p).
 band = unary_union([band, isl_big.buffer(30), *br]).buffer(10).buffer(-10)
 if hasattr(band, 'geoms'): band = max(band.geoms, key=lambda g: g.area)
 # 東の端(稲村ヶ崎): 海沿いから北へ向かう134号と、その上(北)の街は切る。134号のそば 60m だけ残す
-EAST_CUT, TOWN_CUT = xy((139.5319, lat0))[0], xy((139.5245, lat0))[0]
+EAST_CUT, TOWN_CUT = xy((139.5252, lat0))[0], xy((139.5200, lat0))[0]   # 稲村ヶ崎の岬のすぐ東まで
 band = band.difference(box(EAST_CUT, -1e6, 1e6, 1e6))
 band = band.difference(box(TOWN_CUT, -1e6, 1e6, 1e6).difference(r134.buffer(60)).difference(sea.buffer(-1).buffer(80)))
 if hasattr(band, 'geoms'): band = max(band.geoms, key=lambda g: g.area)
