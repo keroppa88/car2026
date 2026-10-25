@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261026-osm-62';
+import { decorateOsmCity } from './osm-city.js?v=20261026-osm-63';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261026-osm-62';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261026-osm-63';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -37,6 +37,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const DEFAULT_SEQUENCE_MAP_ASSET_REVISION = '20260801-searoad01-06-lite';
   const COURSE_KEY = pageQuery.get('course') || 'tokyo';
   const MAP_CONFIG = MAP_CONFIGS[COURSE_KEY] || MAP_CONFIGS.tokyo;
+  // スタート地点を選べるコース(湘南): URL の start=... の地点から始める
+  if (MAP_CONFIG.starts) {
+    const s = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
+    MAP_CONFIG.spawnReferenceX = s.x; MAP_CONFIG.spawnReferenceZ = s.z; MAP_CONFIG.spawnHeading = s.heading;
+    MAP_CONFIG.startKey = s.key;
+  }
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
   // 街並み(neo)も同じ無限の輪の生成道路。一直線の二車線で、沿道は日本の街。
   const NEO_COURSE = COURSE_KEY === 'neo';
@@ -383,6 +389,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       musicKeydown(k, e.repeat);
       return;
     }
+    if (destMenuOpen && k === 'Escape') { closeDestMenu(); return; }
     // ESC: ゲーム一時停止(操作説明パネルを表示)。もう一度押すと再開。
     if (!e.repeat && k === 'Escape') {
       pauseMode = !pauseMode;
@@ -421,7 +428,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const frame = document.getElementById('mirror-frame');
         if (frame) frame.style.display = mirrorView ? 'block' : 'none';
       }
-      if (k.toLowerCase() === 'y' && car2AutoRoute?.length >= 2) {
+      if (k.toLowerCase() === 'y' && MAP_CONFIG.autoDriveMode === 'shonanRoute') {
+        // 湘南: 自動運転中なら止める。止まっていれば行き先を選ぶ
+        if (autoDrive) { autoDrive = false; document.body.dataset.autoDrive = 'false'; }
+        else openDestMenu();
+      } else if (destMenuOpen && (k === '1' || k === '2')) {
+        chooseDest(k === '1' ? 'west' : 'east');
+      } else if (destMenuOpen && k === 'Escape') {
+        closeDestMenu();
+      } else if (k.toLowerCase() === 'y' && car2AutoRoute?.length >= 2) {
         autoDrive = !autoDrive;
         autoIdx = -1;                // 次フレームで最寄り地点から追従を開始
         if (autoDrive && MAP_CONFIG.autoDriveMode === 'indyBankDrift') {
@@ -8887,6 +8902,33 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // Y: コース別自動運転。首都高は従来ルート、海岸線は左車線130km/h巡航、
   // 森林地帯は道路中央を130km/h巡航して急カーブだけドリフト、
   // インディアナポリスは外周バンクを右回りし直線全開・カーブドリフト。
+  // ---- 湘南: Y で行き先を選ぶ(大磯 / 稲村ヶ崎)。国道134号の左の車線を自動運転 ----
+  let shonanRoutes = null, destMenuOpen = false, destMenuEl = null;
+  if (MAP_CONFIG.routeData) fetch(MAP_CONFIG.routeData).then((r) => r.json()).then((d) => { shonanRoutes = d; }).catch(() => {});
+  function openDestMenu() {
+    if (!shonanRoutes) return;
+    if (!destMenuEl) {
+      destMenuEl = document.createElement('div');
+      destMenuEl.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:50;background:rgba(14,18,24,0.88);color:#fff;padding:22px 30px;border-radius:10px;font:600 20px system-ui,sans-serif;text-align:center;border:1px solid rgba(255,255,255,0.3)';
+      destMenuEl.innerHTML = '<div style="margin-bottom:14px;letter-spacing:0.1em">自動運転の行き先</div>'
+        + '<div style="display:flex;gap:14px;justify-content:center">'
+        + '<button data-d="west" style="font:600 18px system-ui;padding:10px 18px;border-radius:8px;border:0;cursor:pointer">1  大磯</button>'
+        + '<button data-d="east" style="font:600 18px system-ui;padding:10px 18px;border-radius:8px;border:0;cursor:pointer">2  稲村ヶ崎</button></div>'
+        + '<div style="margin-top:12px;font:400 13px system-ui;opacity:0.7">1 / 2 キーかクリックで選ぶ　ESC でやめる</div>';
+      destMenuEl.addEventListener('click', (e) => { const d = e.target.dataset?.d; if (d) chooseDest(d); });
+      document.body.appendChild(destMenuEl);
+    }
+    destMenuEl.style.display = 'block'; destMenuOpen = true;
+  }
+  function closeDestMenu() { if (destMenuEl) destMenuEl.style.display = 'none'; destMenuOpen = false; }
+  function chooseDest(dir) {
+    closeDestMenu();
+    car2AutoRoute = shonanRoutes[dir].map(([x, z]) => ({ x, z }));
+    autoDrive = true; autoIdx = -1;
+    document.body.dataset.autoDrive = 'true';
+    document.body.dataset.autoDriveDest = dir === 'west' ? '大磯' : '稲村ヶ崎';
+  }
+
   function car2Autopilot() {
     const wps = car2AutoRoute;
     const n = wps.length;
@@ -8974,6 +9016,25 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         }
         return { throttle: true, brake: false, handbrake: false, steer: 0 };
       }
+    }
+    if (autoMode === 'shonanRoute') {
+      // 行き先まで: 先のカーブを見て速度を決め、終点で止まる(ループしない)
+      let wp = wps[autoIdx];
+      const reach = Math.max(8, speed * 0.45);
+      while (autoIdx < n - 1 && Math.hypot(wp.x - player.pos.x, wp.z - player.pos.z) < reach) { autoIdx++; wp = wps[autoIdx]; }
+      const left = n - 1 - autoIdx;
+      if (left <= 2 && Math.hypot(wps[n - 1].x - player.pos.x, wps[n - 1].z - player.pos.z) < 15) {
+        if (speed < 0.5) { autoDrive = false; document.body.dataset.autoDrive = 'false'; document.body.dataset.autoDriveArrived = '1'; }
+        return { throttle: false, brake: true, handbrake: false, steer: 0 };
+      }
+      const diff = angleTo(wp);
+      let curve = 0;
+      for (const k of [4, 8, 14]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + k)])));
+      let targetKmh = curve > 0.6 ? 30 : curve > 0.35 ? 45 : curve > 0.18 ? 60 : 70;
+      if (left < 12) targetKmh = Math.min(targetKmh, 20 + left * 3);   // 終点の手前で減速
+      const target = targetKmh / 3.6;
+      document.body.dataset.autoDriveTargetKmh = String(targetKmh);
+      return { throttle: speed < target, brake: speed > target + 2, handbrake: false, steer: clamp(diff * 1.6, -1, 1) };
     }
     let wp = wps[autoIdx];
     const reach = Math.max(9, speed * 0.4);
@@ -9399,7 +9460,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         roadSurface = getMapSurfaceAt(player.pos.x, player.pos.z, player.pos.y);
       }
       if (roadSurface?.face) {
-        playerOnSand = sandMeshes.includes(roadSurface.object);
+        playerOnSand = sandMeshes.includes(roadSurface.object)
+          || !!(OSM_COURSE && tokyoEkiCity?.isSand?.(player.pos.x, player.pos.z));   // 日本橋・湘南: 砂浜
         document.body.dataset.playerSurface = playerOnSand ? 'sand' : 'drivable';
         mapFallVelocity = 0;
         mapMissingSurfaceTime = 0;

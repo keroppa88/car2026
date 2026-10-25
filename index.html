@@ -410,6 +410,8 @@
   .select-grid.cars { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
   /* コースは9つ。1段5つにして2段に収める。 */
   #course-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .start-grid { grid-template-columns: repeat(3, minmax(0, 260px)); justify-content: center; }
+  .start-grid .select-fallback { font-size: 26px; }
   .select-card {
     min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
     gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
@@ -492,6 +494,11 @@
     <p class="select-kicker">SELECT COURSE</p>
     <div id="course-grid" class="select-grid"></div>
   </section>
+  <section id="start-screen" class="select-screen" aria-label="スタート地点" hidden>
+    <h1 class="select-logo">イニシャルT</h1>
+    <p class="select-kicker">SELECT START</p>
+    <div id="start-grid" class="select-grid start-grid"></div>
+  </section>
   <div id="title-bottom-bar"><span id="title-copyright">&copy;keroppa</span></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
   <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
@@ -560,7 +567,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261026-osm-62';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261026-osm-63';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -874,7 +881,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261025-shonan-1');
+    import('./js/main.js?v=20261026-shonan-2');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
@@ -884,6 +891,8 @@
     let starting = false;
     const carScreen = document.getElementById('car-screen');
     const courseScreen = document.getElementById('course-screen');
+    const startScreen = document.getElementById('start-screen');
+    let startIndex = 0, startButtons = [];
     const guideButton = document.getElementById('title-guide-btn');
     const demoButton = document.getElementById('title-demo-btn');
     const guideOverlay = document.getElementById('title-guide-overlay');
@@ -1057,6 +1066,7 @@
     const paint = () => {
       carButtons.forEach((button, i) => button.classList.toggle('active', i === carIndex));
       courseButtons.forEach((button, i) => button.classList.toggle('active', i === courseIndex));
+      startButtons.forEach((button, i) => button.classList.toggle('active', i === startIndex));
       guideButton.hidden = stage !== 'car';
       demoButton.hidden = stage !== 'car';
     };
@@ -1068,13 +1078,34 @@
       courseScreen.hidden = false;
       paint();
     };
+    // スタート地点を選ぶコース(湘南)は、コースの次にスタート地点の画面を出す
+    const showStarts = () => {
+      const starts = MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts;
+      playSelectionClick();
+      stage = 'start';
+      courseScreen.hidden = true;
+      startScreen.hidden = false;
+      const grid = document.getElementById('start-grid');
+      grid.innerHTML = '';
+      startIndex = 0;
+      startButtons = starts.map((s, i) => {
+        const b = makeCard(s.key, { label: s.label }, 'start');
+        b.addEventListener('click', () => { startIndex = i; paint(); });
+        b.addEventListener('dblclick', () => start());
+        grid.append(b);
+        return b;
+      });
+      paint();
+    };
     const start = () => {
+      if (stage === 'course' && MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts) { showStarts(); return; }
       if (starting) return;
       starting = true;
       clearTimeout(demoIdleTimer);
       const next = new URLSearchParams();
       next.set('car', carKeys[carIndex]);
       next.set('course', COURSE_ORDER[courseIndex]);
+      if (stage === 'start') next.set('start', MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts[startIndex].key);
       if (query.get('debugMap') === '1') next.set('debugMap', '1');
       const destination = `${location.pathname}?${next}`;
       playSelectionClick();
@@ -1108,6 +1139,13 @@
       armDemoIdleTimer();
       if (!['ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(event.key)) return;
       event.preventDefault();
+      if (event.key === 'Escape' && stage === 'start') {
+        stage = 'course';
+        startScreen.hidden = true;
+        courseScreen.hidden = false;
+        paint();
+        return;
+      }
       if (event.key === 'Escape' && stage === 'course') {
         stage = 'car';
         courseScreen.hidden = true;
@@ -1118,6 +1156,7 @@
       if (event.key === 'Enter') { stage === 'car' ? showCourses() : start(); return; }
       const delta = event.key === 'ArrowLeft' ? -1 : 1;
       if (stage === 'car') carIndex = (carIndex + delta + carKeys.length) % carKeys.length;
+      else if (stage === 'start') startIndex = (startIndex + delta + startButtons.length) % startButtons.length;
       else courseIndex = (courseIndex + delta + COURSE_ORDER.length) % COURSE_ORDER.length;
       paint();
     });

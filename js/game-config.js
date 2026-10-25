@@ -642,12 +642,20 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // 国道134号、江の島の西(鵠沼)
-    spawnReferenceX: 4809.4,
-    spawnReferenceZ: -101.3,
+    // スタート地点(コース選択の次に選ぶ)。向きは稲村ヶ崎・湘南大橋は大磯方面、大磯は稲村ヶ崎方面
+    starts: [
+      { key: 'inamuragasaki', label: '稲村ヶ崎', x: 9921.97, z: 118.35, heading: -1.257 },
+      { key: 'shonanohashi', label: '湘南大橋', x: -4614.46, z: -1068.27, heading: -1.231 },
+      { key: 'oiso', label: '大磯', x: -9920.53, z: -76.08, heading: 1.107 },
+    ],
+    // Y の自動運転: 行き先(大磯/稲村ヶ崎)まで国道134号を左側の車線で走る
+    autoDriveMode: 'shonanRoute',
+    routeData: 'map/shonan-routes.json?v=20261026-1',
+    spawnReferenceX: 9921.97,
+    spawnReferenceZ: 118.35,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
-    spawnHeading: 0.7,
+    spawnHeading: -1.257,
     treePlacement: { ...commonTrees, enabled: false, seed: 20261025 },
     mapWhiteGlow: false,
     roadNightEmissive: false,

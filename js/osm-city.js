@@ -1158,9 +1158,7 @@ function makeBlocker(data) {
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
   for (const v of data.viaducts || []) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
-  for (const s of data.sites || []) add(s.o, [], 'b');
-  for (const w of data.woods || []) add(w.o, w.h, 'w');   // 林の中には入れない(道路は通れる)   // 工事中の敷地には入れない
-  for (const [x, z] of data.trees || []) add([[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]], [], 'b');   // 街路樹の幹
+  for (const s of data.sites || []) add(s.o, [], 'b');   // 工事中の敷地には入れない(街路樹・林は当たり判定なし)
   const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
   const RW = Math.ceil(X1 - X0), RH = Math.ceil(Z1 - Z0), road = new Uint8Array(RW * RH);
@@ -1213,6 +1211,16 @@ function makeBlocker(data) {
     return false;
   };
   fn.onRoad = onRoad;
+  // 砂浜・砂地(砂煙を出す)
+  const sg = new Map();
+  for (const b of data.beaches || []) {
+    let a = Infinity, bb = Infinity, c = -Infinity, d = -Infinity;
+    for (const [x, z] of b.o) { a = Math.min(a, x); bb = Math.min(bb, z); c = Math.max(c, x); d = Math.max(d, z); }
+    for (let gx = Math.floor(a / C); gx <= Math.floor(c / C); gx++) for (let gz = Math.floor(bb / C); gz <= Math.floor(d / C); gz++) {
+      const k = gx + ',' + gz; if (!sg.has(k)) sg.set(k, []); sg.get(k).push(b);
+    }
+  }
+  fn.isSand = (x, z) => !onRoad(x, z) && (sg.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || []).some((b) => inPoly(b.o, b.h, x, z));
   fn.hitsBuilding = (x, z, r) => {
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || [];
     return list.some((it) => it.kind === 'b' && x > it.box[0] - r && x < it.box[2] + r && z > it.box[1] - r && z < it.box[3] + r
@@ -1287,6 +1295,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   }).catch((e) => { console.warn('[osm-city]', e); step('読み込みに失敗しました'); });
   return {
     isBlocked: (x, z, R) => blocked(x, z, R),
+    isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     update() {},
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
