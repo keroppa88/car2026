@@ -559,7 +559,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261025-osm-11';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261025-osm-12';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -873,7 +873,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261025-osm-11');
+    import('./js/main.js?v=20261025-osm-12');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);

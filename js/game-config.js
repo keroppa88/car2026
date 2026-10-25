@@ -602,9 +602,9 @@ export const MAP_CONFIGS = {
     label: '日本橋',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/nihonbashi.png',
-    cityData: 'map/nihonbashi-city.json?v=20261025-5',
+    cityData: 'map/nihonbashi-city.json?v=20261025-6',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
-    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-2',
+    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-3',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,

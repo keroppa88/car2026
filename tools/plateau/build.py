@@ -11,7 +11,7 @@ lon0 = (min(p[0] for p in area) + max(p[0] for p in area)) / 2
 KX, KZ = math.cos(math.radians(lat0)) * 111320.0, 110574.0
 def xz(la, lo): return ((lo - lon0) * KX, -(la - lat0) * KZ)
 # PLATEAU が完成前の古い姿・位置が不確かなものは OSM の建物のままにする
-SKIP = {'日本橋野村ビルディング旧館', 'TOFROM YAESU', '東京ミッドタウン日本橋', 'Ginza Sony Park'}
+SKIP = {'日本橋野村ビルディング', 'TOFROM YAESU', '東京ミッドタウン日本橋', 'Ginza Sony Park'}
 SEL = pickle.load(open('/home/claude/plateau/selected.pkl', 'rb'))
 
 def tri(poly, y0, out, uv=None):  # uv は使わない(窓の模様は JS 側で面の向きから計算)

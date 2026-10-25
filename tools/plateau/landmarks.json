@@ -305,11 +305,11 @@
  },
  {
   "label": "銀座クリスタルビル",
-  "found": false,
-  "osm": null,
-  "lat": null,
-  "lon": null,
-  "osmName": null
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.6725,
+  "lon": 139.763667,
+  "osmName": ""
  },
  {
   "label": "Ginza Sony Park",
@@ -321,11 +321,11 @@
  },
  {
   "label": "ヒューリック銀座数寄屋橋ビル",
-  "found": false,
-  "osm": null,
-  "lat": null,
-  "lon": null,
-  "osmName": null
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.672389,
+  "lon": 139.763944,
+  "osmName": ""
  },
  {
   "label": "MIKIMOTO Ginza 2",
@@ -432,12 +432,12 @@
   "osmName": "日本橋郵便局"
  },
  {
-  "label": "日本橋野村ビルディング旧館",
+  "label": "日本橋野村ビルディング",
   "found": true,
-  "osm": "way/187598501",
-  "lat": 35.68373992,
-  "lon": 139.775101,
-  "osmName": "日本橋野村ビル旧館"
+  "osm": "pos/",
+  "lat": 35.684083,
+  "lon": 139.775611,
+  "osmName": ""
  },
  {
   "label": "中央警察署日本橋交番",
@@ -625,10 +625,10 @@
  },
  {
   "label": "茅場町タワー",
-  "found": false,
-  "osm": null,
-  "lat": null,
-  "lon": null,
-  "osmName": null
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.676944,
+  "lon": 139.78575,
+  "osmName": ""
  }
 ]
