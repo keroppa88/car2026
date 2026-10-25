@@ -147,7 +147,10 @@ def area(p): return abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p
 def is_water(t): return t.get('natural') == 'water' or t.get('waterway') in ('riverbank',) or 'water' in t and t.get('natural') == 'water'
 def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse') in ('grass', 'forest', 'recreation_ground')
 
+# OSM に高さが無い高層ビルの高さ(m)
+HEIGHT_FIX = {'TOFROM YAESU TOWER': 250}
 def height_of(t, pts):
+    if t.get('name') in HEIGHT_FIX: return HEIGHT_FIX[t['name']]
     lv = (t.get('building:levels') or '').split(';')[0]
     if t.get('height'):
         try: return round(float(t['height'].split()[0]), 1)
