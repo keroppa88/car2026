@@ -553,11 +553,11 @@
  },
  {
   "label": "光世証券兜町ビル",
-  "found": false,
-  "osm": null,
-  "lat": null,
-  "lon": null,
-  "osmName": null
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68126,
+  "lon": 139.777509,
+  "osmName": ""
  },
  {
   "label": "兜町第1平和ビル",
