@@ -332,6 +332,46 @@ function buildBuildings(data, g, wallMats, roofMat) {
   const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; g.add(rm);
 }
 
+// ---- ランドマーク(PLATEAU の本物の形) ----
+// walls/roofs は三角形の頂点(x, y, z)の並び。窓の模様は面の向きから横方向と高さで貼る。
+function buildLandmarks(lm, g, wallMats, roofMat) {
+  const walls = STYLES.map(() => ({ p: [], n: [], c: [], u: [] }));
+  const RP = [], RC = [];
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), T = new THREE.Vector3();
+  lm.landmarks.forEach((L, i) => {
+    const R = seeded(i * 977 + 5);
+    let top = 0; for (let k = 1; k < L.walls.length; k += 3) top = Math.max(top, L.walls[k]);
+    const style = top > 80 ? [0, 2, 2, 4][Math.floor(R() * 4)] : [1, 3, 4, 0][Math.floor(R() * 4)];
+    const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
+    const col = new THREE.Color(base), S = STYLES[style], W = walls[style], w = L.walls;
+    for (let k = 0; k + 8 < w.length; k += 9) {
+      A.set(w[k], w[k + 1], w[k + 2]); B.set(w[k + 3], w[k + 4], w[k + 5]); C.set(w[k + 6], w[k + 7], w[k + 8]);
+      N.subVectors(B, A).cross(T.subVectors(C, A)); if (N.lengthSq() < 1e-8) continue; N.normalize();
+      // 横方向(面に沿った水平の向き)
+      let hx = -N.z, hz = N.x; const hl = Math.hypot(hx, hz); if (hl < 1e-3) { hx = 1; hz = 0; } else { hx /= hl; hz /= hl; }
+      for (const P of [A, B, C]) {
+        W.p.push(P.x, P.y, P.z); W.n.push(N.x, N.y, N.z); W.c.push(col.r, col.g, col.b);
+        W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH);
+      }
+    }
+    const rc = col.clone().multiplyScalar(0.72);
+    for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rc.r, rc.g, rc.b); }
+  });
+  walls.forEach((o, i) => {
+    if (!o.p.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
+    const m = new THREE.Mesh(geo, wallMats[i]); m.matrixAutoUpdate = false; m.name = 'plateau-landmarks'; g.add(m);
+  });
+  const rg = new THREE.BufferGeometry();
+  rg.setAttribute('position', new THREE.Float32BufferAttribute(RP, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(RC, 3));
+  rg.computeVertexNormals();
+  const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; g.add(rm);
+}
+
 // ---- 当たり判定 ----
 const pointIn = (ring, x, z) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, zi] = ring[i], [xj, zj] = ring[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
 const inPoly = (o, holes, x, z) => pointIn(o, x, z) && !(holes || []).some((h) => pointIn(h, x, z));
@@ -394,7 +434,7 @@ function makeBlocker(data) {
   };
 }
 
-export function decorateOsmCity(root, url) {
+export function decorateOsmCity(root, url, landmarkUrl) {
   root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
   const glow = [];
@@ -403,7 +443,8 @@ export function decorateOsmCity(root, url) {
   const city = new THREE.Group(); city.name = 'osm-city';
   (root.parent || root).add(city);
   let blocked = () => false, night = false;
-  fetch(url).then((r) => r.json()).then((data) => {
+  const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
+  Promise.all([fetch(url).then((r) => r.json()), lmFetch]).then(([data, lm]) => {
     const [X0, Z0, X1, Z1] = data.bounds;
     const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
     const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
@@ -420,6 +461,12 @@ export function decorateOsmCity(root, url) {
     buildRoads(data, city);
     buildElevated(data, city);
     buildBuildings(data, city, wallMats, roofMat);
+    if (lm) {
+      buildLandmarks(lm, city, wallMats, roofMat);
+      // 当たり判定は足元の形で
+      for (const L of lm.landmarks) for (const r of L.fp) data.buildings.push({ p: r, holes: [] });
+      document.body.dataset.osmLandmarks = String(lm.landmarks.length);
+    }
     blocked = makeBlocker(data);
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);

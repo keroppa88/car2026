@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261025-osm-9';
+import { decorateOsmCity } from './osm-city.js?v=20261025-osm-10';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-9';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-10';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -6054,7 +6054,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
     // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
     if (TOKYOEKI_COURSE) {
-      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData) : decorateTokyoEki(wrap);
+      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData) : decorateTokyoEki(wrap);
       // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
       // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
       const flatSize = OSM_COURSE ? 6400 : 2400;

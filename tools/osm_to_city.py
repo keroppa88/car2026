@@ -14,6 +14,10 @@
 import sys, math, json
 import xml.etree.ElementTree as ET
 
+# --landmarks 本物の形の建物.json を付けると、それと重なる OSM の建物を外す
+LMK = None
+if '--landmarks' in sys.argv:
+    i = sys.argv.index('--landmarks'); LMK = sys.argv[i + 1]; del sys.argv[i:i + 2]
 src, out = sys.argv[1], sys.argv[2]
 root = ET.parse(src).getroot()
 b = root.find('bounds').attrib
@@ -201,6 +205,20 @@ for rel in root.findall('relation'):
             if not o: continue
             hs = [h for h in (clip_poly(h) for h in hs) if h]
             (water if is_water(t) else parks).append({'o': o, 'h': hs})
+
+if LMK:
+    from shapely.geometry import Polygon
+    from shapely.strtree import STRtree
+    lm = [Polygon(r).buffer(0) for L in json.load(open(LMK))['landmarks'] for r in L['fp']]
+    tree = STRtree(lm)
+    keep = []
+    for b in buildings:
+        try: pb = Polygon(b['p']).buffer(0)
+        except Exception: keep.append(b); continue
+        hit = any(lm[j].intersection(pb).area > 0.3 * max(pb.area, 1e-6) for j in tree.query(pb))
+        if not hit: keep.append(b)
+    print('ランドマークと重なる OSM の建物を外す:', len(buildings) - len(keep))
+    buildings[:] = keep
 
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
