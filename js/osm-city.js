@@ -554,20 +554,103 @@ function buildForests(data, g) {
 }
 
 // ---- 街路樹(位置は osm_to_city.py が決める) ----
+// 木の絵(2次元)。何種類かを1枚に並べる。
+// 幹から枝を伸ばし、枝先ごとに葉の塊(小さな葉をたくさん、下は暗く上は明るく)を描く。塊のすき間から枝が見える。
+const TREE_KINDS = [
+  { w: 0.92, top: 0.06, bot: 0.55, clumps: 16, hue: 0.27 },   // 横に広い(ケヤキ風)
+  { w: 0.80, top: 0.03, bot: 0.62, clumps: 14, hue: 0.25 },   // 写真のような高木
+  { w: 0.55, top: 0.03, bot: 0.70, clumps: 12, hue: 0.22 },   // 縦長(イチョウ風・黄緑)
+  { w: 0.95, top: 0.14, bot: 0.55, clumps: 18, hue: 0.29 },   // 低く横に張る
+  { w: 0.70, top: 0.05, bot: 0.66, clumps: 13, hue: 0.30 },   // 濃い緑
+  { w: 0.85, top: 0.08, bot: 0.58, clumps: 15, hue: 0.24 },   // 明るい緑
+];
+function makeTreeAtlas() {
+  const S = 384, c = document.createElement('canvas'); c.width = S * TREE_KINDS.length; c.height = S;
+  const g = c.getContext('2d');
+  TREE_KINDS.forEach((k, i) => {
+    const R = seeded(900 + i * 37), ox = i * S, bx = ox + S / 2;
+    const cy = S * (k.top + k.bot) / 2, ry = S * (k.bot - k.top) / 2, rx = S * k.w / 2;
+    // 葉の塊の位置(樹冠の楕円の中、外側寄り)
+    const cl = [];
+    for (let q = 0; q < k.clumps; q++) {
+      const a = (q / k.clumps) * Math.PI * 2 + R() * 0.5, r = 0.45 + R() * 0.5;
+      cl.push([bx + Math.cos(a) * rx * r, cy + Math.sin(a) * ry * r * 0.9 - ry * 0.05, S * (0.07 + R() * 0.05)]);
+    }
+    cl.push([bx, cy - ry * 0.55, S * 0.09]);
+    // 幹
+    const forkY = cy + ry * 0.35;
+    g.strokeStyle = '#4a3b2e'; g.lineCap = 'round';
+    g.lineWidth = S * 0.032; g.beginPath(); g.moveTo(bx, S); g.lineTo(bx + (R() - 0.5) * S * 0.02, forkY); g.stroke();
+    // 枝: 幹の上から各塊へ(根元は太く)
+    for (const [x, y] of cl) {
+      g.lineWidth = S * (0.008 + R() * 0.01);
+      g.beginPath(); g.moveTo(bx, forkY + R() * ry * 0.3);
+      g.quadraticCurveTo((bx + x) / 2 + (R() - 0.5) * 20, (forkY + y) / 2, x, y); g.stroke();
+    }
+    // 葉の塊: 下から上へ描く(上の塊が手前)
+    cl.sort((a, b) => b[1] - a[1]);
+    for (const [x, y, r] of cl) {
+      for (let q = 0; q < 140; q++) {
+        const a = R() * Math.PI * 2, d = Math.sqrt(R()) * r;
+        const px = x + Math.cos(a) * d * 1.25, py = y + Math.sin(a) * d * 0.8;
+        const up = (y - py) / r;                                   // -1(下)〜1(上)
+        const light = 0.20 + 0.16 * (up + 1) / 2 + (R() - 0.5) * 0.08 + (px < x ? 0.03 : 0);
+        g.fillStyle = `hsl(${Math.round((k.hue + (R() - 0.5) * 0.04) * 360)},${Math.round(48 + R() * 20)}%,${Math.round(light * 100)}%)`;
+        const lr = S * (0.008 + R() * 0.008);
+        g.beginPath(); g.ellipse(px, py, lr * 1.6, lr, R() * Math.PI, 0, Math.PI * 2); g.fill();
+      }
+    }
+  });
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+  return tex;
+}
+// 木の絵を貼る1枚の板。いつもカメラの方を向く(縦は立てたまま)。
+function treeGeometry(kind) {
+  const u0 = kind / TREE_KINDS.length + 0.001, u1 = (kind + 1) / TREE_KINDS.length - 0.001, P = [], U = [], N = [];
+  const q = [[-0.5, 0, u0, 0], [0.5, 0, u1, 0], [0.5, 1, u1, 1], [-0.5, 0, u0, 0], [0.5, 1, u1, 1], [-0.5, 1, u0, 1]];
+  for (const [x, y, u, v] of q) { P.push(x, y, 0); U.push(u, v); N.push(0, 1, 0); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  return geo;
+}
+function billboard(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `
+      vec4 bbC = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      float bbW = length(instanceMatrix[0].xyz), bbH = length(instanceMatrix[1].xyz);
+      vec3 bbR = normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]) * vec3(1.0, 0.0, 1.0) + vec3(1e-5, 0.0, 0.0));
+      vec4 mvPosition = viewMatrix * vec4(bbC.xyz + bbR * position.x * bbW + vec3(0.0, position.y * bbH, 0.0), 1.0);
+      gl_Position = projectionMatrix * mvPosition;`);
+  };
+  return mat;
+}
 function buildTrees(data, g) {
   const T = data.trees || []; if (!T.length) return;
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.26, 3.4, 6), new THREE.MeshLambertMaterial({ color: 0x5b4636 }), T.length);
-  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ flatShading: true }), T.length);
-  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Color();
-  T.forEach(([x, z], i) => {
-    const R = seeded(Math.round(x * 31 + z * 17)), s = 0.85 + R() * 0.35;
-    M.compose(P.set(x, 1.7 * s, z), Q.identity(), S.set(s, s, s)); trunk.setMatrixAt(i, M);
-    const r = 2.3 * s;
-    M.compose(P.set(x, 3.4 * s + r * 0.8, z), Q.setFromAxisAngle(S.set(0, 1, 0), R() * 6.28), S.set(r, r * 1.15, r)); crown.setMatrixAt(i, M);
-    C.setHSL(0.26 + R() * 0.06, 0.45, 0.28 + R() * 0.1); crown.setColorAt(i, C);
+  const mat = billboard(new THREE.MeshLambertMaterial({ map: makeTreeAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }));
+  const groups = TREE_KINDS.map(() => []);
+  T.forEach(([x, z]) => { const R = seeded(Math.round(x * 31 + z * 17)); R(); groups[Math.floor(R() * TREE_KINDS.length)].push([x, z, R]); });
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+  groups.forEach((list, kind) => {
+    if (!list.length) return;
+    const m = new THREE.InstancedMesh(treeGeometry(kind), mat, list.length);
+    list.forEach(([x, z, R], i) => {
+      const s = 0.8 + R() * 0.45;
+      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s, 10 * s, 10 * s)); m.setMatrixAt(i, M);
+      C.setHSL(0, 0, 0.88 + R() * 0.2); m.setColorAt(i, C);   // 木ごとに少し明るさを変える
+    });
+    m.frustumCulled = false; m.name = 'street-trees'; g.add(m);
   });
-  trunk.name = 'street-trees'; crown.name = 'street-trees';
-  g.add(trunk, crown);
+  // 木の並ぶ帯(植え込み)は芝生の色
+  const gs = [];
+  for (const [x, z, ang, len, wid] of data.strips || []) rect(x, z, ang, len, wid, 0.03, gs);
+  if (gs.length) g.add(flatMesh(gs, GRASS));
+  // 車道に挟まれた緑地帯(木なし・黄緑)
+  const md = [];
+  for (const [x, z, ang, len, wid] of data.medians || []) rect(x, z, ang, len, wid, 0.035, md);
+  if (md.length) g.add(flatMesh(md, 0x9cc45a));
   document.body.dataset.osmTrees = String(T.length);
 }
 

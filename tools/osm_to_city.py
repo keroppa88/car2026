@@ -354,8 +354,10 @@ def _near_h(o):
     return best[1] if best[0] < 60 ** 2 else 0.0
 for pf in platforms: pf['y'] = _near_h(pf['o'])
 # ---- 街路樹 ----
-#  ・歩道が車線1本(3.25m)より広い所は、車道側に約9mおきに植える(交差点の近くは除く)
+#  ・歩道が車線1本(3.25m)より広い所は、車道側に約18mおきに植える(交差点の近くは除く)
+#  ・車道に挟まれた狭い所(中央分離帯など)は木なしの緑地帯(medians)
 #  ・丸の内はビルのまわりの空き地の外周にも植える
+#  ・木の並ぶ帯(植え込み)は芝生の色: strips = [中心x, 中心z, 向き, 長さ, 幅]
 from shapely.geometry import Polygon as _P, Point as _Pt, LineString as _L
 from shapely.strtree import STRtree as _T
 def _road_w(r): return 4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25
@@ -363,7 +365,8 @@ _bld = [_P(b['p']).buffer(0) for b in buildings if len(b['p']) >= 3]
 if LMK:
     _bld += [_P(r).buffer(0) for L_ in json.load(open(LMK))['landmarks'] for r in L_['fp'] if len(r) >= 3]
 _bld = [p for p in _bld if not p.is_empty]
-_asp = [_L(r['pts']).buffer(_road_w(r) / 2) for r in roads if len(r['pts']) > 1]
+_asp_road = [i for i, r in enumerate(roads) if len(r['pts']) > 1]
+_asp = [_L(roads[i]['pts']).buffer(_road_w(roads[i]) / 2) for i in _asp_road]
 _wat = [_P(w['o']).buffer(0) for w in water] + [_L(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1]
 _wat += [_L(r['pts']).buffer(3.2) for r in rails if len(r['pts']) > 1] + [_P(p['o']).buffer(0) for p in platforms]
 TB, TA, TW = _T(_bld), _T(_asp), _T(_wat)
@@ -387,35 +390,58 @@ def _free(pt, r=0.9):
     if any(_wat[j].intersects(b) for j in TW.query(b)): return False
     if any(_bld[j].intersects(b) for j in TB.query(b)): return False
     return inside([pt.x, pt.y])
-trees = []
+trees, strips, medians = [], [], []
+SPACING = 18.0
 _tgrid = {}
-def _try(x, z, min_side):
-    k = (int(x // 7), int(z // 7))
+def _try(x, z, min_side, strip=None):
+    k = (int(x // 9), int(z // 9))
     for dx in (-1, 0, 1):
         for dz in (-1, 0, 1):
             for (tx, tz) in _tgrid.get((k[0] + dx, k[1] + dz), []):
-                if (tx - x) ** 2 + (tz - z) ** 2 < 6.5 ** 2: return
+                if (tx - x) ** 2 + (tz - z) ** 2 < 8.0 ** 2: return
     pt = _Pt(x, z)
     if not _free(pt): return
     if min_side and _bld_dist(pt, min_side) < min_side: return
     _tgrid.setdefault(k, []).append((x, z)); trees.append([round(x, 1), round(z, 1)])
+    if strip: strips.append([round(x, 1), round(z, 1)] + [round(v, 2) for v in strip])
+def _median(ri, x0, z0, nx, nz, maxd=16.0):
+    """縁石(x0,z0)から外向き(nx,nz)に、ほかの車道までの距離。無ければ None"""
+    ray = _L([(x0 + nx * 0.2, z0 + nz * 0.2), (x0 + nx * maxd, z0 + nz * maxd)])
+    best = None
+    for j in TA.query(ray):
+        if _asp_road[j] == ri: continue
+        g = _asp[j].intersection(ray)
+        if g.is_empty: continue
+        d = _Pt(x0, z0).distance(g)
+        if best is None or d < best: best = d
+    return best
 MAJOR = ('trunk', 'primary', 'secondary', 'tertiary')
-for r in roads:
+for ri, r in enumerate(roads):
     if r['bridge']: continue
     if not (r['kind'] in MAJOR or (r['oneway'] and r['lanes'] >= 2) or r['lanes'] >= 4): continue
-    hw = _road_w(r) / 2 + 1.3
-    p = r['pts']; acc = 0.0; nxt = 5.0
+    half = _road_w(r) / 2
+    p = r['pts']; acc = 0.0; nxt = SPACING / 2
     for (ax, az), (bx, bz) in zip(p, p[1:]):
         L = math.hypot(bx - ax, bz - az)
         if L < 0.1: continue
         tx, tz = (bx - ax) / L, (bz - az) / L
+        ang = math.atan2(tx, tz)
         while nxt <= acc + L:
             s = nxt - acc; cx, cz = ax + tx * s, az + tz * s
             if not _near_junc(cx, cz, 14):
                 for sd in (-1, 1):
-                    # 歩道の幅(縁石から建物まで)が 4m 以上なら、縁石から 1.3m の所に植える
-                    _try(cx - tz * hw * sd, cz + tx * hw * sd, 2.7)
-            nxt += 9.0
+                    nx, nz = -tz * sd, tx * sd
+                    ex, ez = cx + nx * half, cz + nz * half          # 縁石
+                    m = _median(ri, ex, ez, nx, nz)
+                    if m is not None:
+                        # 車道に挟まれた狭い所: 木は植えず、黄緑の緑地帯だけ
+                        if 1.0 <= m <= 12.0:
+                            mx_, mz_ = ex + nx * m / 2, ez + nz * m / 2
+                            if inside([mx_, mz_]): medians.append([round(mx_, 1), round(mz_, 1), round(ang, 3), SPACING + 0.4, round(m - 0.3, 2)])
+                    else:
+                        # 歩道の幅(縁石から建物まで)が 4m 以上なら、縁石から 1.3m の所に植える
+                        _try(ex + nx * 1.3, ez + nz * 1.3, 2.7, (ang, SPACING, 1.8))
+            nxt += SPACING
         acc += L
 # 丸の内: ビルのまわりの空き地の外周
 MARU = (139.7580, 35.6760, 139.7668, 35.6890)   # 経度・緯度の範囲
@@ -424,13 +450,14 @@ for poly in _bld:
     c = poly.centroid
     if not (mx0 < c.x < mx1 and mz0 < c.y < mz1) or poly.area < 1500: continue
     ring = poly.buffer(4.0, join_style=2).exterior
-    n = max(1, int(ring.length // 9))
+    n = max(1, int(ring.length // SPACING))
     for k in range(n):
-        q = ring.interpolate(k * ring.length / n)
-        _try(q.x, q.y, 3.0)
+        d0 = k * ring.length / n
+        q, q2 = ring.interpolate(d0), ring.interpolate(min(ring.length, d0 + 1))
+        _try(q.x, q.y, 3.0, (math.atan2(q2.x - q.x, q2.y - q.y), 4.0, 2.0))
 print('街路樹', len(trees))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
