@@ -301,6 +301,22 @@ if BRG:
     print('本物の高架に置き換えた首都高:', len(elevated), '→ 残り', len(kept))
     elevated[:] = kept
 
+# 皇居・皇居外苑・北の丸公園・東御苑の中は建物なし(日比谷公園は別)
+_NOBLD_IDS = ['534754971', '675408602', '624081603']
+_nb = []
+from shapely.geometry import Polygon as _NP, Point as _NPt
+for wid in _NOBLD_IDS:
+    if wid in WAYS:
+        p_ = [N[r] for r in WAYS[wid][0] if r in N]
+        if len(p_) >= 4: _nb.append(_NP(p_).buffer(0))
+for rel in root.findall('relation'):
+    if rel.get('id') in ('5415394', '3551852', '3551876'):
+        for o in assemble([m.get('ref') for m in rel.findall('member') if m.get('type') == 'way' and m.get('role') in ('outer', '')]):
+            if len(o) >= 4: _nb.append(_NP(o).buffer(0))
+_n0 = len(buildings)
+buildings[:] = [b for b in buildings if not any(p_.contains(_NPt(centroid(b['p']))) for p_ in _nb)]
+print('皇居まわりの緑地の建物を外す', _n0 - len(buildings))
+
 # 工事中の敷地の中の建物は外す(外観を指定した建物は残す)
 if sites:
     from shapely.geometry import Polygon as _SP, Point as _SPt
