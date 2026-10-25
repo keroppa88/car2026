@@ -619,6 +619,55 @@ function buildSeaCandle(g, pts, gy) {
   g.add(m);
 }
 
+// ---- 遠くの山並み(湘南: 富士山・丹沢・箱根・伊豆): カメラのまわり遠くに立てた2次元の絵。近づいても大きさは変わらない ----
+// 方位(北=0°、時計回り)と見上げる角度で描く。富士山は西北西(約290°)
+function makeMountainPanorama() {
+  const A0 = 215, A1 = 355, R = 4300, W = 4096, H = 512, TOP = 5.0;   // 横: 方位 A0〜A1、縦: 地平線から TOP 度まで
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const X = (deg) => (deg - A0) / (A1 - A0) * W, Y = (elev) => H * (1 - elev / TOP);
+  const ridge = (pts, color) => {   // pts: [方位, 見上げる角度]
+    g.beginPath(); g.moveTo(X(pts[0][0]), H);
+    for (const [a, e] of pts) g.lineTo(X(a), Y(e));
+    g.lineTo(X(pts[pts.length - 1][0]), H); g.closePath(); g.fillStyle = color; g.fill();
+  };
+  const R2 = seeded(77);
+  const wiggle = (a0, a1, base, amp, step = 0.6) => { const out = []; for (let a = a0; a <= a1; a += step) out.push([a, base + (R2() - 0.4) * amp + Math.sin(a * 0.35) * amp * 0.6]); return out; };
+  // 方位と高さは実際の位置から(稲村ヶ崎〜大磯から見て): 伊豆 225〜250°、箱根 250〜270°、富士山 276°、丹沢 290〜322°
+  const K = 1.3;   // 少し大きめに見せる
+  const k = (pts) => pts.map(([a, e]) => [a, e * K]);
+  // 伊豆・箱根(奥)
+  ridge(k([[A0, 0.2], ...wiggle(222, 248, 0.9, 0.35), ...wiggle(248, 256, 1.3, 0.3), [258, 1.55], [261, 1.45], [264, 1.7], [267, 1.4], [270, 1.0], [272, 0.7]]), 'rgba(116,124,160,0.6)');
+  // 丹沢(奥・大きな山並み)
+  ridge(k([[280, 0.5], [286, 1.1], ...wiggle(290, 300, 1.8, 0.35), [302, 2.25], [305, 2.05], [308, 2.3], [311, 2.1], ...wiggle(313, 322, 1.6, 0.4), [326, 1.0], [334, 0.6], [345, 0.4], [A1, 0.3]]), 'rgba(116,120,156,0.62)');
+  // 富士山
+  ridge(k([[262, 0.6], [268, 1.2], [272, 2.1], [274.8, 2.75], [275.6, 2.9], [276.6, 2.85], [279, 2.1], [284, 1.1], [290, 0.6]]), 'rgba(134,128,170,0.88)');
+  // 雪(頂上)
+  g.beginPath(); g.moveTo(X(273.4), Y(2.45 * K)); g.lineTo(X(274.8), Y(2.75 * K)); g.lineTo(X(275.6), Y(2.9 * K)); g.lineTo(X(276.6), Y(2.85 * K));
+  g.lineTo(X(278.2), Y(2.4 * K)); g.lineTo(X(277.2), Y(2.5 * K)); g.lineTo(X(276.4), Y(2.35 * K)); g.lineTo(X(275.4), Y(2.55 * K)); g.lineTo(X(274.3), Y(2.3 * K)); g.closePath();
+  g.fillStyle = 'rgba(244,236,240,0.94)'; g.fill();
+  // 手前の低い丘(大磯丘陵・湘南の内陸)
+  ridge(k([[A0, 0.15], ...wiggle(225, 285, 0.4, 0.2, 0.8), ...wiggle(285, 352, 0.7, 0.35, 0.6), [A1, 0.25]]), 'rgba(98,106,140,0.6)');
+  // 地平線のかすみ
+  const grd = g.createLinearGradient(0, Y(1.2), 0, H); grd.addColorStop(0, 'rgba(210,225,240,0)'); grd.addColorStop(1, 'rgba(210,225,240,0.65)');
+  g.fillStyle = grd; g.fillRect(0, Y(1.2), W, H - Y(1.2));
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  // 円柱の一部(カメラが中心)
+  const P = [], U = [], n = 64, y0 = -Math.tan(0.2 * Math.PI / 180) * R, y1 = Math.tan(TOP * Math.PI / 180) * R;
+  for (let k = 0; k < n; k++) {
+    const a = (A0 + (A1 - A0) * k / n) * Math.PI / 180, b = (A0 + (A1 - A0) * (k + 1) / n) * Math.PI / 180;
+    const ax = Math.sin(a) * R, az = -Math.cos(a) * R, bx = Math.sin(b) * R, bz = -Math.cos(b) * R, ua = k / n, ub = (k + 1) / n;
+    P.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
+    U.push(ua, 0, ub, 0, ub, 1, ua, 0, ub, 1, ua, 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true, fog: false, side: THREE.DoubleSide }));
+  m.renderOrder = -1.9; m.frustumCulled = false; m.name = 'mountains'; m.userData.noLift = true;
+  return m;
+}
+
 const SMALL_AREA = 150;
 const WHITE_COLORS = [0xf2f1ec, 0xeeece6, 0xe9e7e0, 0xf4f3ef, 0xe3e2dd];
 // 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
@@ -1319,6 +1368,7 @@ function makeBlocker(data) {
 }
 
 export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
+  let panorama = null;
   let terrainMesh = null, onTerrain = null;
   root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
@@ -1388,6 +1438,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
       T('terrain', () => { liftToTerrain(city); terrainMesh = buildTerrainMesh(city); });
       if (onTerrain) onTerrain(terrainMesh);   // 小片の配列
     }
+    if (data.water.some((w) => w.sea)) { panorama = makeMountainPanorama(); city.add(panorama); }   // 湘南: 遠くの山並み
     times.total = Math.round(performance.now() - t0);
     document.body.dataset.osmLoadMs = JSON.stringify(times);
     console.info('[osm-city] load ms', times);
@@ -1398,7 +1449,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
-    update() {},
+    update(dt, camera) { if (panorama && camera) { panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };
 }
