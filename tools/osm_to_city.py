@@ -224,10 +224,7 @@ for wid, (refs, t) in WAYS.items():
     if t.get('layer', '0').startswith('-') or t.get('location') == 'underground': continue
     if 'building' in t and refs[0] == refs[-1] and len(pts) >= 4:
         if CLIP and not inside(centroid(pts[:-1])):
-            # 走れる範囲の外でも、皇居の中の建物は見えるので置く(高さが無ければ低層)
-            if in_rect(centroid(pts[:-1])) and in_palace(centroid(pts[:-1])):
-                buildings.append({'p': pts[:-1], 'h': height_of(t, pts) or 6.0, 'holes': [], 'look': {'wall': '#eeede8', 'style': 1}})   # 皇居の中は白
-            continue
+            continue   # 走れる範囲の外の建物は置かない(皇居の中も建物なし・森だけ)
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
         if t.get('name') in LOOK: buildings[-1]['look'] = LOOK[t['name']]
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):

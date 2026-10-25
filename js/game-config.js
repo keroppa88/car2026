@@ -602,7 +602,7 @@ export const MAP_CONFIGS = {
     label: '日本橋',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/nihonbashi.png',
-    cityData: 'map/nihonbashi-city.json?v=20261025-27',
+    cityData: 'map/nihonbashi-city.json?v=20261025-28',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
     landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-11',
     // 首都高・東京高速道路(KK線)は PLATEAU の橋梁モデルの形
