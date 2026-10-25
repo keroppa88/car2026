@@ -27,6 +27,9 @@ const STYLES = [
   { name: 'curtain', bays: 4, floors: 4, tileW: 8, tileH: 16.0 },   // ガラス張り(高層)
   { name: 'house', bays: 4, floors: 4, tileW: 12, tileH: 11.6 },    // 小さな窓とベランダ(低層)
   { name: 'slit', bays: 4, floors: 4, tileW: 8, tileH: 14.4 },      // 縦長の細い窓
+  { name: 'grid', bays: 6, floors: 4, tileW: 10.8, tileH: 15.6 },   // 石の格子に四角い窓(丸の内のビル)
+  { name: 'classic', bays: 4, floors: 4, tileW: 12, tileH: 19.2 },  // 縦長の大きな窓と軒の帯(戦前の石造り)
+  { name: 'fin', bays: 8, floors: 4, tileW: 9.6, tileH: 16.0 },     // ガラスに縦のルーバー(新しい高層)
 ];
 
 function seeded(n) {
@@ -70,6 +73,31 @@ function makeStyleTextures(style, index) {
         g.fillStyle = glass; g.fillRect(x0 + bw * 0.12, y0 + fh * 0.12, bw * 0.24, fh * 0.72);
         if (lit()) { e.fillStyle = litColor(); e.fillRect(x0 + bw * 0.12, y0 + fh * 0.12, bw * 0.24, fh * 0.72); }
       }
+    } else if (style.name === 'grid') {
+      for (let b = 0; b < style.bays; b++) {
+        const x0 = b * bw;
+        g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x0 + bw * 0.14, y0 + fh * 0.18, bw * 0.72, fh * 0.6);   // 彫りの影
+        g.fillStyle = glass; g.fillRect(x0 + bw * 0.2, y0 + fh * 0.24, bw * 0.6, fh * 0.52);
+        g.fillStyle = frame; g.fillRect(x0 + bw * 0.49, y0 + fh * 0.24, bw * 0.03, fh * 0.52);
+        if (lit()) { e.fillStyle = litColor(); e.fillRect(x0 + bw * 0.2, y0 + fh * 0.24, bw * 0.6, fh * 0.52); }
+      }
+    } else if (style.name === 'classic') {
+      g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(0, y0 + fh * 0.9, W, fh * 0.1);   // 軒の帯
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(0, y0 + fh * 0.88, W, fh * 0.03);
+      for (let b = 0; b < style.bays; b++) {
+        const x0 = b * bw;
+        g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(x0 + bw * 0.24, y0 + fh * 0.08, bw * 0.52, fh * 0.74);   // 窓の縁取り
+        g.fillStyle = glass; g.fillRect(x0 + bw * 0.29, y0 + fh * 0.12, bw * 0.42, fh * 0.66);
+        g.fillStyle = frame; g.fillRect(x0 + bw * 0.49, y0 + fh * 0.12, bw * 0.02, fh * 0.66); g.fillRect(x0 + bw * 0.29, y0 + fh * 0.5, bw * 0.42, fh * 0.02);
+        if (lit()) { e.fillStyle = litColor(); e.fillRect(x0 + bw * 0.29, y0 + fh * 0.12, bw * 0.42, fh * 0.66); }
+      }
+    } else if (style.name === 'fin') {
+      g.fillStyle = '#4f6274'; g.fillRect(0, y0, W, fh);
+      g.fillStyle = '#c4ccd2'; g.fillRect(0, y0 + fh - 4, W, 4);
+      for (let b = 0; b < style.bays; b++) {
+        if (lit()) { e.fillStyle = litColor(); e.fillRect(b * bw + 6, y0 + 2, bw - 12, fh - 8); }
+        g.fillStyle = '#e4e7e9'; g.fillRect(b * bw - 3, y0, 6, fh);   // 縦のルーバー
+      }
     } else {
       for (let b = 0; b < style.bays; b++) {
         const x0 = b * bw;
@@ -79,7 +107,7 @@ function makeStyleTextures(style, index) {
       }
     }
     // 階の境の目地
-    if (style.name !== 'curtain') { g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, y0, W, 2); }
+    if (style.name !== 'curtain' && style.name !== 'fin') { g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, y0, W, 2); }
   }
   const mk = (canvas, srgb) => {
     const t = new THREE.CanvasTexture(canvas);
@@ -278,8 +306,10 @@ function buildElevated(data, g) {
   const m = solidMesh(deck, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'shutoko'; g.add(m);
 }
 
+const SMALL_AREA = 150;   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 function buildBuildings(data, g, wallMats, roofMat) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [] }));
+  const plain = { p: [], u: [], c: [], n: [] };   // 小さい構築物: 窓なしのグレー一色
   const roofShapes = [];
   data.buildings.forEach((b, i) => {
     const R = seeded(i * 131 + 17);
@@ -291,7 +321,8 @@ function buildBuildings(data, g, wallMats, roofMat) {
     h = Math.max(4, h);
     const style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
-    const col = new THREE.Color(base), S = STYLES[style], W = walls[style];
+    const small = area < SMALL_AREA;
+    const col = new THREE.Color(small ? 0x9a9c9e : base), S = STYLES[style], W = small ? plain : walls[style];
     const ccw = a > 0;      // x-z 平面での向き
     const wall = (ring) => {
       let s = 0;
@@ -317,6 +348,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false; return m;
   };
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i])); });
+  if (plain.p.length) g.add(mk(plain, roofMat));
   // 屋上: 形ごとに作って1つにまとめる
   const P = [], C = [];
   for (const r of roofShapes) {
@@ -333,6 +365,37 @@ function buildBuildings(data, g, wallMats, roofMat) {
   const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; g.add(rm);
 }
 
+// ---- 1階は窓ではなく出入口(ガラス戸と看板の帯) ----
+// 壁の絵の上から、高さ 4.2m より下だけ描き替える。横方向の位置は uv.x × 絵の幅(m)。
+function addStorefront(mat, tileW) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTileW = { value: tileW };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX;\nuniform float uTileW;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWY = (modelMatrix * vec4(transformed, 1.0)).y; vWX = uv.x * uTileW;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vWY; varying float vWX;\nfloat sfGlass = 0.0;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        if (vWY < 4.2) {
+          vec3 wallC = diffuseColor.rgb;
+          #ifdef USE_COLOR
+          wallC = vColor.rgb;
+          #endif
+          if (vWY < 0.35) diffuseColor.rgb = wallC * 0.55;                       // 足元の石
+          else if (vWY > 3.35) diffuseColor.rgb = wallC * 0.78;                   // 看板の帯
+          else {
+            float bay = fract(vWX / 2.4);                                          // 2.4m ごとの扉・ガラス
+            float edge = step(bay, 0.04) + step(0.96, bay);
+            float transom = step(2.55, vWY) * step(vWY, 2.65);
+            diffuseColor.rgb = mix(vec3(0.20, 0.25, 0.30), vec3(0.62, 0.64, 0.66), clamp(edge + transom, 0.0, 1.0));
+            sfGlass = 1.0 - clamp(edge + transom, 0.0, 1.0);
+          }
+        }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        if (vWY < 4.2) totalEmissiveRadiance = emissive * vec3(1.0, 0.86, 0.62) * sfGlass;   // 夜は店の明かり`);
+  };
+}
+
 // ---- ランドマーク(PLATEAU の本物の形) ----
 // walls/roofs は三角形の頂点(x, y, z)の並び。窓の模様は面の向きから横方向と高さで貼る。
 function buildLandmarks(lm, g, wallMats, roofMat) {
@@ -345,9 +408,14 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
     const style = L.style ?? (top > 80 ? [0, 2, 2, 4][Math.floor(R() * 4)] : [1, 3, 4, 0][Math.floor(R() * 4)]);
     const base = L.color ?? (style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)]);
     const col = new THREE.Color(base), S = STYLES[style], W = walls[style], w = L.walls;
+    const rcol = L.roofColor ? new THREE.Color(L.roofColor) : col.clone().multiplyScalar(0.72);
     for (let k = 0; k + 8 < w.length; k += 9) {
       A.set(w[k], w[k + 1], w[k + 2]); B.set(w[k + 3], w[k + 4], w[k + 5]); C.set(w[k + 6], w[k + 7], w[k + 8]);
       N.subVectors(B, A).cross(T.subVectors(C, A)); if (N.lengthSq() < 1e-8) continue; N.normalize();
+      if (Math.abs(N.y) > 0.5) {   // 傾いた面・水平な面は窓を貼らず屋根の色で
+        for (const P of [A, B, C]) { RP.push(P.x, P.y, P.z); RC.push(rcol.r, rcol.g, rcol.b); }
+        continue;
+      }
       // 横方向(面に沿った水平の向き)
       let hx = -N.z, hz = N.x; const hl = Math.hypot(hx, hz); if (hl < 1e-3) { hx = 1; hz = 0; } else { hx /= hl; hz /= hl; }
       for (const P of [A, B, C]) {
@@ -355,8 +423,7 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
         W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH);
       }
     }
-    const rc = L.roofColor ? new THREE.Color(L.roofColor) : col.clone().multiplyScalar(0.72);
-    for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rc.r, rc.g, rc.b); }
+    for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rcol.r, rcol.g, rcol.b); }
   });
   walls.forEach((o, i) => {
     if (!o.p.length) return;
@@ -439,7 +506,7 @@ export function decorateOsmCity(root, url, landmarkUrl) {
   root.traverse((o) => { if (o.isMesh) o.visible = false; });
   const styleTex = STYLES.map((s, i) => makeStyleTextures(s, i));
   const glow = [];
-  const wallMats = STYLES.map((s, i) => { const m = new THREE.MeshLambertMaterial({ map: styleTex[i].map, vertexColors: true, side: THREE.DoubleSide, emissive: 0xffffff, emissiveMap: styleTex[i].emissiveMap, emissiveIntensity: 0 }); glow.push(m); return m; });
+  const wallMats = STYLES.map((s, i) => { const m = new THREE.MeshLambertMaterial({ map: styleTex[i].map, vertexColors: true, side: THREE.DoubleSide, emissive: 0xffffff, emissiveMap: styleTex[i].emissiveMap, emissiveIntensity: 0 }); addStorefront(m, s.tileW); glow.push(m); return m; });
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const city = new THREE.Group(); city.name = 'osm-city';
   (root.parent || root).add(city);

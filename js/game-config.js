@@ -604,7 +604,7 @@ export const MAP_CONFIGS = {
     preview: 'picture/nihonbashi.png',
     cityData: 'map/nihonbashi-city.json?v=20261025-9',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
-    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-6',
+    landmarkData: 'map/nihonbashi-landmarks.json?v=20261025-7',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
