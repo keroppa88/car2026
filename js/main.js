@@ -389,7 +389,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       musicKeydown(k, e.repeat);
       return;
     }
-    if (destMenuOpen && k === 'Escape') { closeDestMenu(); return; }
+    if (destMenuOpen) {   // 行き先の窓: ↑↓ で選び Enter で決定、ESC でやめる
+      e.preventDefault();
+      if (k === 'Escape') closeDestMenu();
+      else if (k === 'ArrowUp' || k === 'ArrowDown') { destSel = (destSel + 1) % DESTS.length; paintDest(); }
+      else if (k === 'Enter' || k === ' ') chooseDest(DESTS[destSel][0]);
+      else if (k === '1' || k === '2') chooseDest(DESTS[Number(k) - 1][0]);
+      return;
+    }
     // ESC: ゲーム一時停止(操作説明パネルを表示)。もう一度押すと再開。
     if (!e.repeat && k === 'Escape') {
       pauseMode = !pauseMode;
@@ -432,10 +439,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 湘南: 自動運転中なら止める。止まっていれば行き先を選ぶ
         if (autoDrive) { autoDrive = false; document.body.dataset.autoDrive = 'false'; }
         else openDestMenu();
-      } else if (destMenuOpen && (k === '1' || k === '2')) {
-        chooseDest(k === '1' ? 'west' : 'east');
-      } else if (destMenuOpen && k === 'Escape') {
-        closeDestMenu();
       } else if (k.toLowerCase() === 'y' && car2AutoRoute?.length >= 2) {
         autoDrive = !autoDrive;
         autoIdx = -1;                // 次フレームで最寄り地点から追従を開始
@@ -8905,19 +8908,23 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ---- 湘南: Y で行き先を選ぶ(大磯 / 稲村ヶ崎)。国道134号の左の車線を自動運転 ----
   let shonanRoutes = null, destMenuOpen = false, destMenuEl = null;
   if (MAP_CONFIG.routeData) fetch(MAP_CONFIG.routeData).then((r) => r.json()).then((d) => { shonanRoutes = d; }).catch(() => {});
+  const DESTS = [['east', '稲村ヶ崎'], ['west', '大磯']];
+  let destSel = 0;
+  function paintDest() {
+    destMenuEl.innerHTML = '<div style="margin-bottom:10px">自動運転目的地</div>'
+      + DESTS.map(([d, label], i) => `<div data-d="${d}" style="padding:5px 0 5px 1.6em;position:relative;cursor:pointer">`
+        + (i === destSel ? '<span style="position:absolute;left:0">→</span>' : '') + label + '</div>').join('');
+  }
   function openDestMenu() {
     if (!shonanRoutes) return;
     if (!destMenuEl) {
+      // ドラクエ風の窓: 黒地・白枠・白文字
       destMenuEl = document.createElement('div');
-      destMenuEl.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:50;background:rgba(14,18,24,0.88);color:#fff;padding:22px 30px;border-radius:10px;font:600 20px system-ui,sans-serif;text-align:center;border:1px solid rgba(255,255,255,0.3)';
-      destMenuEl.innerHTML = '<div style="margin-bottom:14px;letter-spacing:0.1em">自動運転の行き先</div>'
-        + '<div style="display:flex;gap:14px;justify-content:center">'
-        + '<button data-d="west" style="font:600 18px system-ui;padding:10px 18px;border-radius:8px;border:0;cursor:pointer">1  大磯</button>'
-        + '<button data-d="east" style="font:600 18px system-ui;padding:10px 18px;border-radius:8px;border:0;cursor:pointer">2  稲村ヶ崎</button></div>'
-        + '<div style="margin-top:12px;font:400 13px system-ui;opacity:0.7">1 / 2 キーかクリックで選ぶ　ESC でやめる</div>';
-      destMenuEl.addEventListener('click', (e) => { const d = e.target.dataset?.d; if (d) chooseDest(d); });
+      destMenuEl.style.cssText = 'position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);z-index:50;background:#000;color:#fff;padding:16px 22px;width:260px;border:4px solid #fff;border-radius:8px;box-shadow:0 0 0 4px #000;font:600 22px "Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;text-align:left';
+      destMenuEl.addEventListener('click', (e) => { const d = e.target.closest('[data-d]')?.dataset.d; if (d) chooseDest(d); });
       document.body.appendChild(destMenuEl);
     }
+    destSel = 0; paintDest();
     destMenuEl.style.display = 'block'; destMenuOpen = true;
   }
   function closeDestMenu() { if (destMenuEl) destMenuEl.style.display = 'none'; destMenuOpen = false; }

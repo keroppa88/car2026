@@ -410,8 +410,12 @@
   .select-grid.cars { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
   /* コースは9つ。1段5つにして2段に収める。 */
   #course-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .start-grid { grid-template-columns: repeat(3, minmax(0, 260px)); justify-content: center; }
-  .start-grid .select-fallback { font-size: 26px; }
+  /* ドラクエ風の窓: 黒地・白枠・白文字、→ で選ぶ */
+  .dq-window { width: 300px; margin: 18px auto 0; background: #000; border: 4px solid #fff; border-radius: 8px;
+    box-shadow: 0 0 0 4px #000; padding: 16px 22px; color: #fff; font: 600 22px "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif; text-align: left; }
+  .dq-window .dq-title { margin-bottom: 10px; }
+  .dq-window .dq-item { padding: 5px 0 5px 1.6em; position: relative; cursor: pointer; }
+  .dq-window .dq-item.active::before { content: '→'; position: absolute; left: 0; }
   .select-card {
     min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
     gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
@@ -497,7 +501,7 @@
   <section id="start-screen" class="select-screen" aria-label="スタート地点" hidden>
     <h1 class="select-logo">イニシャルT</h1>
     <p class="select-kicker">SELECT START</p>
-    <div id="start-grid" class="select-grid start-grid"></div>
+    <div id="start-grid" class="dq-window"></div>
   </section>
   <div id="title-bottom-bar"><span id="title-copyright">&copy;keroppa</span></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
@@ -881,7 +885,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261026-shonan-2');
+    import('./js/main.js?v=20261026-shonan-3');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
@@ -1086,10 +1090,11 @@
       courseScreen.hidden = true;
       startScreen.hidden = false;
       const grid = document.getElementById('start-grid');
-      grid.innerHTML = '';
+      grid.innerHTML = '<div class="dq-title">開始位置</div>';
       startIndex = 0;
       startButtons = starts.map((s, i) => {
-        const b = makeCard(s.key, { label: s.label }, 'start');
+        const b = document.createElement('div');
+        b.className = 'dq-item'; b.textContent = s.label;
         b.addEventListener('click', () => { startIndex = i; paint(); });
         b.addEventListener('dblclick', () => start());
         grid.append(b);
@@ -1137,7 +1142,8 @@
         return;
       }
       armDemoIdleTimer();
-      if (!['ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(event.key)) return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key)) return;
+      if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && stage !== 'start') return;
       event.preventDefault();
       if (event.key === 'Escape' && stage === 'start') {
         stage = 'course';
@@ -1154,7 +1160,7 @@
         return;
       }
       if (event.key === 'Enter') { stage === 'car' ? showCourses() : start(); return; }
-      const delta = event.key === 'ArrowLeft' ? -1 : 1;
+      const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
       if (stage === 'car') carIndex = (carIndex + delta + carKeys.length) % carKeys.length;
       else if (stage === 'start') startIndex = (startIndex + delta + startButtons.length) % startButtons.length;
       else courseIndex = (courseIndex + delta + COURSE_ORDER.length) % COURSE_ORDER.length;
