@@ -191,7 +191,7 @@ def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse'
 
 # 外観を指定する建物(OSM の名前): wall=壁 base=1階 top=最上階 の色、style=窓の模様の番号
 LOOK = {
-    '江の島展望灯台シーキャンドル': {'wall': '#f4f3ef', 'style': 4, 'shrink': 0.5},   # 細い白い塔
+    '江の島展望灯台シーキャンドル': {'wall': '#f4f3ef', 'style': 4, 'shrink': 0.5, 'special': 'seacandle'},   # 細い白い塔
     '日本橋野村ビル旧館': {'wall': '#5b3a2c', 'base': '#d6d5d0', 'baseH': 4.5, 'top': '#ecebe6', 'topH': 3.5, 'style': 1},
 }
 # OSM に高さが無い高層ビルの高さ(m)

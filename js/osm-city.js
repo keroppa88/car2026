@@ -599,6 +599,26 @@ function liftToTerrain(g) {
   });
 }
 
+// ---- 江の島シーキャンドル: 下が細く上へ広がる白い塔(格子の窓)、上に展望台と灯台 ----
+function buildSeaCandle(g, pts, gy) {
+  let cx = 0, cz = 0; for (const [x, z] of pts) { cx += x; cz += z; } cx /= pts.length; cz /= pts.length;
+  // 塔の形(半径, 高さ)。下から上へ
+  const prof = [[2.6, 0], [2.9, 6], [3.5, 16], [4.2, 26], [4.8, 34], [5.1, 39], [5.0, 41], [4.4, 42.5], [3.9, 43], [3.9, 47], [3.2, 48], [2.6, 48.5], [2.6, 52], [1.8, 53], [0.01, 53.4]];
+  const geo = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 36);
+  // 白い太い格子(縦 10 本・横 13 段)と、そのすき間の青みがかったガラス
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#c3cbd1'; x.fillRect(0, 0, 512, 512);                 // ガラス(明るいグレー)
+  x.fillStyle = 'rgba(255,255,255,0.18)'; for (let j = 0; j < 13; j++) x.fillRect(0, j * 512 / 13 + 8, 512, 10);
+  x.fillStyle = '#f6f6f3';
+  for (let i = 0; i < 10; i++) x.fillRect(i * 512 / 10, 0, 14, 512);    // 縦の柱
+  for (let j = 0; j < 13; j++) x.fillRect(0, j * 512 / 13, 512, 9);     // 横の梁
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = 4;
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+  m.position.set(cx, gy, cz); m.updateMatrix(); m.matrixAutoUpdate = false; m.userData.noLift = true; m.name = 'sea-candle';
+  g.add(m);
+}
+
 const SMALL_AREA = 150;
 const WHITE_COLORS = [0xf2f1ec, 0xeeece6, 0xe9e7e0, 0xf4f3ef, 0xe3e2dd];
 // 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
@@ -617,6 +637,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     h = Math.max(4, h);
     const lk = b.look;
     const gy = TERRAIN ? TERRAIN.min(pts) : 0;   // 江の島: 地面の高さ
+    if (lk && lk.special === 'seacandle') { buildSeaCandle(g, pts, gy); return; }
     let style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
     if (lk && lk.style != null) style = lk.style;
@@ -679,7 +700,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
 //  1) 水面と岸の壁を先に描き、2) 水の形を地面の高さに「見えない板」で描いて奥行きだけ書き込み、
 //  3) そのあと地面を描く(見えない板より奥なので水の所には描かれない)。
 const MOAT_DEPTH = 3, RIVER_DEPTH = 5, SEA_DEPTH = 0.8;
-const SAND = 0xd8c9a3, SEA = 0x2f6f8a;
+const SAND = 0xd8c9a3, SEA = 0x3d6b66;   // 海は川と同じ色
 const STONE = 0xa39a88, RIVER_WALL = 0x6c6e70;
 function buildWater(data, g) {
   const sets = [
