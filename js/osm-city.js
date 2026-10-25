@@ -833,7 +833,7 @@ function makeForestStrip(seed) {
   for (let q = 0; q < 1800; q++) {
     const x = R() * W, top = H * (0.18 + 0.25 * Math.abs(Math.sin(x * 0.011 + seed)) + R() * 0.1), y = top + R() * (H * 0.92 - top);
     const d = (y - top) / (H - top), r = 6 + R() * 10;
-    g.fillStyle = `hsl(${100 + R() * 25},${40 + R() * 20}%,${Math.round(30 - d * 18 + R() * 6)}%)`;
+    g.fillStyle = `hsl(${82 + R() * 22},${34 + R() * 14}%,${Math.round(31 - d * 7 + R() * 5)}%)`;   // 奥: 街路樹の色を中心に少し暗く
     g.beginPath(); g.ellipse(x, y, r * 1.4, r, R() * 3, 0, Math.PI * 2); g.fill();
   }
   // 手前の幹(ところどころ見える)
@@ -843,7 +843,7 @@ function makeForestStrip(seed) {
   for (let q = 0; q < 900; q++) {
     const x = R() * W, top = H * (0.16 + 0.25 * Math.abs(Math.sin(x * 0.011 + seed))), y = top + R() * H * 0.45;
     const r = 4 + R() * 8;
-    g.fillStyle = `hsl(${95 + R() * 30},${45 + R() * 20}%,${Math.round(34 + R() * 14 - (y - top) / H * 20)}%)`;
+    g.fillStyle = `hsl(${80 + R() * 24},${36 + R() * 16}%,${Math.round(35 + R() * 10 - (y - top) / H * 10)}%)`;   // 手前: 淡めの緑
     g.beginPath(); g.ellipse(x, y, r * 1.4, r, R() * 3, 0, Math.PI * 2); g.fill();
   }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = 4;
