@@ -128,6 +128,14 @@ function rect(x, z, ang, len, wid, y, out) {
   out.push(...p(-1, 1), ...p(-1, -1), ...p(1, 1), ...p(1, 1), ...p(-1, -1), ...p(1, -1));
 }
 function flatMesh(positions, color) {
+  // 三角形の向きを上向きにそろえる(裏向きだと両面表示で暗く塗られる)
+  for (let i = 0; i + 8 < positions.length; i += 9) {
+    const ux = positions[i + 3] - positions[i], uz = positions[i + 5] - positions[i + 2];
+    const vx = positions[i + 6] - positions[i], vz = positions[i + 8] - positions[i + 2];
+    if (uz * vx - ux * vz < 0) {
+      for (let k = 0; k < 3; k++) { const a = positions[i + 3 + k]; positions[i + 3 + k] = positions[i + 6 + k]; positions[i + 6 + k] = a; }
+    }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   const n = new Float32Array(positions.length); for (let i = 1; i < n.length; i += 3) n[i] = 1;
@@ -340,6 +348,12 @@ function makeBlocker(data) {
   };
   data.buildings.forEach((b) => add(b.p, b.holes, 'b'));
   data.water.forEach((w) => add(w.o, w.h, 'w'));
+  // 線で描かれた川: 線分ごとに幅つきで登録
+  for (const rv of data.rivers || []) for (let i = 0; i + 1 < rv.pts.length; i++) {
+    const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], h = rv.w / 2;
+    add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
+  }
+  const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
   const RW = Math.ceil(X1 - X0), RH = Math.ceil(Z1 - Z0), road = new Uint8Array(RW * RH);
   for (const r of data.roads) {
@@ -359,12 +373,20 @@ function makeBlocker(data) {
   const onRoad = (x, z) => { const ix = Math.floor(x - X0), iz = Math.floor(z - Z0); return ix >= 0 && iz >= 0 && ix < RW && iz < RH && road[iz * RW + ix] === 1; };
   return (x, z, r = 0.3) => {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) return true;
+    if (area && !pointIn(area, x, z)) return true;   // 走れる範囲(川や幹線道路で区切った多角形)の外
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C));
     if (!list) return false;
     const road_ = onRoad(x, z);
     for (const it of list) {
       const [a, b, c, d] = it.box;
       if (x < a - r || x > c + r || z < b - r || z > d + r) continue;
+      if (it.kind === 'r') {
+        if (road_) continue;
+        const [ax, az, bx, bz, h] = it.h, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+        const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        if (Math.hypot(x - ax - dx * u, z - az - dz * u) < h) return true;
+        continue;
+      }
       if (it.kind === 'w') { if (!road_ && inPoly(it.o, it.h, x, z)) return true; continue; }
       if (inPoly(it.o, it.h, x, z) || [[r, 0], [-r, 0], [0, r], [0, -r]].some(([ox, oz]) => inPoly(it.o, it.h, x + ox, z + oz))) return true;
     }
@@ -387,6 +409,12 @@ export function decorateOsmCity(root, url) {
     city.add(flatMesh(ground, WALK));
     city.add(polyFill(data.parks, 0.02, GRASS));
     city.add(polyFill(data.water, 0.03, WATER));
+    const riv = [];
+    for (const rv of data.rivers || []) {
+      ribbon(rv.pts, rv.w, 0.022, riv);
+      for (let i = 1; i + 1 < rv.pts.length; i++) disc(rv.pts[i][0], rv.pts[i][1], rv.w / 2, 0.022, riv);
+    }
+    city.add(flatMesh(riv, WATER));
     buildRoads(data, city);
     buildElevated(data, city);
     buildBuildings(data, city, wallMats, roofMat);
