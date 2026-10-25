@@ -274,8 +274,11 @@ function buildRoads(data, g) {
       ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
       for (const sd of [-1, 1]) {      // 両側に石の欄干(厚めの低い壁)
         const e = offset(p, sd * (half + 3.2));
+        const far = offset(p, sd * (half + 6));   // 欄干の外側: ここが別の車道(上下線が並んだ橋)なら欄干は作らない
         for (let i = 0; i + 1 < e.length; i++) {
           const [x0, z0] = e[i], [x1, z1] = e[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
+          const fm = [(far[i][0] + far[i + 1][0]) / 2, (far[i][1] + far[i + 1][1]) / 2];
+          if (shared(fm[0], fm[1], rid) || shared((x0 + x1) / 2, (z0 + z1) / 2, rid)) continue;
           const ang = Math.atan2(x1 - x0, z1 - z0);
           boxInto(parapet, (x0 + x1) / 2, 0.6, (z0 + z1) / 2, 0.55, 1.2, L + 0.3, ang);
           boxInto(parapet, (x0 + x1) / 2, 1.27, (z0 + z1) / 2, 0.7, 0.14, L + 0.3, ang);   // 笠石
@@ -988,7 +991,7 @@ function buildTrees(data, g, big = 1) {
     const m = new THREE.InstancedMesh(treeGeometry(kind), mat, list.length);
     list.forEach(([x, z, R], i) => {
       const s = 0.8 + R() * 0.45;
-      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s * big, 10 * s * big, 10 * s * big)); m.setMatrixAt(i, M);
+      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s * big, 10 * s * big * (big === 1 ? 0.8 : 1), 10 * s * big)); m.setMatrixAt(i, M);   // 街路樹は高さ 0.8 倍
       C.setHSL(0, 0, 0.88 + R() * 0.2); m.setColorAt(i, C);   // 木ごとに少し明るさを変える
     });
     m.frustumCulled = false; m.name = 'street-trees'; g.add(m);

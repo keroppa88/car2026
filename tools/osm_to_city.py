@@ -92,6 +92,18 @@ def edge_pt(a, b):
         else: lo = m
     return [round(a[0] + (b[0] - a[0]) * hi, 2), round(a[1] + (b[1] - a[1]) * hi, 2)]
 
+def clip_line_margin(pts, m):
+    """走れる範囲を m だけ広げた多角形の中の部分に切る"""
+    if not CLIP: return [(pts, None)]
+    from shapely.geometry import LineString as _CL, Polygon as _CP
+    poly = _CP(AREA).buffer(m) if AREA else _CP([(X0, Z0), (X1, Z0), (X1, Z1), (X0, Z1)])
+    g = _CL(pts).intersection(poly)
+    out = []
+    for part in (getattr(g, 'geoms', None) or [g]):
+        if part.geom_type == 'LineString' and part.length > 1:
+            out.append(([[round(x, 2), round(z, 2)] for x, z in part.coords], None))
+    return out
+
 def clip_poly(p):
     """多角形を範囲の外枠(長方形)で切る(Sutherland-Hodgman)"""
     if not CLIP: return p
@@ -212,7 +224,9 @@ for wid, (refs, t) in WAYS.items():
         w = RIVER_W.get(t.get('name', ''), 30 if t['waterway'] == 'river' else 14)
         try: w = float(t.get('width', '').split()[0])
         except (ValueError, IndexError): pass
-        if not CLIP or any(in_rect(p) for p in pts): rivers.append({'pts': pts, 'w': w})
+        # 範囲(+ 少し)の中の部分だけ
+        for cp, _ in clip_line_margin(pts, 40):
+            rivers.append({'pts': cp, 'w': w})
         continue
     rw = t.get('railway')
     if rw in ('rail', 'light_rail') and t.get('tunnel') != 'yes' and layer_of(t) >= 1 and t.get('highspeed') == 'yes':   # 高架は新幹線のみ
@@ -670,6 +684,25 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
     lots.append({'o': [[round(x, 1), round(z, 1)] for x, z in list(g_.exterior.coords)[:-1]],
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
+
+# 公園・林・砂地は走れる範囲(+ 少し)の中だけにする(範囲の外の灰色の地面に浮かないように)
+if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地を範囲の外にも見せる)
+    from shapely.geometry import Polygon as _AP
+    _ap = _AP(AREA).buffer(30)
+    def _clip_list(lst):
+        out = []
+        for it in lst:
+            try: g_ = _AP(it['o'], it.get('h') or []).buffer(0).intersection(_ap)
+            except Exception: continue
+            for q in (getattr(g_, 'geoms', None) or [g_]):
+                if q.geom_type == 'Polygon' and q.area > 20:
+                    out.append({**it, 'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]],
+                                'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]})
+        return out
+    _n = len(parks); parks[:] = _clip_list(parks)
+    woods[:] = _clip_list(woods)
+    beaches[:] = _clip_list(beaches)
+    print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
 json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
