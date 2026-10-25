@@ -41,6 +41,39 @@ h[h < 0] = 0
 north_cut = xz(35.3010, LON0)[1]
 for j in range(H):
     if z0 + j * C < north_cut: h[j, :] = 0
+# 道路の所は横方向に水平にする: 道の中心線の高さ(道に沿ってならした値)を、道幅の升目へそのまま入れる
+city = json.load(open('map/shonan-city.json'))
+def road_w(r): return 4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25
+def hat(x, z):
+    fi, fj = (x - x0) / C, (z - z0) / C
+    if fi < 0 or fj < 0 or fi >= W - 1 or fj >= H - 1: return 0.0
+    i, j = int(fi), int(fj); u, v = fi - i, fj - j
+    return (h[j, i] * (1 - u) + h[j, i + 1] * u) * (1 - v) + (h[j + 1, i] * (1 - u) + h[j + 1, i + 1] * u) * v
+best = np.full((H, W), np.inf); newh = h.copy(); nroad = 0
+for r in city['roads']:
+    p = r['pts']
+    if not any(x0 <= x <= x1 and z0 <= z <= z1 for x, z in p): continue
+    # 2m ごとの中心線と高さ
+    pts = []
+    for (ax, az), (bx, bz) in zip(p, p[1:]):
+        k = max(1, int(math.hypot(bx - ax, bz - az) // 2))
+        pts += [(ax + (bx - ax) * q / k, az + (bz - az) * q / k) for q in range(k)]
+    pts.append(tuple(p[-1]))
+    hs = np.array([hat(x, z) for x, z in pts])
+    if hs.max() <= 0: continue
+    nroad += 1
+    if len(hs) >= 5: hs = np.convolve(np.pad(hs, 3, mode='edge'), np.ones(7) / 7, mode='valid')   # 道に沿ってならす
+    half = road_w(r) / 2 + 1.5
+    for (x, z), hv in zip(pts, hs):
+        i0, i1 = max(0, int((x - half - x0) / C)), min(W - 1, int((x + half - x0) / C) + 1)
+        j0, j1 = max(0, int((z - half - z0) / C)), min(H - 1, int((z + half - z0) / C) + 1)
+        for j in range(j0, j1 + 1):
+            for i in range(i0, i1 + 1):
+                d = math.hypot(x0 + i * C - x, z0 + j * C - z)
+                if d <= half and d < best[j, i] and h[j, i] > 0:
+                    best[j, i] = d; newh[j, i] = hv
+h = newh
+print('水平にした道路', nroad)
 print('三角形', n, '升目', W, 'x', H, '最高', round(float(h.max()), 1), 'm')
 json.dump({'x0': round(x0, 2), 'z0': round(z0, 2), 'c': C, 'w': W, 'h': H, 'd': [int(round(v * 10)) for v in h.flatten()]},
           open('map/shonan-terrain.json', 'w'), separators=(',', ':'))

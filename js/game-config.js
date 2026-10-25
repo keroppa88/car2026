@@ -652,7 +652,7 @@ export const MAP_CONFIGS = {
     autoDriveMode: 'shonanRoute',
     routeData: 'map/shonan-routes.json?v=20261026-4',
     // 江の島だけ高低差(PLATEAU の地形 dem から)
-    terrainData: 'map/shonan-terrain.json?v=20261026-1',
+    terrainData: 'map/shonan-terrain.json?v=20261026-2',
     spawnReferenceX: 9583.63,
     spawnReferenceZ: 822.45,
     spawnExactReference: true,
