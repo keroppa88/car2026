@@ -56,10 +56,22 @@ isl_big = max(isl.geoms, key=lambda g: g.area) if hasattr(isl, 'geoms') else isl
 br = [LineString(p).buffer(12) for p in bridges if len(p) > 1 and LineString(p).distance(isl_big) < 30]
 band = unary_union([band, isl_big.buffer(30), *br]).buffer(10).buffer(-10)
 if hasattr(band, 'geoms'): band = max(band.geoms, key=lambda g: g.area)
+# 東の端(稲村ヶ崎): 海沿いから北へ向かう134号と、その上(北)の街は切る。134号のそば 60m だけ残す
+EAST_CUT, TOWN_CUT = xy((139.5319, lat0))[0], xy((139.5245, lat0))[0]
+band = band.difference(box(EAST_CUT, -1e6, 1e6, 1e6))
+band = band.difference(box(TOWN_CUT, -1e6, 1e6, 1e6).difference(r134.buffer(60)).difference(sea.buffer(-1).buffer(80)))
+if hasattr(band, 'geoms'): band = max(band.geoms, key=lambda g: g.area)
+# 稲村ヶ崎の 134号より海側は砂浜
+_beach = []
+_west = xy((139.5217, lat0))[0]
+_rest = band.intersection(box(_west, -1e6, 1e6, 1e6)).difference(r134.buffer(9, cap_style=2).buffer(0))
+for piece in getattr(_rest, 'geoms', [_rest]):
+    if piece.area > 50 and piece.intersects(sea.buffer(3)) and piece.area < 300000: _beach.append(piece)
+print('稲村ヶ崎の砂浜', len(_beach), [round(p.area) for p in _beach])
 band = band.simplify(4)
 json.dump({'name': '湘南(稲村ヶ崎〜大磯)', 'lonlat': [ll(p) for p in band.exterior.coords][:-1]}, open('tools/shonan/area.json', 'w'), ensure_ascii=False)
 seas = sea.intersection(box(-W, south, W, max(lats) * 0 + 99999)).simplify(3)
 polys = list(seas.geoms) if hasattr(seas, 'geoms') else [seas]
-json.dump({'sea': [{'o': [ll(p) for p in g.exterior.coords][:-1], 'h': [[ll(p) for p in i.coords][:-1] for i in g.interiors]} for g in polys if g.area > 1000]},
+json.dump({'beach': [{'o': [ll(p) for p in g.exterior.coords][:-1]} for g in _beach], 'sea': [{'o': [ll(p) for p in g.exterior.coords][:-1], 'h': [[ll(p) for p in i.coords][:-1] for i in g.interiors]} for g in polys if g.area > 1000]},
           open('tools/shonan/sea.json', 'w'))
 print('帯の面積 km2', round(band.area / 1e6, 2), '頂点', len(band.exterior.coords), '海', len(polys), '島', len(islands))

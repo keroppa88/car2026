@@ -922,6 +922,8 @@ function makeTreeAtlas() {
   const g = c.getContext('2d');
   TREE_KINDS.forEach((k, i) => {
     const R = seeded(900 + i * 37), ox = i * S, bx = ox + S / 2;
+    // 隣の木の枠へはみ出さない(はみ出すと隣の木の横に葉が浮いて見える)
+    g.save(); g.beginPath(); g.rect(ox + 3, 0, S - 6, S); g.clip();
     const cy = S * (k.top + k.bot) / 2, ry = S * (k.bot - k.top) / 2, rx = S * k.w / 2;
     // 葉の塊の位置(樹冠の楕円の中、外側寄り)
     const cl = [];
@@ -953,6 +955,7 @@ function makeTreeAtlas() {
         g.beginPath(); g.ellipse(px, py, lr * 1.6, lr, R() * Math.PI, 0, Math.PI * 2); g.fill();
       }
     }
+    g.restore();
   });
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -960,7 +963,7 @@ function makeTreeAtlas() {
 }
 // 木の絵を貼る1枚の板。いつもカメラの方を向く(縦は立てたまま)。
 function treeGeometry(kind) {
-  const u0 = kind / TREE_KINDS.length + 0.001, u1 = (kind + 1) / TREE_KINDS.length - 0.001, P = [], U = [], N = [];
+  const u0 = kind / TREE_KINDS.length + 0.004, u1 = (kind + 1) / TREE_KINDS.length - 0.004, P = [], U = [], N = [];
   const q = [[-0.5, 0, u0, 0], [0.5, 0, u1, 0], [0.5, 1, u1, 1], [-0.5, 0, u0, 0], [0.5, 1, u1, 1], [-0.5, 1, u0, 1]];
   for (const [x, y, u, v] of q) { P.push(x, y, 0); U.push(u, v); N.push(0, 1, 0); }
   const geo = new THREE.BufferGeometry();

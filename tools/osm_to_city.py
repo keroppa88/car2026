@@ -490,6 +490,9 @@ if SEA:
     for s_ in json.load(open(SEA))['sea']:
         o = [xy(p[1], p[0]) for p in s_['o']]   # 海は範囲で切らない(遠くまで見える)
         if o: water.append({'o': o, 'h': [[xy(p[1], p[0]) for p in h] for h in s_['h'] if len(h) >= 3], 'sea': True})
+    for b_ in json.load(open(SEA)).get('beach', []):
+        o = [xy(p[1], p[0]) for p in b_['o']]
+        if len(o) >= 3: beaches.append({'o': o, 'h': []})
     print('海', sum(1 for w in water if w.get('sea')))
 
 # 首都高(OSM の板)の高さ: 高架の部分は一定、地上の部分(上り下り口)は高架とつながる端から 6% の坂で地面へ
