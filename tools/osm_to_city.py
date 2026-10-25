@@ -316,6 +316,7 @@ for rel in root.findall('relation'):
 _n0 = len(buildings)
 buildings[:] = [b for b in buildings if not any(p_.contains(_NPt(centroid(b['p']))) for p_ in _nb)]
 print('皇居まわりの緑地の建物を外す', _n0 - len(buildings))
+sites[:] = [s_ for s_ in sites if not any(p_.contains(_NPt(centroid(s_['o']))) for p_ in _nb)]   # 工事中の敷地も置かない
 
 # 工事中の敷地の中の建物は外す(外観を指定した建物は残す)
 if sites:
