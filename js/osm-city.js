@@ -364,18 +364,59 @@ function addWallUV(o, tileW, tileH) {
   }
   o.u = u;
 }
-function buildRailways(data, g, onRoad) {
-  // 川・濠の上とそのまわり 8m には柱・壁を立てない
-  const inWater0 = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)))
-    || (data.rivers || []).some((rv) => {
-      for (let i = 0; i + 1 < rv.pts.length; i++) {
-        const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
-        const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
-        if (Math.hypot(x - ax - dx * u, z - az - dz * u) < rv.w / 2 + 1) return true;
+function makeWaterMask(data, margin) {
+  const vs = data.viaducts || []; if (!vs.length) return () => false;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const v of vs) for (const r of v.rings) for (const [x, z] of r) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+  const C = 2, pad = margin + 4; x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
+  const W = Math.ceil((x1 - x0) / C), H = Math.ceil((z1 - z0) / C), m = new Uint8Array(W * H);
+  const paint = (ax, az, bx, bz, test) => {
+    const i0 = Math.max(0, Math.floor((ax - x0) / C)), i1 = Math.min(W - 1, Math.floor((bx - x0) / C));
+    const j0 = Math.max(0, Math.floor((az - z0) / C)), j1 = Math.min(H - 1, Math.floor((bz - z0) / C));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      if (m[j * W + i]) continue;
+      if (test(x0 + (i + 0.5) * C, z0 + (j + 0.5) * C)) m[j * W + i] = 1;
+    }
+  };
+  // 水の多角形は横の行ごとに塗る(行と辺の交わりの間を塗る。穴も同じ交わりに入れれば偶奇で抜ける)
+  for (const w of data.water) {
+    const rings = [w.o, ...(w.h || [])];
+    let b = Infinity, d = -Infinity;
+    for (const [, z] of w.o) { b = Math.min(b, z); d = Math.max(d, z); }
+    const j0 = Math.max(0, Math.floor((b - z0) / C)), j1 = Math.min(H - 1, Math.floor((d - z0) / C));
+    for (let j = j0; j <= j1; j++) {
+      const z = z0 + (j + 0.5) * C, xs = [];
+      for (const r of rings) for (let k = 0, l = r.length - 1; k < r.length; l = k++) {
+        const [ax, az] = r[k], [bx, bz] = r[l];
+        if ((az > z) !== (bz > z)) xs.push(ax + (z - az) / (bz - az) * (bx - ax));
       }
-      return false;
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const i0 = Math.max(0, Math.ceil((xs[k] - x0) / C - 0.5)), i1 = Math.min(W - 1, Math.floor((xs[k + 1] - x0) / C - 0.5));
+        for (let i = i0; i <= i1; i++) m[j * W + i] = 1;
+      }
+    }
+  }
+  for (const rv of data.rivers || []) for (let k = 0; k + 1 < rv.pts.length; k++) {
+    const [ax, az] = rv.pts[k], [bx, bz] = rv.pts[k + 1], hw = rv.w / 2 + 1, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+    paint(Math.min(ax, bx) - hw, Math.min(az, bz) - hw, Math.max(ax, bx) + hw, Math.max(az, bz) + hw, (x, z) => {
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+      return Math.hypot(x - ax - dx * u, z - az - dz * u) < hw;
     });
-  const overWater = (x, z) => inWater0(x, z) || [[8, 0], [-8, 0], [0, 8], [0, -8], [5.7, 5.7], [-5.7, 5.7], [5.7, -5.7], [-5.7, -5.7]].some(([a, b]) => inWater0(x + a, z + b));
+  }
+  // margin ぶん広げる(縦横に)
+  const r = Math.ceil(margin / C), tmp = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (m[j * W + i]) for (let k = Math.max(0, i - r); k <= Math.min(W - 1, i + r); k++) tmp[j * W + k] = 1;
+  const out = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (tmp[j * W + i]) for (let k = Math.max(0, j - r); k <= Math.min(H - 1, j + r); k++) out[k * W + i] = 1;
+  return (x, z) => {
+    const i = Math.floor((x - x0) / C), j = Math.floor((z - z0) / C);
+    return i >= 0 && j >= 0 && i < W && j < H && out[j * W + i] === 1;
+  };
+}
+function buildRailways(data, g, onRoad) {
+  // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
+  const overWater = makeWaterMask(data, 8);
   const deck = { p: [], n: [] }, rail = [];
   // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
   for (const v of data.viaducts || []) {
@@ -571,10 +612,23 @@ function buildWater(data, g) {
 function buildForests(data, g) {
   const area = data.area;
   const inWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z));
+  // 走れる範囲の外にある建物(皇居の中など)のまわりには森を置かない
+  const bg = new Map();
+  for (const b of data.buildings) {
+    const [x, z] = b.p[0]; if (area && pointIn(area, x, z)) continue;
+    for (const [px, pz] of b.p) { const k = Math.floor(px / 20) + ',' + Math.floor(pz / 20); if (!bg.has(k)) bg.set(k, []); bg.get(k).push([px, pz]); }
+  }
+  const nearBld = (x, z, r) => {
+    for (let gx = Math.floor((x - r) / 20); gx <= Math.floor((x + r) / 20); gx++) for (let gz = Math.floor((z - r) / 20); gz <= Math.floor((z + r) / 20); gz++)
+      for (const [px, pz] of bg.get(gx + ',' + gz) || []) if ((px - x) ** 2 + (pz - z) ** 2 < r * r) return true;
+    return false;
+  };
   const geo0 = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
   const P0 = geo0.getAttribute('position').array;
   let n = 0;
-  for (const pk of data.parks) {
+  const regions = data.parks.slice();
+  if (data.palace && data.palace.length > 3) regions.push({ o: data.palace, h: [] });   // 皇居の中も森に
+  for (const pk of regions) {
     const o = pk.o;
     let a = 0, x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
     for (let k = 0; k < o.length; k++) {
@@ -590,6 +644,7 @@ function buildForests(data, g) {
       const px = x + (R() - 0.5) * 14, pz = z + (R() - 0.5) * 14;
       if (!pointIn(o, px, pz) || inWater(px, pz) || (area && pointIn(area, px, pz))) continue;
       const r = 15 + R() * 9, h = 9 + R() * 7;
+      if (nearBld(px, pz, r + 3)) continue;
       c.setHSL(0.27 + R() * 0.05, 0.42, 0.22 + R() * 0.08);
       for (let k = 0; k < P0.length; k += 3) {
         pos.push(px + P0[k] * r, Math.max(0, h * 0.55 + P0[k + 1] * h * 0.75), pz + P0[k + 2] * r);
@@ -1026,7 +1081,19 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   let blocked = () => false, night = false, cityBounds = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
-  Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch]).then(([data, lm, br]) => {
+  // 読み込み中の表示
+  const loading = document.createElement('div');
+  loading.id = 'osm-loading';
+  loading.style.cssText = 'position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(12,16,20,0.78);color:#fff;font:600 28px system-ui,sans-serif;letter-spacing:0.2em;pointer-events:none;';
+  loading.innerHTML = '<div style="text-align:center">読み込み中<div id="osm-loading-step" style="margin-top:12px;font:400 14px system-ui,sans-serif;letter-spacing:0.05em;opacity:0.75">地図データを取得中…</div></div>';
+  document.body.appendChild(loading);
+  const step = (s) => { const el = document.getElementById('osm-loading-step'); if (el) el.textContent = s; };
+  const t0 = performance.now(), times = {};
+  const T = (name, fn) => { const a = performance.now(); fn(); times[name] = Math.round(performance.now() - a); };
+  Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch]).then(async ([data, lm, br]) => {
+    times.fetch = Math.round(performance.now() - t0);
+    step('街を組み立て中…');
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));   // 文字を先に描かせる
     const [X0, Z0, X1, Z1] = data.bounds;
     const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
     const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
@@ -1034,24 +1101,24 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     city.add(gm);
     city.add(polyFill(data.parks, 0.02, GRASS));
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
-    buildLots(data, city);
-    buildWater(data, city);
-    buildForests(data, city);
-    buildTrees(data, city);
-    buildRoads(data, city);
-    buildElevated(data, city);
-    if (br) buildBridges(br, city);
-    buildBuildings(data, city, wallMats, roofMat);
+    T('buildLots', () => buildLots(data, city));
+    T('buildWater', () => buildWater(data, city));
+    T('buildForests', () => buildForests(data, city));
+    T('buildTrees', () => buildTrees(data, city));
+    T('buildRoads', () => buildRoads(data, city));
+    T('buildElevated', () => buildElevated(data, city));
+    if (br) T('buildBridges', () => buildBridges(br, city));
+    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat));
     if (lm) {
-      buildLandmarks(lm, city, wallMats, roofMat);
+      T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));
       // 当たり判定は足元の形で
       for (const L of lm.landmarks) for (const r of L.fp) data.buildings.push({ p: r, holes: [] });
       document.body.dataset.osmLandmarks = String(lm.landmarks.length);
     }
-    blocked = makeBlocker(data);
-    buildRailways(data, city, blocked.onRoad);
-    buildFences(data, city, blocked.onRoad);
-    buildSites(data, city);
+    T('makeBlocker', () => { blocked = makeBlocker(data); });
+    T('buildRailways', () => buildRailways(data, city, blocked.onRoad));
+    T('buildFences', () => buildFences(data, city, blocked.onRoad));
+    T('buildSites', () => buildSites(data, city));
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
     // 地図に使う範囲: 走れる範囲(area)の外枠 + 少し
@@ -1060,7 +1127,11 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
       for (const [x, z] of data.area) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
       cityBounds = [a - 80, b - 80, c + 80, d + 80];
     } else cityBounds = data.bounds;
-  }).catch((e) => console.warn('[osm-city]', e));
+    times.total = Math.round(performance.now() - t0);
+    document.body.dataset.osmLoadMs = JSON.stringify(times);
+    console.info('[osm-city] load ms', times);
+    loading.remove();
+  }).catch((e) => { console.warn('[osm-city]', e); step('読み込みに失敗しました'); });
   return {
     isBlocked: (x, z, R) => blocked(x, z, R),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null

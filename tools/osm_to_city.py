@@ -150,6 +150,15 @@ def assemble(way_ids):
         if len(pts) >= 3: rings.append(pts)
     return rings
 
+# 皇居(OSM の way 534754971)の形
+_PAL = WAYS.get('534754971')
+_PALP = [N[r] for r in _PAL[0] if r in N] if _PAL else []
+def in_palace(p):
+    c, n = False, len(_PALP)
+    for i in range(n):
+        a, b = _PALP[i], _PALP[i - 1]
+        if (a[1] > p[1]) != (b[1] > p[1]) and p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]: c = not c
+    return c
 def centroid(p): return [sum(v[0] for v in p) / len(p), sum(v[1] for v in p) / len(p)]
 def area(p): return abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1] for i in range(len(p)))) / 2
 
@@ -214,7 +223,11 @@ for wid, (refs, t) in WAYS.items():
     # 地下の建物は作らない
     if t.get('layer', '0').startswith('-') or t.get('location') == 'underground': continue
     if 'building' in t and refs[0] == refs[-1] and len(pts) >= 4:
-        if CLIP and not inside(centroid(pts[:-1])): continue   # 建物は中心が範囲内のものだけ
+        if CLIP and not inside(centroid(pts[:-1])):
+            # 走れる範囲の外でも、皇居の中の建物は見えるので置く(高さが無ければ低層)
+            if in_rect(centroid(pts[:-1])) and in_palace(centroid(pts[:-1])):
+                buildings.append({'p': pts[:-1], 'h': height_of(t, pts) or 6.0, 'holes': []})
+            continue
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
         if t.get('name') in LOOK: buildings[-1]['look'] = LOOK[t['name']]
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
@@ -526,7 +539,7 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
