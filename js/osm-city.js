@@ -318,6 +318,33 @@ function slab(rings, y0, depth, out) {
     g.dispose();
   }
 }
+// れんがの壁の絵(1枚 = 横 4m × 縦 2m)
+function makeBrickTexture() {
+  const W = 256, H = 128, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), R = seeded(4242);
+  g.fillStyle = '#b8aa98'; g.fillRect(0, 0, W, H);                  // 目地
+  const rows = 16, bh = H / rows, bw = W / 8;
+  for (let r = 0; r < rows; r++) {
+    const off = (r % 2) * bw / 2;
+    for (let k = -1; k < 9; k++) {
+      const v = 0.82 + R() * 0.3;
+      g.fillStyle = `rgb(${Math.round(150 * v)},${Math.round(74 * v)},${Math.round(52 * v)})`;
+      g.fillRect(k * bw + off + 1.5, r * bh + 1.5, bw - 3, bh - 3);
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+// 面の向きから、横方向の位置と高さで UV を付ける(箱を並べた形用)
+function addWallUV(o, tileW, tileH) {
+  const u = [];
+  for (let i = 0; i < o.p.length; i += 3) {
+    const nx = o.n[i], nz = o.n[i + 2];
+    const along = Math.abs(nx) > Math.abs(nz) ? o.p[i + 2] : o.p[i];
+    u.push(along / tileW, o.p[i + 1] / tileH);
+  }
+  o.u = u;
+}
 function buildRailways(data, g, onRoad) {
   const deck = { p: [], n: [] }, rail = [];
   for (const rl of data.rails || []) {
@@ -341,7 +368,11 @@ function buildRailways(data, g, onRoad) {
   for (const q of data.platforms || []) if (q.y > 0) slab([q], q.y, 1.1, pf);
   const roof = { p: [], n: [] };
   for (const c of data.canopies || []) slab([{ o: c.o, h: [] }], c.y, 0.5, roof);
-  const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ color: 0xa3a5a4 })); m1.name = 'rail-viaduct'; g.add(m1);
+  // 線路の高架はれんが造り
+  addWallUV(deck, 4, 2);
+  const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture() }));
+  m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
+  m1.name = 'rail-viaduct'; g.add(m1);
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
   if (rail.length) g.add(flatMesh(rail, 0x4a4540));
