@@ -306,6 +306,45 @@ function buildElevated(data, g) {
   const m = solidMesh(deck, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'shutoko'; g.add(m);
 }
 
+// ---- 線路の高架・ホーム・ホームの屋根(OSM の railway / building=roof から) ----
+function slab(rings, y0, depth, out) {
+  // 多角形を厚み depth の板にして y0 の高さに置く
+  for (const { o, h } of rings) {
+    const sh = new THREE.Shape(o.map(([x, z]) => new THREE.Vector2(x, -z)));
+    (h || []).forEach((hh) => sh.holes.push(new THREE.Path(hh.map(([x, z]) => new THREE.Vector2(x, -z)))));
+    const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }).toNonIndexed();
+    g.rotateX(-Math.PI / 2); g.translate(0, y0, 0); g.computeVertexNormals();
+    out.p.push(...g.getAttribute('position').array); out.n.push(...g.getAttribute('normal').array);
+    g.dispose();
+  }
+}
+function buildRailways(data, g, onRoad) {
+  const deck = { p: [], n: [] }, rail = [];
+  for (const rl of data.rails || []) {
+    const p = rl.pts, H = rl.h; let acc = 0;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
+      const ang = Math.atan2(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L;
+      boxInto(deck, (x0 + x1) / 2, H - 0.8, (z0 + z1) / 2, 5.4, 1.6, L + 0.5, ang);
+      for (const sd of [-0.75, 0.75]) rect((x0 + x1) / 2 + tz * sd, (z0 + z1) / 2 - tx * sd, ang, L, 0.14, H + 0.04, rail);
+      // 橋脚: 道路の上には立てない
+      for (let s = (18 - acc % 18) % 18; s < L; s += 18) {
+        const px = x0 + tx * s, pz = z0 + tz * s;
+        if (!onRoad(px, pz)) boxInto(deck, px, (H - 1.6) / 2, pz, 1.6, H - 1.6, 1.6, ang);
+      }
+      acc += L;
+    }
+  }
+  const pf = { p: [], n: [] };
+  for (const q of data.platforms || []) if (q.y > 0) slab([q], q.y, 1.1, pf);
+  const roof = { p: [], n: [] };
+  for (const c of data.canopies || []) slab([{ o: c.o, h: [] }], c.y, 0.5, roof);
+  const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ color: 0xa3a5a4 })); m1.name = 'rail-viaduct'; g.add(m1);
+  const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
+  const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
+  if (rail.length) g.add(flatMesh(rail, 0x4a4540));
+}
+
 const SMALL_AREA = 150;   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 function buildBuildings(data, g, wallMats, roofMat) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [] }));
@@ -476,6 +515,12 @@ function makeBlocker(data) {
     const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], h = rv.w / 2;
     add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
   }
+  // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
+  for (const rl of data.rails || []) for (let i = 0; i + 1 < rl.pts.length; i++) {
+    const [ax, az] = rl.pts[i], [bx, bz] = rl.pts[i + 1], h = 2.6;
+    add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
+  }
+  (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
   const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
   const RW = Math.ceil(X1 - X0), RH = Math.ceil(Z1 - Z0), road = new Uint8Array(RW * RH);
@@ -494,7 +539,7 @@ function makeBlocker(data) {
     }
   }
   const onRoad = (x, z) => { const ix = Math.floor(x - X0), iz = Math.floor(z - Z0); return ix >= 0 && iz >= 0 && ix < RW && iz < RH && road[iz * RW + ix] === 1; };
-  return (x, z, r = 0.3) => {
+  const fn = (x, z, r = 0.3) => {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) return true;
     if (area && !pointIn(area, x, z)) return true;   // 走れる範囲(川や幹線道路で区切った多角形)の外
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C));
@@ -515,6 +560,8 @@ function makeBlocker(data) {
     }
     return false;
   };
+  fn.onRoad = onRoad;
+  return fn;
 }
 
 export function decorateOsmCity(root, url, landmarkUrl) {
@@ -551,6 +598,7 @@ export function decorateOsmCity(root, url, landmarkUrl) {
       document.body.dataset.osmLandmarks = String(lm.landmarks.length);
     }
     blocked = makeBlocker(data);
+    buildRailways(data, city, blocked.onRoad);
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
   }).catch((e) => console.warn('[osm-city]', e));

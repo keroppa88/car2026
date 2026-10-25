@@ -646,5 +646,61 @@
   "lat": 35.6812,
   "lon": 139.7659,
   "osmName": ""
+ },
+ {
+  "label": "グラントウキョウ ノースタワー",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68164,
+  "lon": 139.76927,
+  "osmName": ""
+ },
+ {
+  "label": "グラントウキョウ サウスタワー",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.67856,
+  "lon": 139.76738,
+  "osmName": ""
+ },
+ {
+  "label": "JPタワー(KITTE)",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.67976,
+  "lon": 139.76484,
+  "osmName": ""
+ },
+ {
+  "label": "東京駅 線路側1",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68197,
+  "lon": 139.76755,
+  "osmName": ""
+ },
+ {
+  "label": "東京駅 線路側2",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68139,
+  "lon": 139.7678,
+  "osmName": ""
+ },
+ {
+  "label": "東京駅 線路側3",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68064,
+  "lon": 139.76783,
+  "osmName": ""
+ },
+ {
+  "label": "東京駅 線路側4",
+  "found": true,
+  "osm": "pos/",
+  "lat": 35.68141,
+  "lon": 139.76675,
+  "osmName": ""
  }
 ]

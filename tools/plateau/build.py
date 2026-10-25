@@ -87,6 +87,10 @@ COLOR = {
     '東京国際フォーラム': c('#c5d0d6', C),
     '日本橋日枝神社': c('#8a5a3c', P, '#3f4a45'),
     '茅場町タワー': c('#b8ab98', G),
+    'グラントウキョウ ノースタワー': c('#9fb2c0', C),
+    'グラントウキョウ サウスタワー': c('#a9bbc7', C),
+    'JPタワー(KITTE)': c('#c8c9c6', G),
+    '東京駅 線路側1': c('#c9cbcc', B), '東京駅 線路側2': c('#c9cbcc', B), '東京駅 線路側3': c('#c9cbcc', B), '東京駅 線路側4': c('#c9cbcc', B),
 }
 SEL = pickle.load(open('/home/claude/plateau/selected.pkl', 'rb'))
 

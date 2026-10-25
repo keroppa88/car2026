@@ -119,6 +119,11 @@ def lanes_of(t, kind):
     return max(1, min(n, 8))
 
 roads, elevated, buildings, water, parks, rivers = [], [], [], [], [], []
+rails, platforms, canopies = [], [], []   # 線路の高架・ホーム・ホームの屋根(見た目)
+RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
+def layer_of(t):
+    try: return int(t.get('layer', '0'))
+    except ValueError: return 0
 RIVER_W = {'隅田川': 160, '神田川': 24, '日本橋川': 26, '亀島川': 22}
 
 def ring_pts(refs): return [N[r] for r in refs if r in N]
@@ -185,8 +190,22 @@ for wid, (refs, t) in WAYS.items():
         except (ValueError, IndexError): pass
         if not CLIP or any(in_rect(p) for p in pts): rivers.append({'pts': pts, 'w': w})
         continue
-    # 屋根だけ(ホームの屋根・ガソリンスタンドの屋根など)と地下の建物は作らない
-    if t.get('building') == 'roof' or t.get('layer', '0').startswith('-') or t.get('location') == 'underground': continue
+    rw = t.get('railway')
+    if rw in ('rail', 'light_rail') and t.get('tunnel') != 'yes' and layer_of(t) >= 1:
+        for cp, _ in clip_line(pts, [r for r in refs if r in N]):
+            rails.append({'pts': cp, 'h': RAIL_H.get(min(layer_of(t), 3))})
+        continue
+    if rw == 'platform' and refs[0] == refs[-1] and len(pts) >= 4 and t.get('tunnel') != 'yes' and layer_of(t) >= 0:
+        if not CLIP or inside(centroid(pts[:-1])): platforms.append({'o': pts[:-1], 'h': []})
+        continue
+    # 屋根だけのもの: ホームの屋根などは薄い屋根として描く(高さは layer から)
+    if t.get('building') == 'roof' and refs[0] == refs[-1] and len(pts) >= 4 and not t.get('layer', '0').startswith('-'):
+        if not CLIP or inside(centroid(pts[:-1])):
+            L = layer_of(t)
+            canopies.append({'o': pts[:-1], 'y': (RAIL_H[1] + 6.5) if L >= 1 else 5.0})
+        continue
+    # 地下の建物は作らない
+    if t.get('layer', '0').startswith('-') or t.get('location') == 'underground': continue
     if 'building' in t and refs[0] == refs[-1] and len(pts) >= 4:
         if CLIP and not inside(centroid(pts[:-1])): continue   # 建物は中心が範囲内のものだけ
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
@@ -251,7 +270,16 @@ for r in roads:
     r['junctions'] = [i for i, n in enumerate(r['nodes']) if use.get(n, 0) >= 2 or (n in ends and use.get(n, 0) >= 2)]
     del r['nodes']
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'area': AREA, 'rivers': rivers, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+# ホームは近くの高架の高さに合わせる
+def _near_h(o):
+    cx, cz = centroid(o); best = (1e9, RAIL_H[1])
+    for r in rails:
+        for p in r['pts']:
+            d = (p[0] - cx) ** 2 + (p[1] - cz) ** 2
+            if d < best[0]: best = (d, r['h'])
+    return best[1] if best[0] < 60 ** 2 else 0.0
+for pf in platforms: pf['y'] = _near_h(pf['o'])
+json.dump({'bounds': [X0, Z0, X1, Z1], 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
-print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers),
+print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
