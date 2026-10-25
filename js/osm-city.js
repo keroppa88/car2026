@@ -367,7 +367,13 @@ function buildRailways(data, g, onRoad) {
         const t0 = k / n, t1 = (k + 1) / n;
         const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
         const h0 = ah + (bh - ah) * t0, h1 = ah + (bh - ah) * t1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-        const open = onRoad(mx - nx * 1.5, mz - nz * 1.5) || overWater(mx - nx * 1.5, mz - nz * 1.5);
+        // 道路が通る所は、少なくとも2車線ぶん(約7m)あける: 前後 3.5m 以内に道路があれば壁を作らない
+        const tx = (bx - ax) / L, tz = (bz - az) / L;
+        let open = false;
+        for (const d of [-3.5, -1.75, 0, 1.75, 3.5]) {
+          const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
+          if (onRoad(qx, qz) || overWater(qx, qz)) { open = true; break; }
+        }
         const y0 = open ? Math.min(h0, h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
         deck.p.push(x0, y0, z0, x1, y0, z1, x1, h1, z1, x0, y0, z0, x1, h1, z1, x0, h0, z0);
         for (let q = 0; q < 6; q++) deck.n.push(nx, 0, nz);

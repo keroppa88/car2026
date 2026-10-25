@@ -337,7 +337,7 @@ if BRG:
         hs = []
         for x, z in r['pts']:
             d = deck_near(x, z)
-            hs.append(round(max(5.0, min(base, d - 5.0)) if d else base, 1))
+            hs.append(base)   # 高架は一定の高さ(首都高の 4/5)を保つ
         r['h'] = base; r['hs'] = hs
     RAIL_H = {1: base, 2: base, 3: base}
     for c in canopies:
