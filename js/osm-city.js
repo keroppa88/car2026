@@ -843,7 +843,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const city = new THREE.Group(); city.name = 'osm-city';
   (root.parent || root).add(city);
-  let blocked = () => false, night = false;
+  let blocked = () => false, night = false, cityBounds = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   Promise.all([fetch(url).then((r) => r.json()), lmFetch, brFetch]).then(([data, lm, br]) => {
@@ -871,9 +871,16 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     buildRailways(data, city, blocked.onRoad);
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
+    // 地図に使う範囲: 走れる範囲(area)の外枠 + 少し
+    if (data.area) {
+      let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+      for (const [x, z] of data.area) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
+      cityBounds = [a - 80, b - 80, c + 80, d + 80];
+    } else cityBounds = data.bounds;
   }).catch((e) => console.warn('[osm-city]', e));
   return {
     isBlocked: (x, z, R) => blocked(x, z, R),
+    bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     update() {},
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };

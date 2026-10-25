@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261025-osm-37';
+import { decorateOsmCity } from './osm-city.js?v=20261025-osm-38';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-37';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261025-osm-38';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -403,6 +403,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         refreshLampVisibility();
       }
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
+      // Q: 地図。1回目=右上に小さく / 2回目=全画面 / 3回目=消す
+      if (k.toLowerCase() === 'q') cycleMiniMap();
       // E: 右の方向指示器 / W: 左の方向指示器(今は街並みだけ)。同じキーでもう一度押すと消える。
       if (NEO_COURSE && k.toLowerCase() === 'e') setTurnSignal(turnSignal === 1 ? 0 : 1);
       if (NEO_COURSE && k.toLowerCase() === 'w') setTurnSignal(turnSignal === -1 ? 0 : -1);
@@ -10624,6 +10626,75 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     camera.position.y += Math.sin(desertShakePhase * Math.PI * 2) * 0.035 * desertShakeAmount;
     document.body.dataset.desertShake = desertShakeAmount.toFixed(2);
   }
+  // ---- Q の地図 ----
+  // 真上から地図全体を1回だけ描いて画像にしておき、その上に自車(二等辺三角形・鋭い角が車の向き)を重ねる。
+  const miniMap = { mode: 0, el: null, cv: null, img: null, frame: null, osmReady: false };
+  function miniMapFrame() {
+    const ob = tokyoEkiCity?.bounds?.();
+    if (ob) return { x0: ob[0], z0: ob[1], x1: ob[2], z1: ob[3] };
+    if (mapBounds && !mapBounds.isEmpty()) return { x0: mapBounds.min.x, z0: mapBounds.min.z, x1: mapBounds.max.x, z1: mapBounds.max.z };
+    return { x0: BOUND_X_MIN, z0: -BOUND_Z, x1: BOUND_X_MAX, z1: BOUND_Z };
+  }
+  function buildMiniMapImage() {
+    const f = miniMapFrame(), w = f.x1 - f.x0, h = f.z1 - f.z0;
+    const maxPx = Math.min(2048, renderer.capabilities.maxTextureSize || 2048);
+    const W = Math.max(64, Math.round(w >= h ? maxPx : maxPx * w / h)), H = Math.max(64, Math.round(h > w ? maxPx : maxPx * h / w));
+    const cam = new THREE.OrthographicCamera(f.x0, f.x1, -f.z0, -f.z1, 1, 3000);
+    // 真上から北を上に: カメラの上方向を -z(北)にすると、画面の左右・上下が x・z と揃う
+    cam.position.set(0, 1500, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+    cam.left = f.x0; cam.right = f.x1; cam.top = -f.z0; cam.bottom = -f.z1; cam.updateProjectionMatrix();
+    const rt = new THREE.WebGLRenderTarget(W, H);
+    const hidden = [];
+    const hide = (o) => { if (o && o.visible) { o.visible = false; hidden.push(o); } };
+    hide(player.group); for (const ai of aiCars) hide(ai.group);
+    const fog = scene.fog; scene.fog = null;
+    const sh = sun.castShadow; sun.castShadow = false;
+    renderer.setRenderTarget(rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+    rt.dispose(); scene.fog = fog; sun.castShadow = sh; hidden.forEach((o) => { o.visible = true; });
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'), id = g.createImageData(W, H);
+    for (let y = 0; y < H; y++) id.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);   // 上下を戻す
+    g.putImageData(id, 0, 0);
+    miniMap.img = c; miniMap.frame = f;
+  }
+  function cycleMiniMap() {
+    miniMap.mode = (miniMap.mode + 1) % 3;
+    if (!miniMap.el) {
+      const el = document.createElement('div'); el.id = 'mini-map';
+      el.style.cssText = 'position:fixed;z-index:40;pointer-events:none;background:rgba(10,14,18,0.82);border:2px solid rgba(255,255,255,0.7);border-radius:6px;overflow:hidden;';
+      const cv = document.createElement('canvas'); cv.style.cssText = 'width:100%;height:100%;display:block;';
+      el.appendChild(cv); document.body.appendChild(el); miniMap.el = el; miniMap.cv = cv;
+    }
+    const osmNow = !!tokyoEkiCity?.bounds?.();
+    if (miniMap.mode && (!miniMap.img || (osmNow && !miniMap.osmReady))) { buildMiniMapImage(); miniMap.osmReady = osmNow; }
+    const s = miniMap.el.style;
+    if (miniMap.mode === 1) Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto', bottom: 'auto', width: '50vw', height: '50vh' });
+    else if (miniMap.mode === 2) Object.assign(s, { display: 'block', top: '0', right: '0', left: '0', bottom: '0', width: '100vw', height: '100vh' });
+    else s.display = 'none';
+    document.body.dataset.miniMap = String(miniMap.mode);
+  }
+  function drawMiniMap() {
+    if (!miniMap.mode || !miniMap.img) return;
+    const cv = miniMap.cv, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = cv.getContext('2d'), img = miniMap.img, f = miniMap.frame;
+    g.clearRect(0, 0, W, H);
+    const sc = Math.min(W / img.width, H / img.height), dw = img.width * sc, dh = img.height * sc, ox = (W - dw) / 2, oy = (H - dh) / 2;
+    g.drawImage(img, ox, oy, dw, dh);
+    // 自車: 正面が鋭い角の二等辺三角形
+    const x = ox + (player.pos.x - f.x0) / (f.x1 - f.x0) * dw, y = oy + (player.pos.z - f.z0) / (f.z1 - f.z0) * dh;
+    const fx = Math.sin(player.heading), fz = Math.cos(player.heading), size = Math.max(9, Math.min(W, H) * 0.022) * (miniMap.mode === 2 ? 1.2 : 1);
+    const sx = -fz, sz = fx;   // 横向き
+    g.beginPath();
+    g.moveTo(x + fx * size * 1.3, y + fz * size * 1.3);
+    g.lineTo(x - fx * size * 0.7 + sx * size * 0.55, y - fz * size * 0.7 + sz * size * 0.55);
+    g.lineTo(x - fx * size * 0.7 - sx * size * 0.55, y - fz * size * 0.7 - sz * size * 0.55);
+    g.closePath();
+    g.fillStyle = '#ff2a2a'; g.fill(); g.lineWidth = Math.max(2, size * 0.18); g.strokeStyle = '#ffffff'; g.stroke();
+  }
+
   function updateCamera(dt) {
     if (__debugFreezeCam) return;
     // 視点のみモード(V 2回目)では自車(影・ランプ含む)を一切映さない。
@@ -10950,6 +11021,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
       renderer.render(scene, camera);
       renderMirror();
+      drawMiniMap();
     } catch (err) {
       // 1フレームの例外でrequestAnimationFrameの連鎖が止まって完全フリーズする
       // 事態を避けるため、ログに残しつつ次フレームへ継続する。
