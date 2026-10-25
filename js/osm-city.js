@@ -824,6 +824,39 @@ function buildFences(data, g, onRoad) {
   g.add(solidMesh(post, mat), solidMesh(bar, mat));
 }
 
+// ---- 林(防砂林・松林など): 芝の地面に、こんもりした木の塊を並べる。道路・建物の上には置かない ----
+function buildWoods(data, g, onRoad, blocked) {
+  const W = data.woods || []; if (!W.length) return;
+  g.add(polyFill(W, 0.03, 0x5f7f45));
+  const geo0 = new THREE.IcosahedronGeometry(1, 1).toNonIndexed(), P0 = geo0.getAttribute('position').array;
+  const pos = [], col = [], c = new THREE.Color();
+  for (const w of W) {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [x, z] of w.o) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+    const R = seeded(Math.round(x0 * 3 + z0 * 7));
+    for (let x = x0 + 5; x < x1; x += 13) for (let z = z0 + 5; z < z1; z += 13) {
+      const px = x + (R() - 0.5) * 8, pz = z + (R() - 0.5) * 8, r = 7 + R() * 4;
+      if (!pointIn(w.o, px, pz)) continue;
+      if ([[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([a, b]) => onRoad(px + a, pz + b))) continue;
+      if (blocked.hitsBuilding && blocked.hitsBuilding(px, pz, r)) continue;
+      const h = 8 + R() * 6;
+      c.setHSL(0.28 + R() * 0.05, 0.38, 0.2 + R() * 0.07);
+      for (let k = 0; k < P0.length; k += 3) {
+        pos.push(px + P0[k] * r, Math.max(1.5, h * 0.6 + P0[k + 1] * h * 0.55), pz + P0[k + 2] * r);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+  }
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  m.matrixAutoUpdate = false; m.name = 'woods'; g.add(m);
+  document.body.dataset.osmWoods = String(W.length);
+}
+
 // ---- 街路樹(位置は osm_to_city.py が決める) ----
 // 木の絵(2次元)。何種類かを1枚に並べる。
 // 幹から枝を伸ばし、枝先ごとに葉の塊(小さな葉をたくさん、下は暗く上は明るく)を描く。塊のすき間から枝が見える。
@@ -1076,7 +1109,8 @@ function makeBlocker(data) {
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
   for (const v of data.viaducts || []) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
-  for (const s of data.sites || []) add(s.o, [], 'b');   // 工事中の敷地には入れない
+  for (const s of data.sites || []) add(s.o, [], 'b');
+  for (const w of data.woods || []) add(w.o, w.h, 'w');   // 林の中には入れない(道路は通れる)   // 工事中の敷地には入れない
   for (const [x, z] of data.trees || []) add([[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]], [], 'b');   // 街路樹の幹
   const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
@@ -1130,6 +1164,11 @@ function makeBlocker(data) {
     return false;
   };
   fn.onRoad = onRoad;
+  fn.hitsBuilding = (x, z, r) => {
+    const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || [];
+    return list.some((it) => it.kind === 'b' && x > it.box[0] - r && x < it.box[2] + r && z > it.box[1] - r && z < it.box[3] + r
+      && [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([a, b]) => inPoly(it.o, it.h, x + a, z + b)));
+  };
   return fn;
 }
 
@@ -1166,7 +1205,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
     T('buildLots', () => buildLots(data, city));
     T('buildWater', () => buildWater(data, city));
-    if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.015, SAND));   // 砂浜
+    if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
     T('buildForests', () => buildForests(data, city));
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));
@@ -1181,6 +1220,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     }
     T('makeBlocker', () => { blocked = makeBlocker(data); });
     T('buildRailways', () => buildRailways(data, city, blocked.onRoad));
+    T('buildWoods', () => buildWoods(data, city, blocked.onRoad, blocked));
     T('buildFences', () => buildFences(data, city, blocked.onRoad));
     T('buildSites', () => buildSites(data, city));
     document.body.dataset.osmBuildings = String(data.buildings.length);

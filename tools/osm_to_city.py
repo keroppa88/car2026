@@ -19,6 +19,9 @@ LMK = None
 if '--landmarks' in sys.argv:
     i = sys.argv.index('--landmarks'); LMK = sys.argv[i + 1]; del sys.argv[i:i + 2]
 # --bridges 本物の形の高架.json を付けると、それと重なる首都高(見た目の板)を外す
+EXTRA = None   # --extra plateau.json: 林(woods)・砂地(sands)・建物の高さ(heights)
+if '--extra' in sys.argv:
+    i = sys.argv.index('--extra'); EXTRA = sys.argv[i + 1]; del sys.argv[i:i + 2]
 SEA = None   # --sea 海.json: 海の多角形(経度緯度)を水面として足す(浅く・砂浜色の岸)
 if '--sea' in sys.argv:
     i = sys.argv.index('--sea'); SEA = sys.argv[i + 1]; del sys.argv[i:i + 2]
@@ -442,6 +445,33 @@ def _near_pf(o):
     return any(min((p[0] - cx) ** 2 + (p[1] - cz) ** 2 for p in pf['o']) < 40 ** 2 for pf in platforms)
 canopies[:] = [c for c in canopies if _near_pf(c['o'])]
 
+woods = []
+# OSM の森・林
+for wid, (refs, t_) in WAYS.items():
+    if (t_.get('natural') == 'wood' or t_.get('landuse') == 'forest') and refs[0] == refs[-1]:
+        o = clip_poly(ring_pts(refs)[:-1])
+        if o and len(o) >= 3: woods.append({'o': o, 'h': []})
+if EXTRA:
+    ex = json.load(open(EXTRA))
+    for w_ in ex['woods']:
+        o = clip_poly([xy(p[1], p[0]) for p in w_['o']])
+        if o and len(o) >= 3: woods.append({'o': o, 'h': []})
+    for s_ in ex['sands']:
+        o = clip_poly([xy(p[1], p[0]) for p in s_['o']])
+        if o and len(o) >= 3: beaches.append({'o': o, 'h': []})
+    # 建物の高さを PLATEAU の実測に合わせる(足元の中心が建物の中に入るもの)
+    from shapely.geometry import Polygon as _HP, Point as _HPt
+    from shapely.strtree import STRtree as _HT
+    pts_ = [_HPt(*xy(p[1], p[0])) for p in ex['heights']]
+    hs_ = [p[2] for p in ex['heights']]
+    tr_ = _HT(pts_); n_ = 0
+    for b in buildings:
+        try: pb = _HP(b['p']).buffer(0)
+        except Exception: continue
+        got = [hs_[j] for j in tr_.query(pb) if pb.contains(pts_[j])]
+        if got: b['h'] = max(3.0, max(got)); n_ += 1
+    print('林', len(woods), '砂地', len(beaches), 'PLATEAU の高さにした建物', n_)
+
 if SEA:
     for s_ in json.load(open(SEA))['sea']:
         o = [xy(p[1], p[0]) for p in s_['o']]   # 海は範囲で切らない(遠くまで見える)
@@ -641,7 +671,7 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
