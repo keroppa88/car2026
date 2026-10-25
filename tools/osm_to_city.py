@@ -140,7 +140,8 @@ def lanes_of(t, kind):
         if oneway: n = 2 if kind in ('trunk', 'primary', 'secondary') else 1   # 上下線が別の道(片側)・一方通行の細い道
     return max(1, min(n, 8))
 
-roads, elevated, buildings, water, parks, rivers, beaches = [], [], [], [], [], [], []
+roads, elevated, buildings, water, parks, rivers, beaches, rocks = [], [], [], [], [], [], [], []
+_sea_woods = []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
 RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
 def layer_of(t):
@@ -490,9 +491,12 @@ if SEA:
     for s_ in json.load(open(SEA))['sea']:
         o = [xy(p[1], p[0]) for p in s_['o']]   # 海は範囲で切らない(遠くまで見える)
         if o: water.append({'o': o, 'h': [[xy(p[1], p[0]) for p in h] for h in s_['h'] if len(h) >= 3], 'sea': True})
-    for b_ in json.load(open(SEA)).get('beach', []):
-        o = [xy(p[1], p[0]) for p in b_['o']]
-        if len(o) >= 3: beaches.append({'o': o, 'h': []})
+    _sj = json.load(open(SEA))
+    for key_, lst_ in (('beach', beaches), ('rock', rocks)):
+        for b_ in _sj.get(key_, []):
+            o = [xy(p[1], p[0]) for p in b_['o']]
+            if len(o) >= 3: lst_.append({'o': o, 'h': []})
+    woods.extend({'o': [xy(p[1], p[0]) for p in b_['o']], 'h': []} for b_ in _sj.get('wood', []) if len(b_['o']) >= 3)   # 稲村ヶ崎の岬は林
     print('海', sum(1 for w in water if w.get('sea')))
 
 # 首都高(OSM の板)の高さ: 高架の部分は一定、地上の部分(上り下り口)は高架とつながる端から 6% の坂で地面へ
@@ -688,6 +692,20 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
 
+# 湘南: 幹線道路に面した建物・海沿いの建物・江の島の建物は白っぽい色を多めに(JS 側で white を見る)
+if SEA:
+    from shapely.geometry import Polygon as _WP, LineString as _WL
+    from shapely.ops import unary_union as _WU
+    _main = _WU([_WL(r['pts']).buffer(4.5 + r['lanes'] * 1.7) for r in roads if r['kind'] in ('trunk', 'primary') and len(r['pts']) > 1]).buffer(18)
+    _seaz = _WU([_WP(w['o']).buffer(0) for w in water if w.get('sea')]).buffer(160)
+    _eno = _WP([xy(35.2955, 139.472), xy(35.2955, 139.489), xy(35.3010, 139.489), xy(35.3010, 139.472)])
+    _nw = 0
+    for b in buildings:
+        try: pb = _WP(b['p']).buffer(0)
+        except Exception: continue
+        if pb.intersects(_main) or pb.intersects(_seaz) or _eno.contains(pb.centroid): b['white'] = 1; _nw += 1
+    print('白っぽくする建物', _nw)
+
 # 公園・林・砂地は走れる範囲(+ 少し)の中だけにする(範囲の外の灰色の地面に浮かないように)
 if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地を範囲の外にも見せる)
     from shapely.geometry import Polygon as _AP
@@ -707,7 +725,7 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     beaches[:] = _clip_list(beaches)
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

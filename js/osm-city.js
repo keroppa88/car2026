@@ -598,6 +598,7 @@ function liftToTerrain(g) {
 }
 
 const SMALL_AREA = 150;
+const WHITE_COLORS = [0xf2f1ec, 0xeeece6, 0xe9e7e0, 0xf4f3ef, 0xe3e2dd];
 // 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
 const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce, 0x8a5a44, 0x7b4f3d];   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 function buildBuildings(data, g, wallMats, roofMat) {
@@ -618,7 +619,9 @@ function buildBuildings(data, g, wallMats, roofMat) {
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
     if (lk && lk.style != null) style = lk.style;
     const small = area < SMALL_AREA && !lk;
-    const col = new THREE.Color(small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base)), S = STYLES[style], W = walls[style];
+    let wallHex = small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base);
+    if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
+    const col = new THREE.Color(wallHex), S = STYLES[style], W = walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
@@ -1328,6 +1331,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildLots', () => buildLots(data, city));
     T('buildWater', () => buildWater(data, city));
     if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
+    if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x4b4c4e));   // 岩場(黒っぽいグレー)
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));
