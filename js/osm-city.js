@@ -346,22 +346,47 @@ function addWallUV(o, tileW, tileH) {
   o.u = u;
 }
 function buildRailways(data, g, onRoad) {
+  const overWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)))
+    || (data.rivers || []).some((rv) => {
+      for (let i = 0; i + 1 < rv.pts.length; i++) {
+        const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+        const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        if (Math.hypot(x - ax - dx * u, z - az - dz * u) < rv.w / 2 + 1) return true;
+      }
+      return false;
+    });
   const deck = { p: [], n: [] }, rail = [];
+  // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
+  for (const v of data.viaducts || []) {
+    const tp = v.top;
+    for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
+    for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {
+      const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+      const nx = (bz - az) / L, nz = -(bx - ax) / L, n = Math.max(1, Math.round(L / 3));
+      for (let k = 0; k < n; k++) {
+        const t0 = k / n, t1 = (k + 1) / n;
+        const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+        const h0 = ah + (bh - ah) * t0, h1 = ah + (bh - ah) * t1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+        const open = onRoad(mx - nx * 1.5, mz - nz * 1.5) || overWater(mx - nx * 1.5, mz - nz * 1.5);
+        const y0 = open ? Math.min(h0, h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
+        deck.p.push(x0, y0, z0, x1, y0, z1, x1, h1, z1, x0, y0, z0, x1, h1, z1, x0, h0, z0);
+        for (let q = 0; q < 6; q++) deck.n.push(nx, 0, nz);
+      }
+    }
+  }
+  // 下面(道路の上で見上げた時)
+  for (const v of data.viaducts || []) {
+    const tp = v.top;
+    for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
+  }
+  // レール
   for (const rl of data.rails || []) {
-    const p = rl.pts; let acc = 0;
+    const p = rl.pts;
     for (let i = 0; i + 1 < p.length; i++) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
       const H = rl.hs ? (rl.hs[i] + rl.hs[i + 1]) / 2 : rl.h;
       const ang = Math.atan2(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L;
-      boxInto(deck, (x0 + x1) / 2, H - 0.8, (z0 + z1) / 2, 5.4, 1.6, L + 0.5, ang);
       for (const sd of [-0.75, 0.75]) rect((x0 + x1) / 2 + tz * sd, (z0 + z1) / 2 - tx * sd, ang, L, 0.14, H + 0.04, rail);
-      // 高架の下: 道路が通る所だけあけて、ほかは下までふさぐ(4m ごとに判定)
-      const n = Math.max(1, Math.round(L / 4)), sl = L / n;
-      for (let k = 0; k < n; k++) {
-        const s = (k + 0.5) * sl, px = x0 + tx * s, pz = z0 + tz * s;
-        if (!onRoad(px, pz)) boxInto(deck, px, (H - 1.6) / 2, pz, 5.0, H - 1.6, sl + 0.05, ang);
-      }
-      acc += L;
     }
   }
   const pf = { p: [], n: [] };
@@ -394,7 +419,9 @@ function buildBridges(br, g) {
   const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }
 
-const SMALL_AREA = 150;   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
+const SMALL_AREA = 150;
+// 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
+const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce, 0x8a5a44, 0x7b4f3d];   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 function buildBuildings(data, g, wallMats, roofMat) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [] }));
   const plain = { p: [], u: [], c: [], n: [], f: [] };   // 小さい構築物: 窓なしのグレー一色
@@ -412,7 +439,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
     if (lk && lk.style != null) style = lk.style;
     const small = area < SMALL_AREA && !lk;
-    const col = new THREE.Color(small ? 0x9a9c9e : (lk?.wall ?? base)), S = STYLES[style], W = small ? plain : walls[style];
+    const col = new THREE.Color(small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base)), S = STYLES[style], W = walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
@@ -650,7 +677,7 @@ function buildTrees(data, g) {
   // 車道に挟まれた緑地帯(木なし・黄緑)
   const md = [];
   for (const [x, z, ang, len, wid] of data.medians || []) rect(x, z, ang, len, wid, 0.035, md);
-  if (md.length) g.add(flatMesh(md, 0x9cc45a));
+  if (md.length) g.add(flatMesh(md, 0x6f8f3a));
   document.body.dataset.osmTrees = String(T.length);
 }
 
@@ -756,10 +783,7 @@ function makeBlocker(data) {
     add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
   }
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
-  for (const rl of data.rails || []) for (let i = 0; i + 1 < rl.pts.length; i++) {
-    const [ax, az] = rl.pts[i], [bx, bz] = rl.pts[i + 1], h = 2.6;
-    add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
-  }
+  for (const v of data.viaducts || []) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
   for (const [x, z] of data.trees || []) add([[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]], [], 'b');   // 街路樹の幹
   const area = data.area;

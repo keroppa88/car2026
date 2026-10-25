@@ -198,7 +198,7 @@ for wid, (refs, t) in WAYS.items():
         if not CLIP or any(in_rect(p) for p in pts): rivers.append({'pts': pts, 'w': w})
         continue
     rw = t.get('railway')
-    if rw in ('rail', 'light_rail') and t.get('tunnel') != 'yes' and layer_of(t) >= 1:
+    if rw in ('rail', 'light_rail') and t.get('tunnel') != 'yes' and layer_of(t) >= 1 and t.get('highspeed') == 'yes':   # 高架は新幹線のみ
         for cp, _ in clip_line(pts, [r for r in refs if r in N]):
             rails.append({'pts': cp, 'h': RAIL_H.get(min(layer_of(t), 3))})
         continue
@@ -344,6 +344,39 @@ if BRG:
         if c['y'] > 6: c['y'] = base + 6.0
     print('線路の高さ', base, 'm / 首都高(本物の形)の高さの目安', E_, 'm / OSM の首都高の板', ELEV_H, 'm')
 
+# 並んだ線路はまとめて1本の幅広い高架にする(東京駅の北へ1本、南へ1本)
+viaducts = []
+if rails:
+    from shapely.geometry import LineString as _LS, Polygon as _PG
+    from shapely.ops import unary_union as _UU
+    import mapbox_earcut as _ec, numpy as _np
+    _u = _UU([_LS(r['pts']).buffer(2.7, cap_style=2) for r in rails if len(r['pts']) > 1]).buffer(4.0).buffer(-4.0)
+    _rp = [(x, z, h) for r in rails for (x, z), h in zip(r['pts'], r.get('hs') or [r['h']] * len(r['pts']))]
+    _rg = {}
+    for x, z, h in _rp: _rg.setdefault((int(x // 25), int(z // 25)), []).append((x, z, h))
+    def _h_at(x, z):
+        best = (1e18, RAIL_H[1])
+        for gx in range(int(x // 25) - 1, int(x // 25) + 2):
+            for gz in range(int(z // 25) - 1, int(z // 25) + 2):
+                for (px, pz, h) in _rg.get((gx, gz), []):
+                    d = (px - x) ** 2 + (pz - z) ** 2
+                    if d < best[0]: best = (d, h)
+        return best[1]
+    for g_ in (_u.geoms if hasattr(_u, 'geoms') else [_u]):
+        if g_.area < 50: continue
+        g_ = g_.simplify(0.5)
+        ext = list(g_.exterior.coords)[:-1]
+        holes = [list(i.coords)[:-1] for i in g_.interiors]
+        rings = [ext] + holes
+        pts = [p for r_ in rings for p in r_]
+        ends = _np.cumsum([len(r_) for r_ in rings]).astype(_np.uint32)
+        idx = _ec.triangulate_float64(_np.array(pts, dtype=float), ends)
+        hs = [round(_h_at(x, z), 1) for x, z in pts]
+        top = []
+        for k in idx: top += [round(pts[k][0], 1), hs[k], round(pts[k][1], 1)]
+        viaducts.append({'top': top, 'rings': [[[round(x, 1), round(z, 1), round(_h_at(x, z), 1)] for x, z in r_] for r_ in rings]})
+    print('高架(まとめた形)', len(viaducts))
+
 # ホームは近くの高架の高さに合わせる
 def _near_h(o):
     cx, cz = centroid(o); best = (1e9, RAIL_H[1])
@@ -368,7 +401,11 @@ _bld = [p for p in _bld if not p.is_empty]
 _asp_road = [i for i, r in enumerate(roads) if len(r['pts']) > 1]
 _asp = [_L(roads[i]['pts']).buffer(_road_w(roads[i]) / 2) for i in _asp_road]
 _wat = [_P(w['o']).buffer(0) for w in water] + [_L(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1]
-_wat += [_L(r['pts']).buffer(3.2) for r in rails if len(r['pts']) > 1] + [_P(p['o']).buffer(0) for p in platforms]
+# 高架(線路・首都高・KK線)の下とそのまわり 4m には植えない
+_wat += [_L(r['pts']).buffer(2.7 + 4) for r in rails if len(r['pts']) > 1] + [_P(p['o']).buffer(4) for p in platforms]
+_wat += [_L(e['pts']).buffer(e['lanes'] * 1.63 + 0.8 + 4) for e in elevated if len(e['pts']) > 1]
+if BRG:
+    _wat += [_P(r_).buffer(4) for B_ in json.load(open(BRG))['bridges'] for r_ in B_['fp'] if len(r_) >= 4]
 TB, TA, TW = _T(_bld), _T(_asp), _T(_wat)
 _junc = [r['pts'][i] for r in roads for i in r['junctions']]
 _jgrid = {}
@@ -457,7 +494,7 @@ for poly in _bld:
         _try(q.x, q.y, 3.0, (math.atan2(q2.x - q.x, q2.y - q.y), 4.0, 2.0))
 print('街路樹', len(trees))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
