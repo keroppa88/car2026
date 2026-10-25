@@ -550,7 +550,9 @@ function makeTerrain(T) {
     return ((d[k] * (1 - u) + d[k + 1] * u) * (1 - v) + (d[k + w] * (1 - u) + d[k + w + 1] * u) * v) / 10;
   };
   const inBox = (x, z) => x >= x0 && z >= z0 && x <= x0 + (w - 1) * c && z <= z0 + (h - 1) * c;
-  return { at, inBox, min: (pts) => Math.min(...pts.map(([x, z]) => at(x, z))), T };
+  // 傾き(高さの差 / 距離)。急な所は入れないようにする
+  const slope = (x, z) => Math.max(Math.abs(at(x + c, z) - at(x - c, z)), Math.abs(at(x, z + c) - at(x, z - c))) / (2 * c);
+  return { at, inBox, slope, min: (pts) => Math.min(...pts.map(([x, z]) => at(x, z))), T };
 }
 function buildTerrainMesh(g) {
   // 16x16 升目ごとの小さなメッシュに分ける(車の真下を調べる時に、近くの小片だけを見るように)
@@ -1257,6 +1259,7 @@ function makeBlocker(data) {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) return true;
     if (area && !pointIn(area, x, z)) return true;   // 走れる範囲(川や幹線道路で区切った多角形)の外
     if (onRoad(x, z)) return false;                  // 車道の上は何があっても通れる(引っ掛かり防止)
+    if (TERRAIN && TERRAIN.inBox(x, z) && TERRAIN.slope(x, z) > 0.18) return true;   // 江の島: 道路の外の急な坂には入れない
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C));
     if (!list) return false;
     const road_ = onRoad(x, z);
@@ -1334,6 +1337,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildWater', () => buildWater(data, city));
     if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
     if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x4b4c4e));   // 岩場(黒っぽいグレー)
+    if (data.piers && data.piers.length) city.add(polyFill(data.piers, 0.028, 0x9a9b98));   // 堤防・突堤(グレー)
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));

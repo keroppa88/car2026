@@ -141,6 +141,7 @@ def lanes_of(t, kind):
     return max(1, min(n, 8))
 
 roads, elevated, buildings, water, parks, rivers, beaches, rocks = [], [], [], [], [], [], [], []
+piers = []
 _sea_woods = []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
 RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
@@ -190,6 +191,7 @@ def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse'
 
 # 外観を指定する建物(OSM の名前): wall=壁 base=1階 top=最上階 の色、style=窓の模様の番号
 LOOK = {
+    '江の島展望灯台シーキャンドル': {'wall': '#f4f3ef', 'style': 4, 'shrink': 0.5},   # 細い白い塔
     '日本橋野村ビル旧館': {'wall': '#5b3a2c', 'base': '#d6d5d0', 'baseH': 4.5, 'top': '#ecebe6', 'topH': 3.5, 'style': 1},
 }
 # OSM に高さが無い高層ビルの高さ(m)
@@ -249,7 +251,11 @@ for wid, (refs, t) in WAYS.items():
         if CLIP and not inside(centroid(pts[:-1])):
             continue   # 走れる範囲の外の建物は置かない(皇居の中も建物なし・森だけ)
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
-        if t.get('name') in LOOK: buildings[-1]['look'] = LOOK[t['name']]
+        if t.get('name') in LOOK:
+            lk_ = LOOK[t['name']]; buildings[-1]['look'] = lk_
+            if lk_.get('shrink'):   # 足元の形を中心に向かって縮める(高さはそのまま)
+                pp = buildings[-1]['p']; cx_ = sum(q[0] for q in pp) / len(pp); cz_ = sum(q[1] for q in pp) / len(pp); s_ = lk_['shrink']
+                buildings[-1]['p'] = [[round(cx_ + (q[0] - cx_) * s_, 2), round(cz_ + (q[1] - cz_) * s_, 2)] for q in pp]
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
         o = clip_poly(pts[:-1])
         if o: water.append({'o': o, 'h': [], 'moat': is_moat(t)})
@@ -728,11 +734,23 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     _n = len(parks); parks[:] = _clip_list(parks)
     woods[:] = _clip_list(woods)
     beaches[:] = _clip_list(beaches)
+    # 砂浜から突き出た細い所(堤防・突堤: 鋭角・直線のもの)は砂浜から外してグレーにする
+    from shapely.ops import unary_union as _PU
+    _bu = _PU([_AP(b['o'], b.get('h') or []).buffer(0) for b in beaches])
+    _open = _bu.buffer(-7, join_style=2).buffer(7, join_style=1)
+    _thin = _bu.difference(_open).buffer(0)
+    def _pl(g, minA):
+        return [{'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]],
+                 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]}
+                for q in getattr(g, 'geoms', [g]) if q.geom_type == 'Polygon' and q.area > minA]
+    beaches[:] = _pl(_open.intersection(_bu), 20)
+    piers = _pl(_thin, 15)
+    print('砂浜', len(beaches), '堤防(グレー)', len(piers))
     _wn = [w for w in water if not w.get('sea')]
     water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

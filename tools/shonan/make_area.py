@@ -67,7 +67,7 @@ def coast_part(lon_a, lon_b):
     xa, xb = xy((lon_a, lat0))[0], xy((lon_b, lat0))[0]
     return coast_line.intersection(box(xa, -1e6, xb, 1e6))
 seaward = band.difference(r134.buffer(9, cap_style=2))
-_beach = [seaward.intersection(coast_part(139.5000, 139.5190).buffer(45))]          # 七里ヶ浜(端は丸く細る)
+_beach = [seaward.intersection(coast_part(139.4800, 139.5190).buffer(45))]          # 七里ヶ浜〜江の島(端は丸く細る)
 _rock = [seaward.intersection(coast_part(139.5185, 139.5232).buffer(10)).difference(_beach[0])]
 _wood = [seaward.intersection(box(xy((139.5228, lat0))[0], -1e6, 1e6, 1e6)).difference(_rock[0])]
 def polys(gs):
