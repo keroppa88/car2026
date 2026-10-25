@@ -825,36 +825,82 @@ function buildFences(data, g, onRoad) {
 }
 
 // ---- 林(防砂林・松林など): 芝の地面に、こんもりした木の塊を並べる。道路・建物の上には置かない ----
+// 森の壁の絵(横長): 木の絵をたくさん重ねて、すき間のない木立にする。下は暗く、上は明るい
+function makeForestStrip(seed) {
+  const W = 1024, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), R = seeded(seed);
+  // 奥の暗い茂み
+  for (let q = 0; q < 1800; q++) {
+    const x = R() * W, top = H * (0.18 + 0.25 * Math.abs(Math.sin(x * 0.011 + seed)) + R() * 0.1), y = top + R() * (H * 0.92 - top);
+    const d = (y - top) / (H - top), r = 6 + R() * 10;
+    g.fillStyle = `hsl(${100 + R() * 25},${40 + R() * 20}%,${Math.round(30 - d * 18 + R() * 6)}%)`;
+    g.beginPath(); g.ellipse(x, y, r * 1.4, r, R() * 3, 0, Math.PI * 2); g.fill();
+  }
+  // 手前の幹(ところどころ見える)
+  g.strokeStyle = 'rgba(60,45,35,0.9)';
+  for (let q = 0; q < 26; q++) { const x = R() * W; g.lineWidth = 3 + R() * 4; g.beginPath(); g.moveTo(x, H); g.lineTo(x + (R() - 0.5) * 10, H * 0.62); g.stroke(); }
+  // 手前の明るい葉の塊(上の方)
+  for (let q = 0; q < 900; q++) {
+    const x = R() * W, top = H * (0.16 + 0.25 * Math.abs(Math.sin(x * 0.011 + seed))), y = top + R() * H * 0.45;
+    const r = 4 + R() * 8;
+    g.fillStyle = `hsl(${95 + R() * 30},${45 + R() * 20}%,${Math.round(34 + R() * 14 - (y - top) / H * 20)}%)`;
+    g.beginPath(); g.ellipse(x, y, r * 1.4, r, R() * 3, 0, Math.PI * 2); g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = 4;
+  return tex;
+}
 function buildWoods(data, g, onRoad, blocked) {
+  // 林: 芝の地面と、縁に沿って立てた「森の壁の絵」を何枚か重ねる(車から見た背景が木立に見えるように)
   const W = data.woods || []; if (!W.length) return;
   g.add(polyFill(W, 0.03, 0x5f7f45));
-  const geo0 = new THREE.IcosahedronGeometry(1, 1).toNonIndexed(), P0 = geo0.getAttribute('position').array;
-  const pos = [], col = [], c = new THREE.Color();
+  const P = [], U = [], N = [];
+  let panels = 0;
   for (const w of W) {
-    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-    for (const [x, z] of w.o) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
-    const R = seeded(Math.round(x0 * 3 + z0 * 7));
-    for (let x = x0 + 5; x < x1; x += 13) for (let z = z0 + 5; z < z1; z += 13) {
-      const px = x + (R() - 0.5) * 8, pz = z + (R() - 0.5) * 8, r = 7 + R() * 4;
-      if (!pointIn(w.o, px, pz)) continue;
-      if ([[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([a, b]) => onRoad(px + a, pz + b))) continue;
-      if (blocked.hitsBuilding && blocked.hitsBuilding(px, pz, r)) continue;
-      const h = 8 + R() * 6;
-      c.setHSL(0.28 + R() * 0.05, 0.38, 0.2 + R() * 0.07);
-      for (let k = 0; k < P0.length; k += 3) {
-        pos.push(px + P0[k] * r, Math.max(1.5, h * 0.6 + P0[k + 1] * h * 0.55), pz + P0[k + 2] * r);
-        col.push(c.r, c.g, c.b);
+    const o = w.o; let A = 0;
+    for (let k = 0; k < o.length; k++) { const [ax, az] = o[k], [bx, bz] = o[(k + 1) % o.length]; A += ax * bz - bx * az; }
+    const inward = A > 0 ? 1 : -1;   // 内側の向き
+    const R = seeded(Math.round(o[0][0] * 3 + o[0][1] * 7));
+    for (const depth of [2.5, 9, 17]) {
+      for (let k = 0; k < o.length; k++) {
+        const [ax, az] = o[k], [bx, bz] = o[(k + 1) % o.length], L = Math.hypot(bx - ax, bz - az); if (L < 4) continue;
+        const tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz * inward, nz = tx * inward;
+        for (let s0 = 0; s0 < L; s0 += 22) {
+          const s1 = Math.min(L, s0 + 24), h = 11 + R() * 5;
+          const x0 = ax + tx * s0 + nx * depth, z0 = az + tz * s0 + nz * depth, x1 = ax + tx * s1 + nx * depth, z1 = az + tz * s1 + nz * depth;
+          const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+          if (!pointIn(o, mx, mz) || onRoad(mx, mz) || onRoad(x0, z0) || onRoad(x1, z1)) continue;
+          if (blocked.hitsBuilding && blocked.hitsBuilding(mx, mz, 1)) continue;
+          const u0 = R() * 4, u1 = u0 + (s1 - s0) / 24;
+          P.push(x0, 0, z0, x1, 0, z1, x1, h, z1, x0, 0, z0, x1, h, z1, x0, h, z0);
+          U.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+          for (let q = 0; q < 6; q++) N.push(0, 1, 0);
+          panels++;
+        }
       }
     }
   }
-  if (!pos.length) return;
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: makeForestStrip(7), alphaTest: 0.5, side: THREE.DoubleSide }));
   m.matrixAutoUpdate = false; m.name = 'woods'; g.add(m);
-  document.body.dataset.osmWoods = String(W.length);
+  // 中にも街路樹と同じ木の絵を並べる(上から見ても林に見えるように)
+  const pts = [];
+  for (const w of W) {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [x, z] of w.o) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+    const R = seeded(Math.round(x0 * 5 + z0 * 3));
+    for (let x = x0 + 6; x < x1; x += 11) for (let z = z0 + 6; z < z1; z += 11) {
+      const px = x + (R() - 0.5) * 7, pz = z + (R() - 0.5) * 7;
+      if (!pointIn(w.o, px, pz)) continue;
+      if ([[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4]].some(([a, b]) => onRoad(px + a, pz + b))) continue;
+      if (blocked.hitsBuilding && blocked.hitsBuilding(px, pz, 3)) continue;
+      pts.push([px, pz]);
+    }
+  }
+  buildTrees({ trees: pts }, g, 1.3);
+  document.body.dataset.osmWoods = String(panels + pts.length);
 }
 
 // ---- 街路樹(位置は osm_to_city.py が決める) ----
@@ -931,7 +977,7 @@ function billboard(mat) {
   };
   return mat;
 }
-function buildTrees(data, g) {
+function buildTrees(data, g, big = 1) {
   const T = data.trees || []; if (!T.length) return;
   const mat = billboard(new THREE.MeshLambertMaterial({ map: makeTreeAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }));
   const groups = TREE_KINDS.map(() => []);
@@ -942,7 +988,7 @@ function buildTrees(data, g) {
     const m = new THREE.InstancedMesh(treeGeometry(kind), mat, list.length);
     list.forEach(([x, z, R], i) => {
       const s = 0.8 + R() * 0.45;
-      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s, 10 * s, 10 * s)); m.setMatrixAt(i, M);
+      M.compose(P.set(x, 0, z), Q.setFromAxisAngle(Y, R() * Math.PI), S.set(10 * s * big, 10 * s * big, 10 * s * big)); m.setMatrixAt(i, M);
       C.setHSL(0, 0, 0.88 + R() * 0.2); m.setColorAt(i, C);   // 木ごとに少し明るさを変える
     });
     m.frustumCulled = false; m.name = 'street-trees'; g.add(m);
@@ -955,7 +1001,7 @@ function buildTrees(data, g) {
   const md = [];
   for (const [x, z, ang, len, wid] of data.medians || []) rect(x, z, ang, len, wid, 0.035, md);
   if (md.length) g.add(flatMesh(md, 0x6f8f3a));
-  document.body.dataset.osmTrees = String(T.length);
+  if (big === 1) document.body.dataset.osmTrees = String(T.length);
 }
 
 // ---- 1階は窓ではなく出入口(ガラス戸と看板の帯) ----
@@ -1206,7 +1252,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     T('buildLots', () => buildLots(data, city));
     T('buildWater', () => buildWater(data, city));
     if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
-    T('buildForests', () => buildForests(data, city));
+    if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));
     T('buildElevated', () => buildElevated(data, city));
