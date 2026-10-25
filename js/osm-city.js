@@ -312,17 +312,25 @@ function buildRoads(data, g) {
 }
 
 function buildElevated(data, g) {
+  // 首都高(OSM の線から作る板)。点ごとの高さ hs で坂にする(上り下り口は地面まで下りる)
   const deck = { p: [], n: [] }, EH = data.elevH ?? 9.5;
+  const quad = (a, b, c, d, nx, ny, nz) => { deck.p.push(...a, ...b, ...c, ...a, ...c, ...d); for (let q = 0; q < 6; q++) deck.n.push(nx, ny, nz); };
   for (const e of data.elevated) {
-    const w = e.lanes * LANE + 1.5, p = e.pts;
+    const w = e.lanes * LANE + 1.5, p = e.pts, hs = e.hs || p.map(() => EH);
     for (let i = 0; i + 1 < p.length; i++) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
-      const ang = Math.atan2(x1 - x0, z1 - z0);
-      boxInto(deck, (x0 + x1) / 2, EH, (z0 + z1) / 2, w, 1.4, L + 0.6, ang);
-      for (const sd of [-1, 1]) boxInto(deck, (x0 + x1) / 2 + Math.cos(ang) * sd * (w / 2 - 0.2), EH + 1.3, (z0 + z1) / 2 - Math.sin(ang) * sd * (w / 2 - 0.2), 0.35, 1.1, L + 0.6, ang);
+      const h0 = hs[i], h1 = hs[i + 1]; if (h0 < 0.3 && h1 < 0.3) continue;   // 地面と同じ高さの所は描かない
+      const tx = (x1 - x0) / L, tz = (z1 - z0) / L, nx = -tz, nz = tx, ex = tx * 0.3, ez = tz * 0.3;
+      const P = (x, z, y, sd, k) => [x + nx * sd * w / 2 + (k ? ex : -ex), y, z + nz * sd * w / 2 + (k ? ez : -ez)];
+      const T0 = h0 + 0.7, T1 = h1 + 0.7, B0 = Math.max(0, h0 - 0.7), B1 = Math.max(0, h1 - 0.7);
+      quad(P(x0, z0, T0, -1, 0), P(x1, z1, T1, -1, 1), P(x1, z1, T1, 1, 1), P(x0, z0, T0, 1, 0), 0, 1, 0);        // 路面
+      quad(P(x0, z0, B0, 1, 0), P(x1, z1, B1, 1, 1), P(x1, z1, B1, -1, 1), P(x0, z0, B0, -1, 0), 0, -1, 0);      // 裏
+      for (const sd of [-1, 1]) {
+        quad(P(x0, z0, B0, sd, 0), P(x1, z1, B1, sd, 1), P(x1, z1, T1 + 1.1, sd, 1), P(x0, z0, T0 + 1.1, sd, 0), nx * sd, 0, nz * sd);   // 側面と壁高欄
+      }
     }
   }
-  const m = solidMesh(deck, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'shutoko'; g.add(m);
+  const m = solidMesh(deck, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m.name = 'shutoko'; g.add(m);
 }
 
 // ---- 線路の高架・ホーム・ホームの屋根(OSM の railway / building=roof から) ----

@@ -190,7 +190,8 @@ for wid, (refs, t) in WAYS.items():
     if hw in ('motorway', 'motorway_link'):
         if t.get('tunnel') in ('yes', 'building_passage'): continue
         for cp, _ in clip_line(pts, refs):
-            elevated.append({'pts': cp, 'lanes': lanes_of(t, 'trunk') if hw == 'motorway' else 1})
+            up = t.get('bridge') in ('yes', 'viaduct') or layer_of(t) >= 1   # 高架の部分か(違えば地上の取り付け道路)
+            elevated.append({'pts': cp, 'lanes': lanes_of(t, 'trunk') if hw == 'motorway' else 1, 'up': up})
         continue
     if hw in DRIVE:
         if t.get('tunnel') in ('yes',) or t.get('layer', '0').startswith('-'): continue
@@ -433,6 +434,66 @@ def _near_pf(o):
     cx, cz = centroid(o)
     return any(min((p[0] - cx) ** 2 + (p[1] - cz) ** 2 for p in pf['o']) < 40 ** 2 for pf in platforms)
 canopies[:] = [c for c in canopies if _near_pf(c['o'])]
+
+# 首都高(OSM の板)の高さ: 高架の部分は一定、地上の部分(上り下り口)は高架とつながる端から 6% の坂で地面へ
+_tris, _trh = [], []
+if BRG:
+    from shapely.geometry import Polygon as _TP, Point as _TPt
+    from shapely.strtree import STRtree as _TT
+    for B_ in json.load(open(BRG))['bridges']:
+        a = B_['top']
+        for k in range(0, len(a) - 8, 9):
+            tri = _TP([(a[k], a[k + 2]), (a[k + 3], a[k + 5]), (a[k + 6], a[k + 8])])
+            if tri.area > 0.01: _tris.append(tri); _trh.append((a[k + 1] + a[k + 4] + a[k + 7]) / 3)
+    _ttree = _TT(_tris) if _tris else None
+def _deck_h(x, z):
+    # 本物の高架(PLATEAU)の路面のうち、この点から 8m 以内で一番高いもの
+    if not _tris: return None
+    pt = _TPt(x, z); best = None
+    for j in _ttree.query(pt.buffer(8)):
+        if _tris[j].distance(pt) < 8 and (best is None or _trh[j] > best): best = _trh[j]
+    return best
+_ends = {}
+for e in elevated:
+    for p in (e['pts'][0], e['pts'][-1]): _ends.setdefault((round(p[0]), round(p[1])), []).append(e)
+def _end_h(p, self_):
+    # この端のつながる先の高さ: 本物の高架(PLATEAU)か、高架の部分の板
+    h = _deck_h(p[0], p[1])
+    if h is not None and h > 3: return h
+    for dx in (-1, 0, 1):
+        for dz in (-1, 0, 1):
+            for o in _ends.get((round(p[0]) + dx, round(p[1]) + dz), []):
+                if o is not self_ and o.get('up'): return ELEV_H
+    return 0.0
+for e in elevated:
+    p = e['pts']
+    if e.get('up'):
+        e['hs'] = [ELEV_H] * len(p)
+        # 本物の高架につながる端は、その高さに合わせる
+        for idx in (0, len(p) - 1):
+            h = _deck_h(*p[idx])
+            if h is not None and h > 3: e['hs'][idx] = round(h, 1)
+        continue
+    s = [0.0]
+    for (ax, az), (bx, bz) in zip(p, p[1:]): s.append(s[-1] + math.hypot(bx - ax, bz - az))
+    h0, h1 = _end_h(p[0], e), _end_h(p[-1], e)
+    e['hs'] = [round(max(0.0, h0 - 0.06 * d, h1 - 0.06 * (s[-1] - d)), 2) for d in s]
+# どこにもつながらず宙で終わる端は、そこが上り下り口なので 6% の坂で地面へ下ろす
+from shapely.geometry import LineString as _EL, Point as _EP
+_elines = [(e, _EL(e['pts'])) for e in elevated if len(e['pts']) > 1]
+_ramped = 0
+for e, ln in _elines:
+    p = e['pts']
+    s = [0.0]
+    for (ax, az), (bx, bz) in zip(p, p[1:]): s.append(s[-1] + math.hypot(bx - ax, bz - az))
+    for idx in (0, len(p) - 1):
+        if e['hs'][idx] < 1: continue
+        q = _EP(p[idx])
+        if (_deck_h(*p[idx]) or 0) > 3: continue
+        if any(o is not e and l2.distance(q) < 2 for o, l2 in _elines): continue
+        e['hs'] = [round(min(h, 0.06 * (d if idx == 0 else s[-1] - d)), 2) for h, d in zip(e['hs'], s)]
+        _ramped += 1
+print('上り下り口(地上の取り付け部分)', sum(1 for e in elevated if not e.get('up')), '/ 宙の端を地面へ下ろす', _ramped)
 
 # ホームは近くの高架の高さに合わせる
 def _near_h(o):
