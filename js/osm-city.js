@@ -286,7 +286,8 @@ function buildBuildings(data, g, wallMats, roofMat) {
     const pts = b.p; let a = 0;
     for (let k = 0; k < pts.length; k++) { const [x0, z0] = pts[k], [x1, z1] = pts[(k + 1) % pts.length]; a += x0 * z1 - x1 * z0; }
     const area = Math.abs(a) / 2;
-    let h = b.h ?? Math.min(70, 10 + Math.sqrt(area) * 0.9 * (0.6 + R() * 0.8));
+    // 高さが分からない建物: 小さいもの(出入口・小屋・住宅)は低く
+    let h = b.h ?? (area < 400 ? 4 + R() * 5 : Math.min(70, 10 + Math.sqrt(area) * 0.9 * (0.6 + R() * 0.8)));
     h = Math.max(4, h);
     const style = h > 50 ? [0, 0, 1, 2, 4][Math.floor(R() * 5)] : [1, 1, 3, 4, 0][Math.floor(R() * 5)];
     const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
@@ -341,8 +342,8 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
   lm.landmarks.forEach((L, i) => {
     const R = seeded(i * 977 + 5);
     let top = 0; for (let k = 1; k < L.walls.length; k += 3) top = Math.max(top, L.walls[k]);
-    const style = top > 80 ? [0, 2, 2, 4][Math.floor(R() * 4)] : [1, 3, 4, 0][Math.floor(R() * 4)];
-    const base = style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)];
+    const style = L.style ?? (top > 80 ? [0, 2, 2, 4][Math.floor(R() * 4)] : [1, 3, 4, 0][Math.floor(R() * 4)]);
+    const base = L.color ?? (style === 2 ? GLASS_COLORS[Math.floor(R() * GLASS_COLORS.length)] : WALL_COLORS[Math.floor(R() * WALL_COLORS.length)]);
     const col = new THREE.Color(base), S = STYLES[style], W = walls[style], w = L.walls;
     for (let k = 0; k + 8 < w.length; k += 9) {
       A.set(w[k], w[k + 1], w[k + 2]); B.set(w[k + 3], w[k + 4], w[k + 5]); C.set(w[k + 6], w[k + 7], w[k + 8]);

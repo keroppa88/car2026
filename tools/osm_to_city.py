@@ -181,6 +181,8 @@ for wid, (refs, t) in WAYS.items():
         except (ValueError, IndexError): pass
         if not CLIP or any(in_rect(p) for p in pts): rivers.append({'pts': pts, 'w': w})
         continue
+    # 屋根だけ(ホームの屋根・ガソリンスタンドの屋根など)と地下の建物は作らない
+    if t.get('building') == 'roof' or t.get('layer', '0').startswith('-') or t.get('location') == 'underground': continue
     if 'building' in t and refs[0] == refs[-1] and len(pts) >= 4:
         if CLIP and not inside(centroid(pts[:-1])): continue   # 建物は中心が範囲内のものだけ
         buildings.append({'p': pts[:-1], 'h': height_of(t, pts), 'holes': []})
@@ -208,6 +210,17 @@ for rel in root.findall('relation'):
             if not o: continue
             hs = [h for h in (clip_poly(h) for h in hs) if h]
             (water if is_water(t) else parks).append({'o': o, 'h': hs})
+
+# 同じ形の建物が重なって登録されていたら1つにする(高さの分かる方を残す)
+def _key(b):
+    xs = [p[0] for p in b['p']]; zs = [p[1] for p in b['p']]
+    return (round(sum(xs) / len(xs) / 3), round(sum(zs) / len(zs) / 3), round((max(xs) - min(xs)) / 3), round((max(zs) - min(zs)) / 3))
+_best = {}
+for b in buildings:
+    k = _key(b)
+    if k not in _best or (_best[k]['h'] is None and b['h'] is not None): _best[k] = b
+print('重なった建物を1つに:', len(buildings) - len(_best))
+buildings[:] = list(_best.values())
 
 if LMK:
     from shapely.geometry import Polygon

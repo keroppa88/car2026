@@ -12,6 +12,8 @@ KX, KZ = math.cos(math.radians(lat0)) * 111320.0, 110574.0
 def xz(la, lo): return ((lo - lon0) * KX, -(la - lat0) * KZ)
 # PLATEAU が完成前の古い姿・位置が不確かなものは OSM の建物のままにする
 SKIP = {'日本橋野村ビルディング', 'TOFROM YAESU', '東京ミッドタウン日本橋', 'Ginza Sony Park'}
+# 色と窓の模様を決めておく建物(style は osm-city.js の STYLES の番号)
+COLOR = {'東京駅 丸の内駅舎': {'color': '#9c4a32', 'style': 1}}
 SEL = pickle.load(open('/home/claude/plateau/selected.pkl', 'rb'))
 
 def tri(poly, y0, out, uv=None):  # uv は使わない(窓の模様は JS 側で面の向きから計算)
@@ -58,7 +60,8 @@ for s in SEL:
     fps = [list(g.exterior.coords) for g in (fp.geoms if hasattr(fp, 'geoms') else [fp]) if g.area > 1]
     if not walls:   # LOD2 が無い建物は外す(普通の建物のまま)
         print('LOD2なし', s['label']); continue
-    res.append({'label': s['label'], 'walls': walls, 'roofs': roofs,
+    extra = COLOR.get(s['label'], {})
+    res.append({**extra, 'label': s['label'], 'walls': walls, 'roofs': roofs,
                 'fp': [[[round(x, 2), round(z, 2)] for x, z in r] for r in fps]})
     print(s['label'], '壁', len(walls) // 9, '屋根', len(roofs) // 9)
 json.dump({'source': '3D都市モデル(Project PLATEAU) 国土交通省', 'landmarks': res},
