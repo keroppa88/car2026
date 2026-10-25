@@ -463,6 +463,96 @@ function buildBuildings(data, g, wallMats, roofMat) {
   const rm = new THREE.Mesh(rg, roofMat); rm.matrixAutoUpdate = false; g.add(rm);
 }
 
+// ---- 濠と川: 地面より下げて、岸に壁 ----
+// 地面は1枚の板なので、水の所に「穴」をあける代わりに、
+//  1) 水面と岸の壁を先に描き、2) 水の形を地面の高さに「見えない板」で描いて奥行きだけ書き込み、
+//  3) そのあと地面を描く(見えない板より奥なので水の所には描かれない)。
+const MOAT_DEPTH = 3, RIVER_DEPTH = 5;
+const STONE = 0xa39a88, RIVER_WALL = 0x6c6e70;
+function buildWater(data, g) {
+  const sets = [
+    { rings: data.water.filter((w) => w.moat), lines: [], d: MOAT_DEPTH, wall: STONE },
+    { rings: data.water.filter((w) => !w.moat), lines: data.rivers || [], d: RIVER_DEPTH, wall: RIVER_WALL },
+  ];
+  const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
+  const inAnyWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)));
+  for (const s of sets) {
+    const wall = { p: [], n: [] };
+    const quad = (ax, az, bx, bz) => {
+      const L = Math.hypot(bx - ax, bz - az); if (L < 0.05) return;
+      const nx = (bz - az) / L, nz = -(bx - ax) / L, y0 = -s.d, y1 = 0.02;
+      wall.p.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
+      for (let q = 0; q < 6; q++) wall.n.push(nx, 0, nz);
+    };
+    const ringWall = (r) => { for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; quad(a[0], a[1], b[0], b[1]); } };
+    for (const w of s.rings) { ringWall(w.o); (w.h || []).forEach(ringWall); }
+    const floor = [], mask = [];
+    for (const rv of s.lines) {
+      ribbon(rv.pts, rv.w, -s.d, floor); ribbon(rv.pts, rv.w, 0, mask);
+      for (let i = 1; i + 1 < rv.pts.length; i++) { disc(rv.pts[i][0], rv.pts[i][1], rv.w / 2, -s.d, floor); disc(rv.pts[i][0], rv.pts[i][1], rv.w / 2, 0, mask); }
+      // 岸の壁: 面で描いた川(や濠)の中に入る所は作らない
+      for (const sd of [-1, 1]) {
+        const e = offset(rv.pts, sd * rv.w / 2);
+        for (let i = 0; i + 1 < e.length; i++) {
+          const mx = (e[i][0] + e[i + 1][0]) / 2, mz = (e[i][1] + e[i + 1][1]) / 2;
+          if (inAnyWater(mx, mz)) continue;
+          quad(e[i][0], e[i][1], e[i + 1][0], e[i + 1][1]);
+        }
+      }
+    }
+    const add = (m, order) => { m.renderOrder = order; g.add(m); };
+    if (s.rings.length) {
+      add(polyFill(s.rings, -s.d, WATER), -1.8);
+      const mk = polyFill(s.rings, 0, WATER); mk.material = maskMat; add(mk, -1.6);
+    }
+    if (floor.length) {
+      add(flatMesh(floor, WATER), -1.8);
+      const mk = flatMesh(mask, WATER); mk.material = maskMat; add(mk, -1.6);
+    }
+    if (wall.p.length) add(solidMesh(wall, new THREE.MeshLambertMaterial({ color: s.wall, side: THREE.DoubleSide })), -1.8);
+  }
+}
+
+// ---- 皇居の奥などの森: 木を1本ずつではなく、こんもりした大きな塊をいくつか ----
+function buildForests(data, g) {
+  const area = data.area;
+  const inWater = (x, z) => data.water.some((w) => pointIn(w.o, x, z));
+  const geo0 = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
+  const P0 = geo0.getAttribute('position').array;
+  let n = 0;
+  for (const pk of data.parks) {
+    const o = pk.o;
+    let a = 0, x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let k = 0; k < o.length; k++) {
+      const [ax, az] = o[k], [bx, bz] = o[(k + 1) % o.length]; a += ax * bz - bx * az;
+      x0 = Math.min(x0, ax); z0 = Math.min(z0, az); x1 = Math.max(x1, ax); z1 = Math.max(z1, az);
+    }
+    if (Math.abs(a) / 2 < 15000) continue;                    // 大きな緑地だけ
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    if (area && pointIn(area, cx, cz)) continue;              // 走れる範囲の公園(日比谷公園など)は芝生のまま
+    const R = seeded(Math.round(cx * 7 + cz * 13)), pos = [], col = [];
+    const c = new THREE.Color();
+    for (let x = x0 + 12; x < x1; x += 26) for (let z = z0 + 12; z < z1; z += 26) {
+      const px = x + (R() - 0.5) * 14, pz = z + (R() - 0.5) * 14;
+      if (!pointIn(o, px, pz) || inWater(px, pz) || (area && pointIn(area, px, pz))) continue;
+      const r = 15 + R() * 9, h = 9 + R() * 7;
+      c.setHSL(0.27 + R() * 0.05, 0.42, 0.22 + R() * 0.08);
+      for (let k = 0; k < P0.length; k += 3) {
+        pos.push(px + P0[k] * r, Math.max(0, h * 0.55 + P0[k + 1] * h * 0.75), pz + P0[k + 2] * r);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+    if (!pos.length) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    m.matrixAutoUpdate = false; m.name = 'forest'; g.add(m); n++;
+  }
+  document.body.dataset.osmForests = String(n);
+}
+
 // ---- 1階は窓ではなく出入口(ガラス戸と看板の帯) ----
 // 壁の絵の上から、高さ 4.2m より下だけ描き替える。横方向の位置は uv.x × 絵の幅(m)。
 function addStorefront(mat, tileW) {
@@ -631,13 +721,9 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     gm.material.polygonOffsetFactor = 4; gm.material.polygonOffsetUnits = 4;
     city.add(gm);
     city.add(polyFill(data.parks, 0.02, GRASS));
-    city.add(polyFill(data.water, 0.03, WATER));
-    const riv = [];
-    for (const rv of data.rivers || []) {
-      ribbon(rv.pts, rv.w, 0.022, riv);
-      for (let i = 1; i + 1 < rv.pts.length; i++) disc(rv.pts[i][0], rv.pts[i][1], rv.w / 2, 0.022, riv);
-    }
-    city.add(flatMesh(riv, WATER));
+    gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
+    buildWater(data, city);
+    buildForests(data, city);
     buildRoads(data, city);
     buildElevated(data, city);
     if (br) buildBridges(br, city);

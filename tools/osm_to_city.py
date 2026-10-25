@@ -153,6 +153,9 @@ def assemble(way_ids):
 def centroid(p): return [sum(v[0] for v in p) / len(p), sum(v[1] for v in p) / len(p)]
 def area(p): return abs(sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1] for i in range(len(p)))) / 2
 
+def is_moat(t):   # 皇居などの濠
+    n = t.get('name', '')
+    return t.get('water') == 'moat' or n.endswith('濠') or n.endswith('堀') or 'お堀' in n
 def is_water(t): return t.get('natural') == 'water' or t.get('waterway') in ('riverbank',) or 'water' in t and t.get('natural') == 'water'
 def is_park(t): return t.get('leisure') in ('park', 'garden') or t.get('landuse') in ('grass', 'forest', 'recreation_ground')
 
@@ -216,7 +219,7 @@ for wid, (refs, t) in WAYS.items():
         if t.get('name') in LOOK: buildings[-1]['look'] = LOOK[t['name']]
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_water(t):
         o = clip_poly(pts[:-1])
-        if o: water.append({'o': o, 'h': []})
+        if o: water.append({'o': o, 'h': [], 'moat': is_moat(t)})
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_park(t):
         o = clip_poly(pts[:-1])
         if o: parks.append({'o': o, 'h': []})
@@ -237,7 +240,8 @@ for rel in root.findall('relation'):
             o = clip_poly(o)
             if not o: continue
             hs = [h for h in (clip_poly(h) for h in hs) if h]
-            (water if is_water(t) else parks).append({'o': o, 'h': hs})
+            if is_water(t): water.append({'o': o, 'h': hs, 'moat': is_moat(t)})
+            else: parks.append({'o': o, 'h': hs})
 
 # 同じ形の建物が重なって登録されていたら1つにする(高さの分かる方を残す)
 def _key(b):
