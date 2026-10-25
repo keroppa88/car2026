@@ -176,7 +176,7 @@ function polyFill(rings, y, color) {
   });
   const g = new THREE.ShapeGeometry(shapes);
   g.rotateX(-Math.PI / 2); g.translate(0, y, 0);       // (x, y) → (x, 0, -y) なので z = z
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
   m.matrixAutoUpdate = false; return m;
 }
 function disc(x, z, r, y, out) {
@@ -405,8 +405,10 @@ export function decorateOsmCity(root, url) {
   let blocked = () => false, night = false;
   fetch(url).then((r) => r.json()).then((data) => {
     const [X0, Z0, X1, Z1] = data.bounds;
-    const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.05, ground);
-    city.add(flatMesh(ground, WALK));
+    const ground = []; ribbon([[X0 - 300, (Z0 + Z1) / 2], [X1 + 300, (Z0 + Z1) / 2]], Z1 - Z0 + 600, -0.3, ground);
+    const gm = flatMesh(ground, WALK);   // 地面は他の面より奥に描く(遠くで水面や公園が地面に負けないように)
+    gm.material.polygonOffsetFactor = 4; gm.material.polygonOffsetUnits = 4;
+    city.add(gm);
     city.add(polyFill(data.parks, 0.02, GRASS));
     city.add(polyFill(data.water, 0.03, WATER));
     const riv = [];
