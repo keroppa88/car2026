@@ -1258,8 +1258,8 @@ function makeBlocker(data) {
   const fn = (x, z, r = 0.3) => {
     if (x < X0 + r || x > X1 - r || z < Z0 + r || z > Z1 - r) return true;
     if (area && !pointIn(area, x, z)) return true;   // 走れる範囲(川や幹線道路で区切った多角形)の外
+    if (TERRAIN && TERRAIN.inBox(x, z) && TERRAIN.slope(x, z) > 0.18) return true;   // 江の島: 急な坂には入れない(道路の上も)
     if (onRoad(x, z)) return false;                  // 車道の上は何があっても通れる(引っ掛かり防止)
-    if (TERRAIN && TERRAIN.inBox(x, z) && TERRAIN.slope(x, z) > 0.18) return true;   // 江の島: 道路の外の急な坂には入れない
     const list = grid.get(Math.floor(x / C) + ',' + Math.floor(z / C));
     if (!list) return false;
     const road_ = onRoad(x, z);
