@@ -353,7 +353,84 @@ def _near_h(o):
             if d < best[0]: best = (d, r['h'])
     return best[1] if best[0] < 60 ** 2 else 0.0
 for pf in platforms: pf['y'] = _near_h(pf['o'])
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+# ---- 街路樹 ----
+#  ・歩道が車線1本(3.25m)より広い所は、車道側に約9mおきに植える(交差点の近くは除く)
+#  ・丸の内はビルのまわりの空き地の外周にも植える
+from shapely.geometry import Polygon as _P, Point as _Pt, LineString as _L
+from shapely.strtree import STRtree as _T
+def _road_w(r): return 4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25
+_bld = [_P(b['p']).buffer(0) for b in buildings if len(b['p']) >= 3]
+if LMK:
+    _bld += [_P(r).buffer(0) for L_ in json.load(open(LMK))['landmarks'] for r in L_['fp'] if len(r) >= 3]
+_bld = [p for p in _bld if not p.is_empty]
+_asp = [_L(r['pts']).buffer(_road_w(r) / 2) for r in roads if len(r['pts']) > 1]
+_wat = [_P(w['o']).buffer(0) for w in water] + [_L(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1]
+_wat += [_L(r['pts']).buffer(3.2) for r in rails if len(r['pts']) > 1] + [_P(p['o']).buffer(0) for p in platforms]
+TB, TA, TW = _T(_bld), _T(_asp), _T(_wat)
+_junc = [r['pts'][i] for r in roads for i in r['junctions']]
+_jgrid = {}
+for x, z in _junc: _jgrid.setdefault((int(x // 20), int(z // 20)), []).append((x, z))
+def _near_junc(x, z, d):
+    for gx in range(int(x // 20) - 1, int(x // 20) + 2):
+        for gz in range(int(z // 20) - 1, int(z // 20) + 2):
+            for (jx, jz) in _jgrid.get((gx, gz), []):
+                if (jx - x) ** 2 + (jz - z) ** 2 < d * d: return True
+    return False
+def _bld_dist(pt, lim):
+    best = lim
+    for j in TB.query(pt.buffer(lim)):
+        best = min(best, _bld[j].distance(pt))
+    return best
+def _free(pt, r=0.9):
+    b = pt.buffer(r)
+    if any(_asp[j].intersects(b) for j in TA.query(b)): return False
+    if any(_wat[j].intersects(b) for j in TW.query(b)): return False
+    if any(_bld[j].intersects(b) for j in TB.query(b)): return False
+    return inside([pt.x, pt.y])
+trees = []
+_tgrid = {}
+def _try(x, z, min_side):
+    k = (int(x // 7), int(z // 7))
+    for dx in (-1, 0, 1):
+        for dz in (-1, 0, 1):
+            for (tx, tz) in _tgrid.get((k[0] + dx, k[1] + dz), []):
+                if (tx - x) ** 2 + (tz - z) ** 2 < 6.5 ** 2: return
+    pt = _Pt(x, z)
+    if not _free(pt): return
+    if min_side and _bld_dist(pt, min_side) < min_side: return
+    _tgrid.setdefault(k, []).append((x, z)); trees.append([round(x, 1), round(z, 1)])
+MAJOR = ('trunk', 'primary', 'secondary', 'tertiary')
+for r in roads:
+    if r['bridge']: continue
+    if not (r['kind'] in MAJOR or (r['oneway'] and r['lanes'] >= 2) or r['lanes'] >= 4): continue
+    hw = _road_w(r) / 2 + 1.3
+    p = r['pts']; acc = 0.0; nxt = 5.0
+    for (ax, az), (bx, bz) in zip(p, p[1:]):
+        L = math.hypot(bx - ax, bz - az)
+        if L < 0.1: continue
+        tx, tz = (bx - ax) / L, (bz - az) / L
+        while nxt <= acc + L:
+            s = nxt - acc; cx, cz = ax + tx * s, az + tz * s
+            if not _near_junc(cx, cz, 14):
+                for sd in (-1, 1):
+                    # 歩道の幅(縁石から建物まで)が 4m 以上なら、縁石から 1.3m の所に植える
+                    _try(cx - tz * hw * sd, cz + tx * hw * sd, 2.7)
+            nxt += 9.0
+        acc += L
+# 丸の内: ビルのまわりの空き地の外周
+MARU = (139.7580, 35.6760, 139.7668, 35.6890)   # 経度・緯度の範囲
+mx0, mz0 = xy(MARU[3], MARU[0]); mx1, mz1 = xy(MARU[1], MARU[2])
+for poly in _bld:
+    c = poly.centroid
+    if not (mx0 < c.x < mx1 and mz0 < c.y < mz1) or poly.area < 1500: continue
+    ring = poly.buffer(4.0, join_style=2).exterior
+    n = max(1, int(ring.length // 9))
+    for k in range(n):
+        q = ring.interpolate(k * ring.length / n)
+        _try(q.x, q.y, 3.0)
+print('街路樹', len(trees))
+
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

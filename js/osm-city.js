@@ -553,6 +553,24 @@ function buildForests(data, g) {
   document.body.dataset.osmForests = String(n);
 }
 
+// ---- 街路樹(位置は osm_to_city.py が決める) ----
+function buildTrees(data, g) {
+  const T = data.trees || []; if (!T.length) return;
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.26, 3.4, 6), new THREE.MeshLambertMaterial({ color: 0x5b4636 }), T.length);
+  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ flatShading: true }), T.length);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Color();
+  T.forEach(([x, z], i) => {
+    const R = seeded(Math.round(x * 31 + z * 17)), s = 0.85 + R() * 0.35;
+    M.compose(P.set(x, 1.7 * s, z), Q.identity(), S.set(s, s, s)); trunk.setMatrixAt(i, M);
+    const r = 2.3 * s;
+    M.compose(P.set(x, 3.4 * s + r * 0.8, z), Q.setFromAxisAngle(S.set(0, 1, 0), R() * 6.28), S.set(r, r * 1.15, r)); crown.setMatrixAt(i, M);
+    C.setHSL(0.26 + R() * 0.06, 0.45, 0.28 + R() * 0.1); crown.setColorAt(i, C);
+  });
+  trunk.name = 'street-trees'; crown.name = 'street-trees';
+  g.add(trunk, crown);
+  document.body.dataset.osmTrees = String(T.length);
+}
+
 // ---- 1階は窓ではなく出入口(ガラス戸と看板の帯) ----
 // 壁の絵の上から、高さ 4.2m より下だけ描き替える。横方向の位置は uv.x × 絵の幅(m)。
 function addStorefront(mat, tileW) {
@@ -660,6 +678,7 @@ function makeBlocker(data) {
     add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
   }
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
+  for (const [x, z] of data.trees || []) add([[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]], [], 'b');   // 街路樹の幹
   const area = data.area;
   // 道路(橋の上を走れるように): 1m 角の升目に印
   const RW = Math.ceil(X1 - X0), RH = Math.ceil(Z1 - Z0), road = new Uint8Array(RW * RH);
@@ -724,6 +743,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl) {
     gm.renderOrder = -1.4;   // 空(-2)のあと、水の穴(-1.8 / -1.6)のあと
     buildWater(data, city);
     buildForests(data, city);
+    buildTrees(data, city);
     buildRoads(data, city);
     buildElevated(data, city);
     if (br) buildBridges(br, city);
