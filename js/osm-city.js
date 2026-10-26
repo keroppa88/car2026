@@ -349,7 +349,8 @@ function buildRoads(data, g) {
       }
     }
     // 横断歩道(橋の上には置かない): 片側2車線以上の道(一方通行の片側は2車線以上)の、交差点の手前
-    if (!r.bridge && (r.oneway ? r.lanes >= 2 : r.lanes >= 4)) {
+    // 交差点の中をつなぐ短い道(40m 未満)には置かない(斜めの横断歩道ができるので)
+    if (!r.bridge && L >= 40 && (r.oneway ? r.lanes >= 2 : r.lanes >= 4)) {
       for (const i of r.junctions) {
         const R = (J.get(p[i].join(',')) || half) + 1.5;
         for (const sc of [s[i] - R - 2.2, s[i] + R + 2.2]) {
@@ -357,6 +358,10 @@ function buildRoads(data, g) {
           const seg = cut(p, s, sc - 0.01, sc + 0.01); if (seg.length < 2) continue;
           const [[ax, az], [bx, bz]] = seg, dl = Math.hypot(bx - ax, bz - az) || 1, tx = (bx - ax) / dl, tz = (bz - az) / dl;
           if (shared(ax, az, rid)) continue;
+          // ほかの交差点の中(すぐ近く)なら置かない
+          let inJ = false;
+          for (const [k, RJ] of J) { const [jx, jz] = k.split(',').map(Number); if (jx === p[i][0] && jz === p[i][1]) continue; if (Math.hypot(jx - ax, jz - az) < RJ + 6) { inJ = true; break; } }
+          if (inJ) continue;
           const ang = Math.atan2(tx, tz);
           // 同じ向きの横断歩道が近くにあれば作らない
           if (placedCw.some(c => {
