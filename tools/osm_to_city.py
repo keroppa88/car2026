@@ -1237,6 +1237,16 @@ if TSUKIJI is not None:
     _wet = _BU0([_TP(w['o']).buffer(0) for w in water if len(w['o']) >= 3] + [_TL(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
     _hama = [_TP(p_['o']).buffer(0) for p_ in parks if len(p_['o']) >= 3 and _TP(p_['o']).buffer(0).area > 50000]
     _land = _TS.difference(_wet).difference(_BU0(_hama) if _hama else _TS.buffer(-1e4))
+    # 跡地の区画の残り(道路と建物に囲まれた空き地)も一緒に: 道路・建物のすき間で、跡地につながる所
+    from shapely.geometry import box as _TB
+    _blk = _TB(-320, 1120, 340, 1530).intersection(_TP(AREA).buffer(0)).difference(_wet)
+    _isnew = lambda r: [-305.0, 1496.0] in r['pts'] or [-24.0, 1738.0] in r['pts']
+    _rd = _BU0([_TL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 4.5) for r in roads if len(r['pts']) > 1 and not _isnew(r)])
+    _bl = _BU0([_TP(b['p']).buffer(0).buffer(6) for b in buildings if len(b['p']) >= 3 and _TP(b['p']).buffer(0).intersects(_blk) and not _TS.intersects(_TP(b['p']).buffer(0))])
+    _free = _blk.difference(_rd).difference(_bl)
+    _add = [g2 for g2 in (getattr(_free, 'geoms', None) or [_free]) if g2.geom_type == 'Polygon' and g2.area > 2000 and g2.distance(_land) < 12]
+    if _add: _land = _BU0([_land] + _add)
+    print('築地: 区画の残りも空き地に', len(_add), round(sum(g2.area for g2 in _add)))
     def _inT(o):
         try: return _TP(o).buffer(0).intersection(_land).area > 0.3 * _TP(o).buffer(0).area
         except Exception: return False
