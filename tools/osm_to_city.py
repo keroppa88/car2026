@@ -1319,18 +1319,21 @@ if TSUKIJI is not None:
     # 南の岸壁(グレーの細長い陸)が跡地につながる所はコンクリートのグレー
     _qw = _TL([(-230, 1980), (-60, 1795)]).buffer(16, cap_style=2).intersection(_land)
     for g2 in (getattr(_qw, 'geoms', None) or [_qw]):
-        if g2.geom_type == 'Polygon' and g2.area > 30: piers.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': []})
+        if False and g2.geom_type == 'Polygon' and g2.area > 30: piers.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': []})
     _land = _land.difference(_qw.buffer(0.05))
     # 細く突き出した所(岸壁の付け根)はコンクリートのグレー
     _thin = _land.difference(_land.buffer(-9, join_style=2).buffer(9, join_style=2))
     for g2 in (getattr(_thin, 'geoms', None) or [_thin]):
-        if g2.geom_type == 'Polygon' and g2.area > 150:
+        if False and g2.geom_type == 'Polygon' and g2.area > 150:   # 下の地面(グレー)をそのまま見せる
             piers.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': []})
     _land = _land.difference(_thin.buffer(0.05))
     for g2 in (getattr(_land, 'geoms', None) or [_land]):
         if g2.geom_type == 'Polygon' and g2.area > 100:
             beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in g2.interiors]})
     print('築地: 建物を消して砂色の空き地に', _n0 - len(buildings))
+    _tip = _TB(-290, 1895, -215, 1965)   # 岸壁の突端: 色の違う敷地・緑地をなくして地面のグレー一色に
+    lots[:] = [q for q in lots if not _TP(q['o']).buffer(0).intersects(_tip)]
+    parks[:] = [q for q in parks if not (_TP(q['o']).buffer(0).intersects(_tip) and _TP(q['o']).buffer(0).area < 5000)]
 # 走れる範囲の外にぽつんとある駐車場・小さな緑地は消す(どこにもつながっていないので)
 if AREA:
     from shapely.geometry import Polygon as _OP

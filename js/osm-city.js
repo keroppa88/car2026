@@ -366,6 +366,7 @@ function placeCrosswalks(data, shared, J, white) {
   const road = (x, z) => shared(x, z, -1);
   const placed = [];
   const cands = [];
+  const brEnds = []; for (const r of data.roads) if (r.bridge && r.pts.length > 1) brEnds.push(r.pts[0], r.pts.at(-1));
   data.roads.forEach((r) => {
     if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;
     const p = r.pts, s = cumLen(p), L = s.at(-1); if (L < 30) return;
@@ -401,6 +402,7 @@ function placeCrosswalks(data, shared, J, white) {
     if (stripes.length < 4 || bad > stripes.length * 0.12) continue;
     const mo = (e1 - e2) / 2, cx = ax + nx * mo, cz = az + nz * mo, ang = Math.atan2(tx, tz);
     if (placed.some((q) => Math.abs(Math.sin(q[2] - ang)) < 0.35 && Math.abs((q[0] - cx) * tx + (q[1] - cz) * tz) < 40 && Math.abs((q[0] - cx) * nx + (q[1] - cz) * nz) < W / 2 + 10)) continue;
+    if (brEnds.some(([x, z]) => Math.hypot(x - cx, z - cz) < 35)) continue;   // 橋のたもとには置かない
     placed.push([cx, cz, ang]);
     for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white);
     break;
@@ -1705,7 +1707,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildWater', () => buildWater(data, city));
     if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
     if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x4b4c4e));   // 岩場(黒っぽいグレー)
-    if (data.piers && data.piers.length) city.add(polyFill(data.piers, 0.028, 0x9a9b98));   // 堤防・突堤(グレー)
+    if (data.piers && data.piers.length) city.add(polyFill(data.piers, 0.028, data.woods && data.woods.length ? 0x9a9b98 : WALK));   // TOKYO は地面と同じグレー   // 堤防・突堤(グレー)
     if (data.parking && data.parking.length) city.add(polyFill(data.parking, 0.03, ASPHALT));   // 駐車場(アスファルトの面)
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     T('buildTrees', () => buildTrees(data, city));
