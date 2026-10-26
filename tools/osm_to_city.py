@@ -143,6 +143,7 @@ def lanes_of(t, kind):
 roads, elevated, buildings, water, parks, rivers, beaches, rocks = [], [], [], [], [], [], [], []
 piers = []
 parking = []   # 駐車場(アスファルトの面)
+_stn_rails = []   # 東京駅の構内の線路(低い建物で埋める)
 oiso_grey = []
 _sea_woods = []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
@@ -237,9 +238,22 @@ for wid, (refs, t) in WAYS.items():
             rivers.append({'pts': cp, 'w': w})
         continue
     rw = t.get('railway')
+    if LMK and rw == 'rail' and t.get('tunnel') != 'yes':
+        _stn_rails.append(pts)
     if rw in ('rail', 'light_rail') and t.get('tunnel') != 'yes' and layer_of(t) >= 1 and t.get('highspeed') == 'yes':   # 高架は新幹線のみ
         for cp, _ in clip_line(pts, [r for r in refs if r in N]):
             rails.append({'pts': cp, 'h': RAIL_H.get(min(layer_of(t), 3))})
+        continue
+    # 在来線の高架も新幹線とまとめて幅広いれんがの高架にする(東京駅の構内は除く)
+    if LMK and rw == 'rail' and t.get('tunnel') != 'yes' and (layer_of(t) >= 1 or t.get('bridge') in ('yes', 'viaduct')):
+        for cp, _ in clip_line(pts, [r for r in refs if r in N]):
+            run = []
+            for p in cp:
+                if not (-440 < p[0] < -80 and -775 < p[1] < -330): run.append(p)   # 駅の構内以外
+                else:
+                    if len(run) >= 2: rails.append({'pts': run, 'h': RAIL_H[1], 'north': 1})
+                    run = []
+            if len(run) >= 2: rails.append({'pts': run, 'h': RAIL_H[1], 'north': 1})
         continue
     if rw == 'platform' and refs[0] == refs[-1] and len(pts) >= 4 and t.get('tunnel') != 'yes' and layer_of(t) >= 0:
         if not CLIP or inside(centroid(pts[:-1])): platforms.append({'o': pts[:-1], 'h': []})
@@ -529,7 +543,9 @@ if rails:
     from shapely.geometry import LineString as _LS, Polygon as _PG
     from shapely.ops import unary_union as _UU
     import mapbox_earcut as _ec, numpy as _np
-    _u = _UU([_LS(r['pts']).buffer(2.7, cap_style=2) for r in rails if len(r['pts']) > 1]).buffer(4.0).buffer(-4.0)
+    _u = _UU([_LS(r['pts']).buffer(2.7, cap_style=2) for r in rails if len(r['pts']) > 1 and not r.get('north')]).buffer(4.0).buffer(-4.0)
+    _un = [_LS(r['pts']).buffer(3.5, cap_style=2) for r in rails if len(r['pts']) > 1 and r.get('north')]
+    if _un: _u = _UU([_u, _UU(_un).buffer(10, join_style=2).buffer(-10, join_style=2)]).buffer(1).buffer(-1)
     _rp = [(x, z, h) for r in rails for (x, z), h in zip(r['pts'], r.get('hs') or [r['h']] * len(r['pts']))]
     _rg = {}
     for x, z, h in _rp: _rg.setdefault((int(x // 25), int(z // 25)), []).append((x, z, h))
@@ -561,6 +577,26 @@ def _near_pf(o):
     cx, cz = centroid(o)
     return any(min((p[0] - cx) ** 2 + (p[1] - cz) ** 2 for p in pf['o']) < 40 ** 2 for pf in platforms)
 canopies[:] = [c for c in canopies if _near_pf(c['o'])]
+
+# 東京駅の構内(駅舎と北の高架のあいだ): 線路のすき間を低い建物で埋める
+if LMK and _stn_rails:
+    from shapely.geometry import LineString as _QL, Polygon as _QP, box as _QB
+    from shapely.ops import unary_union as _QU
+    _box = _QB(-430, -800, -90, -340)
+    _band = _QU([_QL(p).buffer(3) for p in _stn_rails if len(p) > 1]).buffer(8, join_style=2).buffer(-8, join_style=2).intersection(_box)
+    _cut = []
+    _cut += [_QP(q['o']).buffer(1.5) for q in platforms if len(q['o']) >= 3] + [_QP(c['o']).buffer(1.5) for c in canopies if len(c['o']) >= 3]
+    _cut += [_QL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 3) for r in roads if len(r['pts']) > 1]
+    _cut += [_QP(rg).buffer(0).buffer(2) for L_ in json.load(open(LMK))['landmarks'] if '東京駅' in L_['label'] for rg in L_['fp'] if len(rg) >= 3]
+    _fill = _band.difference(_QU(_cut))
+    _nl = 0
+    for q in (getattr(_fill, 'geoms', None) or [_fill]):
+        q = q.buffer(-1, join_style=2)
+        for q2 in (getattr(q, 'geoms', None) or [q]):
+            if q2.geom_type != 'Polygon' or q2.area < 80: continue
+            q2 = q2.simplify(0.5)
+            buildings.append({'p': [[round(x, 2), round(z, 2)] for x, z in list(q2.exterior.coords)[:-1]], 'h': 7.0, 'holes': []}); _nl += 1
+    print('東京駅の構内に低い建物', _nl)
 
 woods = []
 # OSM の森・林
