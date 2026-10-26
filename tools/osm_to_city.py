@@ -43,8 +43,9 @@ if len(sys.argv) == 4 and sys.argv[3].endswith('.json'):
     M = 60   # 範囲の外側に少し余白(川の水面などを見せる)
     if LMK and 'tokyo-center' in sys.argv[3]:   # 築地の跡地(浜離宮のとなり)も走れる範囲に
         from shapely.geometry import Polygon as _AP0
-        TSUKIJI = _AP0([(-330, 1492), (-120, 1492), (60, 1470), (250, 1480), (250, 1850), (-450, 1850), (-450, 1520)])
+        TSUKIJI = _AP0([(-490, 1462), (-330, 1458), (-310, 1455), (-120, 1492), (60, 1470), (250, 1480), (250, 1850), (-490, 1850)])
         _au = _AP0(AREA).union(TSUKIJI.buffer(0))
+        _au = _au.buffer(3, join_style=2).buffer(-3, join_style=2)   # 細い切れ込みを埋める
         if _au.geom_type == 'Polygon': AREA = [[round(x, 2), round(z, 2)] for x, z in list(_au.exterior.coords)[:-1]]
     else: TSUKIJI = None
     X0, Z0 = min(p[0] for p in AREA) - M, min(p[1] for p in AREA) - M
@@ -459,6 +460,17 @@ if TSUKIJI is not None:
             pts = [[round(x, 2), round(z, 2)] for x, z in g2.coords]
             _new.append({**r, 'pts': pts, 'nodes': [nmap.get((p[0], p[1])) for p in pts]})
     roads[:] = _new
+    # 交差点から跡地へ下りる上下線(緑地帯つき)と、わきの細い道は外す
+    _inb = lambda r, x0, z0, x1, z1: all(x0 <= x <= x1 and z0 <= z <= z1 for x, z in r['pts'])
+    roads[:] = [r for r in roads if not (not r['bridge'] and r['name'] == '環二通り' and _inb(r, -340, 1436, -285, 1500))
+                and not (r['kind'] == 'service' and _inb(r, -415, 1445, -385, 1490))]
+    def _pt(p):   # 一番近い道路の点(節)
+        best = None
+        for r in roads:
+            for k, q in enumerate(r['pts']):
+                d_ = math.dist(q, p)
+                if r['nodes'][k] is not None and (best is None or d_ < best[0]): best = (d_, q, r['nodes'][k])
+        return best
     def _end(p):
         best = None
         for r in roads:
@@ -467,12 +479,12 @@ if TSUKIJI is not None:
                 if best is None or d_ < best[0]: best = (d_, r['pts'][k], r['nodes'][k])
         return best
     _b1, _b2 = _end((-7, 1747)), _end((-16, 1754))   # 築地大橋の上下線の端
-    _c1, _c2 = _end((-299.5, 1492.0)), _end((-309.8, 1492.0))   # 街の交差点の上下線の端
-    P1, P2 = [-24.0, 1738.0], [-305.0, 1496.0]
+    _cj = _pt((-319, 1439))   # 新大橋通りとの交差点
+    P1 = [-24.0, 1738.0]
     mk = lambda pts, nodes, ln_, ow: {'pts': pts, 'lanes': ln_, 'oneway': ow, 'kind': 'primary', 'bridge': False, 'name': '環二通り', 'nodes': nodes}
-    roads.append(mk([P2, P1], ['tsukiji-c', 'tsukiji-b'], 2, False))
+    roads.append(mk([list(_cj[1]), P1], [_cj[2], 'tsukiji-b'], 2, False))
     for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 2, False))
-    for (_, pt, nd) in (_c1, _c2): roads.append(mk([list(pt), P2], [nd, 'tsukiji-c'], 2, False))
+    _c1 = _cj
     print('築地: 道路を外す', _n0 - len(roads) + 5, '/ まっすぐな道でつなぐ', round(_b1[0], 1), round(_c1[0], 1))
 
 # 交差点の節(2本以上の車道が共有する点)
@@ -1239,9 +1251,9 @@ if TSUKIJI is not None:
     _land = _TS.difference(_wet).difference(_BU0(_hama) if _hama else _TS.buffer(-1e4))
     # 跡地の区画の残り(道路と建物に囲まれた空き地)も一緒に: 道路・建物のすき間で、跡地につながる所
     from shapely.geometry import box as _TB
-    _blk = _TB(-320, 1120, 340, 1530).intersection(_TP(AREA).buffer(0)).difference(_wet)
-    _isnew = lambda r: [-305.0, 1496.0] in r['pts'] or [-24.0, 1738.0] in r['pts']
-    _rd = _BU0([_TL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 4.5) for r in roads if len(r['pts']) > 1 and not _isnew(r)])
+    _blk = _TB(-500, 1120, 340, 1560).intersection(_TP(AREA).buffer(0)).difference(_wet)
+    _isnew = lambda r: [-24.0, 1738.0] in r['pts']
+    _rd = _BU0([_TL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 1.0) for r in roads if len(r['pts']) > 1 and not _isnew(r)])
     _bl = _BU0([_TP(b['p']).buffer(0).buffer(6) for b in buildings if len(b['p']) >= 3 and _TP(b['p']).buffer(0).intersects(_blk) and not _TS.intersects(_TP(b['p']).buffer(0))])
     _free = _blk.difference(_rd).difference(_bl)
     _add = [g2 for g2 in (getattr(_free, 'geoms', None) or [_free]) if g2.geom_type == 'Polygon' and g2.area > 2000 and g2.distance(_land) < 12]
