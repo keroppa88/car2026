@@ -651,7 +651,18 @@ function buildBridges(br, g) {
       for (const P of [A, B, C]) { o.p.push(P.x, P.y, P.z); o.n.push(N.x, N.y, N.z); }
     }
   };
-  for (const b of br.bridges) { put(b.top, top); put(b.side, side); }
+  // 橋脚(縦に長い面)は描かない: 高さの幅が 4m 以上で、横の幅より縦が長い三角形を落とす
+  const noPier = (arr) => {
+    const out = [];
+    for (let k = 0; k + 8 < arr.length; k += 9) {
+      const ys = [arr[k + 1], arr[k + 4], arr[k + 7]], xs = [arr[k], arr[k + 3], arr[k + 6]], zs = [arr[k + 2], arr[k + 5], arr[k + 8]];
+      const dy = Math.max(...ys) - Math.min(...ys), dh = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
+      if (dy > 4 && dy > dh * 0.5) continue;
+      for (let q = 0; q < 9; q++) out.push(arr[k + q]);
+    }
+    return out;
+  };
+  for (const b of br.bridges) { put(noPier(b.top), top); put(noPier(b.side), side); }
   const m1 = solidMesh(top, new THREE.MeshLambertMaterial({ color: 0x5d6064, side: THREE.DoubleSide })); m1.name = 'shutoko-deck'; g.add(m1);
   const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }
