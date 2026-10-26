@@ -768,8 +768,14 @@ function buildBridges(br, g, area) {
     return out;
   };
   // 走れる範囲の外にぽつんとある高架(どこにもつながっていない)は描かない
+  // 範囲(+30m)の外へはみ出した部分は描かない(地図の端で宙に浮く高架をなくす)
+  const nearArea = (x, z) => { if (!area) return true; if (pointIn(area, x, z)) return true; for (const [dx, dz] of [[30, 0], [-30, 0], [0, 30], [0, -30]]) if (pointIn(area, x + dx, z + dz)) return true; return false; };
+  const clipArea = (arr) => { const out = []; for (let k = 0; k + 8 < arr.length; k += 9) { const cx = (arr[k] + arr[k + 3] + arr[k + 6]) / 3, cz = (arr[k + 2] + arr[k + 5] + arr[k + 8]) / 3; if (nearArea(cx, cz)) for (let q = 0; q < 9; q++) out.push(arr[k + q]); } return out; };
   const inArea = (b) => !area || b.fp.some((r) => r.some(([x, z]) => pointIn(area, x, z)));
-  for (const b of br.bridges) { if (!inArea(b)) continue; put(noPier(b.top), top); put(noPier(b.side), side); }
+  for (const b of br.bridges) {
+    if (b.kind === 'pier') { put(b.top, side); continue; }   // 水の上のコンクリートの面
+    if (!inArea(b)) continue; put(clipArea(noPier(b.top)), top); put(clipArea(noPier(b.side)), side);
+  }
   const m1 = solidMesh(top, new THREE.MeshLambertMaterial({ color: 0x5d6064, side: THREE.DoubleSide })); m1.name = 'shutoko-deck'; g.add(m1);
   const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }

@@ -483,7 +483,7 @@ if TSUKIJI is not None:
     P1 = [-24.0, 1738.0]
     mk = lambda pts, nodes, ln_, ow: {'pts': pts, 'lanes': ln_, 'oneway': ow, 'kind': 'primary', 'bridge': False, 'name': '環二通り', 'nodes': nodes}
     roads.append(mk([list(_cj[1]), P1], [_cj[2], 'tsukiji-b'], 2, False))
-    for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 2, False))
+    for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 3, True))   # 橋の上下線の幅に広げる
     _c1 = _cj
     print('築地: 道路を外す', _n0 - len(roads) + 5, '/ まっすぐな道でつなぐ', round(_b1[0], 1), round(_c1[0], 1))
 
@@ -542,6 +542,25 @@ if SEA:
         r['junctions'] = sorted({0 if 0 in r['junctions'] else -1} - {-1} | {idx[k] for k, b_ in enumerate(segs[1:]) if b_ in r['junctions']})
         r['pts'] = _sout
     print('湘南: 短い行き止まり・孤立した道を外す', _n0 - len(roads))
+
+# TOKYO: どこにもつながっていない道路(小さな道路網)は外す
+if LMK:
+    def _len2(r): return sum(math.dist(a, b) for a, b in zip(r['pts'], r['pts'][1:]))
+    _par = list(range(len(roads)))
+    def _f2(i):
+        while _par[i] != i: _par[i] = _par[_par[i]]; i = _par[i]
+        return i
+    _at = {}
+    for i, r in enumerate(roads):
+        for p in r['pts']:
+            k = (round(p[0], 1), round(p[1], 1))
+            if k in _at: _par[_f2(i)] = _f2(_at[k])
+            else: _at[k] = i
+    _sz = {}
+    for i, r in enumerate(roads): _sz[_f2(i)] = _sz.get(_f2(i), 0) + _len2(r)
+    _n1 = len(roads)
+    roads[:] = [r for i, r in enumerate(roads) if _sz[_f2(i)] > 1500]
+    print('TOKYO: ほかとつながらない道路を外す', _n1 - len(roads), sorted((round(v) for v in _sz.values()), reverse=True)[:6])
 
 # 線路の高さ: 首都高の高さの 4/5 くらい。首都高と交わる所では線路が下をくぐる
 ELEV_H = 9.5   # 本物の形が無い首都高(OSM の線から作る板)の高さ
@@ -1284,7 +1303,13 @@ if AREA:
         except Exception: return False
     _n0 = len(parking) + len(parks)
     parking[:] = [p_ for p_ in parking if not _outside(p_['o'])]
-    parks[:] = [p_ for p_ in parks if not (_outside(p_['o']) and _OP(p_['o']).buffer(0).area < 20000)]   # 皇居などの大きな緑地は残す
+    _OA2 = _OP(AREA).buffer(60)
+    def _far(o):
+        try: return not _OP(o).buffer(0).intersects(_OA2)
+        except Exception: return False
+    parks[:] = [p_ for p_ in parks if not (_outside(p_['o']) and (_OP(p_['o']).buffer(0).area < 20000 or _far(p_['o'])))]   # 範囲から離れた緑地も消す(皇居などとなりの大きな緑地は残す)
+    woods[:] = [w_ for w_ in woods if not _far(w_['o'])] if woods and isinstance(woods[0], dict) else woods
+    trees[:] = [tr for tr in trees if _OA2.contains(__import__('shapely.geometry', fromlist=['Point']).Point(tr[0], tr[1]))]
     print('範囲の外の駐車場・小さな緑地を消す', _n0 - len(parking) - len(parks))
 json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'yaesu': yaesu if 'yaesu' in globals() else None, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
