@@ -508,7 +508,8 @@ function buildRailways(data, g, onRoad) {
           const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
           if (overWater(qx, qz)) { open = true; break; }
           // 道路が高架の下をくぐる所だけあける(高架に沿って並ぶ道路では壁を残す)
-          if (onRoad(qx, qz) && onRoad(mx + nx * 2 + tx * d, mz + nz * 2 + tz * d) && onRoad(mx - nx * 7 + tx * d, mz - nz * 7 + tz * d)) { open = true; break; }
+          // 道路がくぐる所はあける(線路わきの道路は構築物の外に出してあるので、構築物の縁にかかる道路はくぐる道路)
+          if (onRoad(qx, qz) || onRoad(mx + tx * d, mz + tz * d) || onRoad(mx + nx * 1.5 + tx * d, mz + nz * 1.5 + tz * d)) { open = true; break; }
         }
         const y0 = open ? Math.min(h0, h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
         deck.p.push(x0, y0, z0, x1, y0, z1, x1, h1, z1, x0, y0, z0, x1, h1, z1, x0, h0, z0);
@@ -543,7 +544,7 @@ function buildRailways(data, g, onRoad) {
           const H = underVia((x0 + x1) / 2, (z0 + z1) / 2); if (!H) continue;
           // 交差する別の道路の上には壁を立てない(交差点がふさがらないように)
           const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, nx = (z1 - z0) / (L / n), nz = -(x1 - x0) / (L / n);
-          if (onRoad(mx, mz) || onRoad(mx + nx * sd * 1.2, mz + nz * sd * 1.2)) continue;
+          if (onRoad(mx, mz) || [1.2, 4, 8, 12].some((k) => onRoad(mx + nx * sd * k, mz + nz * sd * k))) continue;   // 中央分離帯など道路と道路のあいだには立てない(橋脚のように見えるので)
           const y1 = H - 1.6;
           deck.p.push(x0, 0, z0, x1, 0, z1, x1, y1, z1, x0, 0, z0, x1, y1, z1, x0, y1, z0);
           for (let q = 0; q < 6; q++) deck.n.push(-nx * sd, 0, -nz * sd);

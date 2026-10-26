@@ -545,9 +545,19 @@ if rails:
     if LMK and _un:
         # 線路わきの空き地も埋める: 線路から 30m までを敷地とし、線路に沿って並ぶ道路と建物の手前まで広げる(交差する道路・川の上はそのまま高架)
         from shapely.strtree import STRtree as _ST
+        # 線路の下を線路に沿って走る道路は外す(構築物を分断しないように。シンプルに)
+        _core = _u.buffer(1)
+        _n0 = len(roads)
+        def _under(r):
+            if len(r['pts']) < 2: return False
+            ln = _LS(r['pts']); inn = ln.intersection(_core).length
+            return inn > 40 and inn > 0.3 * ln.length
+        roads[:] = [r for r in roads if not _under(r)]
+        print('線路の下を沿って走る道路を外す', _n0 - len(roads))
         _rl = [_LS(r['pts']) for r in rails if len(r['pts']) > 1]
         _rt = _ST(_rl)
         _wide = _UU(_rl).buffer(30, join_style=2)
+        _trk0 = _UU(_rl).buffer(2)
         _side = []
         for r in roads:
             p = r['pts']
@@ -555,7 +565,7 @@ if rails:
                 L = math.hypot(bx - ax, bz - az)
                 if L < 0.5: continue
                 seg = _LS([(ax, az), (bx, bz)])
-                if not seg.intersects(_wide): continue
+                if not seg.intersects(_wide) or seg.intersects(_trk0): continue   # 線路と交差する道路(くぐる道路)は横の道路ではない
                 near = _rl[_rt.nearest(seg)]
                 q = near.interpolate(near.project(seg.interpolate(0.5, normalized=True)))
                 d0 = near.project(q); q2 = near.interpolate(min(near.length, d0 + 2)); q1 = near.interpolate(max(0, d0 - 2))
@@ -568,7 +578,25 @@ if rails:
         # 線路の帯につながっている部分だけ
         _fillu = _UU([g2 for g2 in (getattr(_fillu, 'geoms', None) or [_fillu]) if g2.intersects(_u)])
         _u = _UU([_u, _fillu.intersection(_u.buffer(30))]).buffer(2, join_style=2).buffer(-2, join_style=2)
-        _u = _u.buffer(-4, join_style=2).buffer(4, join_style=2)   # 細い切れ端はなくす
+        # 太い1本にする: すき間を埋め、枝・突起を落とし、いちばん大きな1つだけ残す
+        _u = _u.buffer(20, join_style=1).buffer(-20, join_style=1)
+        if _side: _u = _u.difference(_UU(_side))   # 線路に沿う道路(とその歩道)の上には出さない
+        # 既存の建物には食い込まない(線路の上に乗っている建物だけは外す)
+        _track = _UU(_rl).buffer(4)
+        _keepb, _cutb = [], []
+        for b in buildings:
+            if len(b['p']) < 3: _keepb.append(b); continue
+            pb = _PG(b['p']).buffer(0)
+            if not pb.intersects(_u): _keepb.append(b); continue
+            if pb.intersects(_track): continue   # 線路にかかる建物はあり得ないので外す
+            _keepb.append(b); _cutb.append(pb.buffer(1.5, join_style=2))
+        print('線路の上の建物を外す', len(buildings) - len(_keepb))
+        buildings[:] = _keepb
+        if _cutb: _u = _u.difference(_UU(_cutb))
+        _u = _u.buffer(-13, join_style=1).buffer(13, join_style=1)
+        _parts = [g2 for g2 in (getattr(_u, 'geoms', None) or [_u]) if g2.geom_type == 'Polygon']
+        print('構築物の切れ目', sorted([round(g2.area) for g2 in _parts], reverse=True)[:8])
+        _u = _UU([_PG(g2.exterior) for g2 in _parts if g2.area > 3000]).simplify(1.0)
         _bl_ids = [b for b in buildings if len(b['p']) >= 3 and _PG(b['p']).buffer(0).within(_u)]
         print('線路わきの空き地を埋める')
     _u = _u.difference(_UU([_PG(rg).buffer(0).buffer(1.5) for L_ in json.load(open(LMK))['landmarks'] if '丸の内駅舎' in L_['label'] for rg in L_['fp'] if len(rg) >= 3]))
