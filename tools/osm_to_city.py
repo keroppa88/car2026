@@ -555,10 +555,19 @@ if rails:
         # 線路の下を線路に沿って走る道路は外す(構築物の中に入ってしまうので)
         _core = _u.buffer(-1)
         _n0 = len(roads)
+        _rls = [_LS(r['pts']) for r in rails if len(r['pts']) > 1]
         def _under(r):
             if len(r['pts']) < 2: return False
             ln = _LS(r['pts']); inn = ln.intersection(_core).length
-            return inn > 25 and inn > 0.5 * ln.length
+            if not (inn > 25 and inn > 0.5 * ln.length): return False
+            # 線路と平行に走る道路だけ外す(線路をくぐって横切る道路は残す)
+            from shapely.strtree import STRtree as _ST2
+            a_, b_ = r['pts'][0], r['pts'][-1]; L_ = math.dist(a_, b_) or 1
+            m_ = ln.interpolate(0.5, normalized=True)
+            nr = min(_rls, key=lambda q: q.distance(m_)); d0 = nr.project(m_)
+            p1, p2 = nr.interpolate(max(0, d0 - 5)), nr.interpolate(min(nr.length, d0 + 5))
+            tl = math.hypot(p2.x - p1.x, p2.y - p1.y) or 1
+            return abs(((b_[0] - a_[0]) * (p2.x - p1.x) + (b_[1] - a_[1]) * (p2.y - p1.y)) / (L_ * tl)) > 0.8
         roads[:] = [r for r in roads if not _under(r)]
         print('線路の下を沿って走る道路を外す', _n0 - len(roads))
         # 構築物にかかる建物は外す
@@ -612,6 +621,7 @@ if rails:
                      for r in roads if len(r['pts']) > 1 and not r['bridge']]
                     + [_PG(w['o']).buffer(0) for w in water if len(w['o']) >= 3]
                     + [_LS(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
+        _cutR = _cutR.buffer(5, join_style=2).buffer(-5, join_style=2)   # 上下線のあいだ(中央分離帯)も一緒にあける(真ん中に柱を残さない)
         _bfill = _UU([_PG(g2.exterior) for g2 in _G(_u) if g2.geom_type == 'Polygon'])   # れんがの中の穴は埋める
         _solid = _bfill.difference(_cutR)
         _ceil = _bfill.intersection(_cutR)
