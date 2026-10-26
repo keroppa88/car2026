@@ -604,7 +604,7 @@ export const MAP_CONFIGS = {
     preview: 'picture/nihonbashi.png',
     cityData: 'map/nihonbashi-city.json?v=20261026-21',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
-    landmarkData: 'map/nihonbashi-landmarks.json?v=20261026-1',
+    landmarkData: 'map/nihonbashi-landmarks.json?v=20261026-4',
     // 首都高・東京高速道路(KK線)は PLATEAU の橋梁モデルの形
     bridgeData: 'map/nihonbashi-bridges.json?v=20261025-2',
     scale: 1,
@@ -616,12 +616,12 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // 永代通り(大手町方面・一方通行3車線)の真ん中の車線。東京駅の北東
-    spawnReferenceX: -253.2,
-    spawnReferenceZ: -926.7,
+    // コレド日本橋の前(永代通り・茅場町方面・一方通行3車線の真ん中の車線)
+    spawnReferenceX: 403.9,
+    spawnReferenceZ: -695.7,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
-    spawnHeading: -1.83,
+    spawnHeading: 1.124,
     treePlacement: { ...commonTrees, enabled: false, seed: 20261024 },
     mapWhiteGlow: false,
     roadNightEmissive: false,

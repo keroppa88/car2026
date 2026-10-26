@@ -348,60 +348,63 @@ function buildRoads(data, g) {
         for (const sd of [-1, 1]) ribbon(offset(body, sd * (half - 0.4)), 0.12, 0.08, white);   // 路側帯
       }
     }
-    // 横断歩道(橋の上には置かない): 片側2車線以上の道(一方通行の片側は2車線以上)の、交差点の手前
-    // 交差点の中をつなぐ短い道(40m 未満)には置かない(斜めの横断歩道ができるので)
-    if (!r.bridge && L >= 40 && (r.oneway ? r.lanes >= 2 : r.lanes >= 4)) {
-      for (const i of r.junctions) {
-        const R = (J.get(p[i].join(',')) || half) + 1.5;
-        for (const sc of [s[i] - R - 2.2, s[i] + R + 2.2]) {
-          if (sc < 4 || sc > L - 4) continue;
-          const seg = cut(p, s, sc - 0.01, sc + 0.01); if (seg.length < 2) continue;
-          const [[ax, az], [bx, bz]] = seg, dl = Math.hypot(bx - ax, bz - az) || 1, tx = (bx - ax) / dl, tz = (bz - az) / dl;
-          if (shared(ax, az, rid)) continue;
-          // ほかの交差点の中(すぐ近く)なら置かない
-          let inJ = false;
-          for (const [k, RJ] of J) { const [jx, jz] = k.split(',').map(Number); if (jx === p[i][0] && jz === p[i][1]) continue; if (Math.hypot(jx - ax, jz - az) < RJ + 6) { inJ = true; break; } }
-          if (inJ) continue;
-          const ang = Math.atan2(tx, tz);
-          // 横断歩道: 道路を横切る線の上で、車道の端から端まで(中央分離帯をはさむ上下線もまとめて)。
-          // 両端が歩道(車道でない所)に着き、車道の部分が全部まっすぐな道の上にある時だけ置く。
-          const road = (x, z) => shared(x, z, -1);
-          const edge = (sd) => {   // 中心から sd 方向へ、車道が途切れて 8m 以上続かなくなる所まで
-            let last = 0, d = 0;
-            while (d < 45) { d += 0.5; if (road(ax + tz * d * sd, az - tx * d * sd)) last = d; else if (d - last > 8) break; }
-            return last;
-          };
-          const e1 = edge(1), e2 = edge(-1);
-          if (e1 + e2 < 5 || e1 + e2 > 45) continue;
-          let ok = true;
-          const segs = [];
-          for (let o = -e2; o <= e1 + 1e-6 && ok; o += 0.9) {
-            const x = ax + tz * o, z = az - tx * o;
-            if (!road(x, z)) continue;
-            // 横断歩道の幅(前後 ±2.5m)が全部車道の上(交差点の角にかからない)
-            if (!road(x + tx * 2.5, z + tz * 2.5) || !road(x - tx * 2.5, z - tz * 2.5)) ok = false;
-            segs.push(o);
-          }
-          // 両端の先は歩道(前後どちらにずらしても車道でない)
-          const away = sc > s[i] ? 1 : -1;   // 交差点から離れる向き
-          for (const [o, sd] of [[e1, 1], [-e2, -1]]) for (const dd of [0, 3 * away, 6 * away]) {
-            const x = ax + tz * (o + sd * 2.5) + tx * dd, z = az - tx * (o + sd * 2.5) + tz * dd;
-            if (road(x, z)) ok = false;
-          }
-          if (!ok || !segs.length) continue;
-          const mo = (e1 - e2) / 2, cx = ax + tz * mo, cz = az - tx * mo;
-          // 同じ向きの横断歩道が近くにあれば作らない(上下線で2回作らない)
-          if (placedCw.some(c => Math.abs(Math.sin(c[2] - ang)) < 0.3 && Math.hypot(c[0] - cx, c[1] - cz) < 25)) continue;
-          placedCw.push([cx, cz, ang]);
-          for (const o of segs) rect(ax + tz * o, az - tx * o, ang, 4, 0.45, 0.085, white);
-        }
-      }
-    }
   });
+  placeCrosswalks(data, shared, J, white);
   g.add(flatMesh(walk, SIDEWALK_COLOR), flatMesh(curb, 0x9d9e9b));
   if (parapet.p.length) g.add(solidMesh(parapet, new THREE.MeshLambertMaterial({ color: 0xb3ada1 })));
   if (median.p.length) g.add(solidMesh(median, new THREE.MeshLambertMaterial({ color: 0x8e9196 })));   // 橋の真ん中の壁(グレー)
   g.add(flatMesh(deck, SIDEWALK_COLOR), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
+}
+
+// ---- 横断歩道: 地図の線からではなく、決まりで置き直す ----
+//  候補: (1) 交差点の手前(交差点の半径 + 4m)、(2) 交差点のない長い直線(200m 以上)の真ん中。
+//  置く条件: 道路を真横に切った線で、車道の端から端まで(中央分離帯をはさむ上下線もまとめて)一直線に渡り切れること。
+//   - 両端の先が歩道(車道でない)
+//   - 横断歩道の幅(前後 ±3m)の所が全部まっすぐな車道(交差点の角・合流にかからない)
+//   - 同じ道の近く(40m 以内)に、もう横断歩道がない
+function placeCrosswalks(data, shared, J, white) {
+  const road = (x, z) => shared(x, z, -1);
+  const placed = [];
+  const cands = [];
+  data.roads.forEach((r) => {
+    if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;
+    const p = r.pts, s = cumLen(p), L = s.at(-1); if (L < 30) return;
+    const js = r.junctions.map((i) => s[i]).sort((a, b) => a - b);
+    for (const i of r.junctions) {
+      const R = (J.get(p[i].join(',')) || roadWidth(r) / 2) + 4;
+      for (const sd of [-1, 1]) cands.push({ p, s, tries: [0, 4, 8, 12, 16, 20].map((k) => s[i] + sd * (R + k)).filter((sc) => sc > 3 && sc < L - 3), pri: 0 });
+    }
+    // 長い直線の真ん中
+    const stops = [0, ...js, L];
+    for (let k = 0; k + 1 < stops.length; k++) if (stops[k + 1] - stops[k] > 200) cands.push({ p, s, tries: [(stops[k] + stops[k + 1]) / 2], pri: 1 });
+  });
+  cands.sort((a, b) => a.pri - b.pri);
+  for (const c of cands) for (const sc of c.tries) {   // 交差点から少しずつ離して、最初に置けた所に置く
+    const seg = cut(c.p, c.s, sc - 1, sc + 1); if (seg.length < 2) continue;
+    const [ax0, az0] = seg[0], [bx, bz] = seg.at(-1), dl = Math.hypot(bx - ax0, bz - az0) || 1, tx = (bx - ax0) / dl, tz = (bz - az0) / dl;
+    const ax = (ax0 + bx) / 2, az = (az0 + bz) / 2, nx = tz, nz = -tx;
+    const at = (o, d) => road(ax + nx * o + tx * d, az + nz * o + tz * d);
+    const edge = (sd) => { let last = 0, d = 0; while (d < 45) { d += 0.5; if (at(d * sd, 0)) last = d; else if (d - last > 8) break; } return last; };
+    const e1 = edge(1), e2 = edge(-1), W = e1 + e2;
+    if (W < 6 || W > 45) continue;
+    // 両端の先は歩道
+    let ok = true;
+    for (const d of [-3, 0, 3]) if (at(e1 + 2.5, d) || at(-e2 - 2.5, d)) ok = false;
+    if (!ok) continue;
+    // 車道の所は前後 ±3m もまっすぐ車道
+    const stripes = []; let bad = 0;
+    for (let o = -e2 + 0.5; o <= e1 - 0.3; o += 0.9) {
+      if (!at(o, 0)) continue;
+      if (!at(o, 3) || !at(o, -3)) bad++;
+      stripes.push(o);
+    }
+    if (stripes.length < 4 || bad > stripes.length * 0.12) continue;
+    const mo = (e1 - e2) / 2, cx = ax + nx * mo, cz = az + nz * mo, ang = Math.atan2(tx, tz);
+    if (placed.some((q) => Math.abs(Math.sin(q[2] - ang)) < 0.35 && Math.abs((q[0] - cx) * tx + (q[1] - cz) * tz) < 40 && Math.abs((q[0] - cx) * nx + (q[1] - cz) * nz) < W / 2 + 10)) continue;
+    placed.push([cx, cz, ang]);
+    for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white);
+    break;
+  }
 }
 
 function buildElevated(data, g) {
@@ -1377,11 +1380,19 @@ function buildLandmarks(lm, g, wallMats, roofMat) {
         for (const P of [A, B, C]) { RP.push(P.x, P.y, P.z); RC.push(rcol.r, rcol.g, rcol.b); }
         continue;
       }
+      // 指定した辺に面した壁だけ別の色(例: コレド日本橋の永代通り側を水色)
+      let fcol = col, WW = W, SS = S;
+      if (L.faceColor) {
+        const [[sx0, sz0], [sx1, sz1]] = L.faceColor.seg, sl = Math.hypot(sx1 - sx0, sz1 - sz0) || 1;
+        const ux = (sx1 - sx0) / sl, uz = (sz1 - sz0) / sl, mx = (A.x + B.x + C.x) / 3 - sx0, mz = (A.z + B.z + C.z) / 3 - sz0;
+        const along = mx * ux + mz * uz, side = mx * -uz + mz * ux;   // side: 辺から外向き(+)の距離
+        if (along > -2 && along < sl + 2 && side > -15 && side < 30 && Math.abs(N.x * -uz + N.z * ux) > 0.7) { fcol = L._fc || (L._fc = new THREE.Color(L.faceColor.color)); WW = walls[L.faceColor.style ?? 0]; SS = STYLES[L.faceColor.style ?? 0]; }
+      }
       // 横方向(面に沿った水平の向き)
       let hx = -N.z, hz = N.x; const hl = Math.hypot(hx, hz); if (hl < 1e-3) { hx = 1; hz = 0; } else { hx /= hl; hz /= hl; }
       for (const P of [A, B, C]) {
-        W.p.push(P.x, P.y, P.z); W.n.push(N.x, N.y, N.z); W.c.push(col.r, col.g, col.b);
-        W.u.push((P.x * hx + P.z * hz) / S.tileW, P.y / S.tileH); W.f.push(L.awning ? 2 : 1);
+        WW.p.push(P.x, P.y, P.z); WW.n.push(N.x, N.y, N.z); WW.c.push(fcol.r, fcol.g, fcol.b);
+        WW.u.push((P.x * hx + P.z * hz) / SS.tileW, P.y / SS.tileH); WW.f.push(L.awning ? 2 : 1);
       }
     }
     for (let k = 0; k < L.roofs.length; k += 3) { RP.push(L.roofs[k], L.roofs[k + 1], L.roofs[k + 2]); RC.push(rcol.r, rcol.g, rcol.b); }
