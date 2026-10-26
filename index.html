@@ -550,7 +550,7 @@
   <div><b>SPACE</b>ドリフト(サイドブレーキ)</div>
   <div><b>Y</b>自動運転</div>
   <div id="help-winker" style="display:none"><b>W / E</b>方向指示器 左 / 右</div>
-  <div><b>Q</b>地図（右上 → 全画面 → 消す）</div>
+  <div><b>Q</b>地図（右上 → 全画面 → 消す。全画面はドラッグで移動・ホイールで拡大）</div>
   <div class="help-head">画面・視点</div>
   <div><b>B</b>エンジン音切替</div>
   <div><b>G</b>情報表示切替</div>
@@ -885,7 +885,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261026-shonan-6');
+    import('./js/main.js?v=20261026-shonan-7');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);

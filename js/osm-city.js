@@ -1562,7 +1562,9 @@ function makeBlocker(data) {
   // 道路(橋の上を走れるように): 1m 角の升目に印
   const RW = Math.ceil(X1 - X0), RH = Math.ceil(Z1 - Z0), road = new Uint8Array(RW * RH);
   for (const r of data.roads) {
-    const half = roadWidth(r) / 2 + 0.5, p = r.pts;
+    // 上下線が並んだ橋は、あいだのすき間(中央分離帯)まで床なので道路として印を付ける
+    const half = r.bridge && r.pair ? r.pair.gap / 2 + roadWidth(r) / 2 + 0.5 : roadWidth(r) / 2 + 0.5;
+    const p = r.bridge && r.pair ? offset(r.pts, r.pair.side * r.pair.gap / 2) : r.pts;
     for (let i = 0; i + 1 < p.length; i++) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(L / 0.7);
       for (let k = 0; k <= n; k++) {
