@@ -609,7 +609,7 @@ function buildRailways(data, g, onRoad) {
   if (conc.p.length) { const mc = solidMesh(conc, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mc.name = 'rail-viaduct-concrete'; g.add(mc); }
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
-  if (rail.length) g.add(flatMesh(rail, 0x4a4540));
+  // レールは描かない(上空からしか見えないので)
 }
 
 // ---- 首都高・KK線(PLATEAU の橋梁モデルの形)。見た目だけで、下はくぐれる ----
