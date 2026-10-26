@@ -616,12 +616,12 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     spawnSurfaceMode: 'mapSurface',
     spawnReference: 'fixed',
-    // コレド日本橋の前(永代通り・茅場町方面・一方通行3車線の真ん中の車線)
-    spawnReferenceX: 403.9,
-    spawnReferenceZ: -695.7,
+    // コレド日本橋の前(永代通り・大手町方面・一方通行3車線の真ん中の車線)
+    spawnReferenceX: 398.4,
+    spawnReferenceZ: -685.4,
     spawnExactReference: true,
     spawnDirectionMode: 'configured',
-    spawnHeading: 1.124,
+    spawnHeading: -2.035,
     treePlacement: { ...commonTrees, enabled: false, seed: 20261024 },
     mapWhiteGlow: false,
     roadNightEmissive: false,
