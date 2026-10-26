@@ -551,7 +551,9 @@ if SEA:
     _main = max(_sz, key=_sz.get)
     print('道路網の大きさ', sorted((round(v) for v in _sz.values()), reverse=True)[:12])
     _n1 = len(roads)
-    roads[:] = [r for i, r in enumerate(roads) if _sz[_f(i)] > 2000]   # 大きな道路網(範囲の端で分かれたものも)は残す
+    # 範囲の端で分かれた国道などの幹線は、道路網が短くても残す。
+    _major_components = {_f(i) for i, r in enumerate(roads) if r['kind'] in _MAJOR}
+    roads[:] = [r for i, r in enumerate(roads) if _sz[_f(i)] > 2000 or _f(i) in _major_components]
     print('湘南: ほかとつながらない道路を外す', _n1 - len(roads))
     # 細い道の細かい折れ曲がりをならす(交差点の点は残す)
     from shapely.geometry import LineString as _SL
@@ -1211,15 +1213,7 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
             _mouths.append(mouth)
         for ch in _mouths:
             water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(ch.exterior.coords)[:-1]], 'h': [], 'sea': True})
-        # 水と水のあいだの細い陸(すき間)は水で埋める
-        _allw = _MU([_AP(w['o'], w.get('h') or []).buffer(0) for w in water] + [_ML(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
-        _sl = _allw.buffer(8, join_style=2).buffer(-8, join_style=2).difference(_allw)
-        _nsl = 0
-        for q in (getattr(_sl, 'geoms', None) or [_sl]):
-            if q.geom_type == 'Polygon' and q.area > 15 and q.area / max(q.length, 1) < 4:
-                q = q.buffer(1, join_style=2)
-                water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [], 'sea': True}); _nsl += 1
-        print('水のすき間を埋める', _nsl)
+        # 海岸・堤防の細い陸地も実地形なので、水面の隙間を一律には埋めない。
         # 砂浜・岩場から川と水路を抜く
         _wet = _MU([_AP(w['o'], w.get('h') or []).buffer(0) for w in water if not w.get('sea')]
                    + [_ML(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1] + _mouths)
