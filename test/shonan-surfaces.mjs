@@ -28,7 +28,7 @@ for (const m of native.meshes) {
   assert.ok(m.visible);
 }
 const caster = new THREE.Raycaster();
-function check(x,z,kind) {
+function check(x,z,kind,color) {
   const hit = native.at(x,z);
   assert.ok(hit,`地表なし: ${x},${z}`);
   if(kind!==undefined) assert.equal(hit.kind,kind,`路面種別: ${x},${z}`);
@@ -36,11 +36,24 @@ function check(x,z,kind) {
   const intersections = caster.intersectObjects(native.meshes,false);
   assert.ok(intersections.length,`表示の面なし: ${x},${z}`);
   assert.ok(Math.abs(hit.y-intersections[0].point.y)<1e-4,'判定と実際の三角形の高さが不一致');
+  if(color!==undefined) {
+    const first=intersections[0], colors=first.object.geometry.getAttribute('color');
+    const expected=new THREE.Color(color).toArray().map(v=>Math.round(v*255));
+    assert.deepEqual([colors.getX(first.face.a),colors.getY(first.face.a),colors.getZ(first.face.a)].map(v=>Math.round(v*255)),expected,`地表色: ${x},${z}`);
+  }
 }
 const city = JSON.parse(await fs.readFile(new URL('map/shonan-city.json',root)));
 for(const p of [[9860.65,822.78],[-3713.13,-1067.66],[-9019.21,-75.47]]) check(...p,1);
 // 復旧した稲村ヶ崎の東端。端点そのものを避け、道路の内側を検査。
 check(9900,825,1);
+// 稲村ヶ崎の画像指示: 赤は海、黄緑は緑地、オレンジはグレーの護岸。
+check(9300,820,3);
+check(9507,706,0,0x6f9a4f);
+check(9955,900,0,0x6f9a4f);
+check(9250,785,0,0x9a9b98);
+check(9490,795,0,0x9a9b98);
+check(8850,710,2);   // 指示範囲より西の砂浜はそのまま。
+
 let raised=0,sand=0,water=0;
 for(const chunk of info.chunks) {
  const m=native.meshes[info.chunks.indexOf(chunk)],p=m.geometry.attributes.position;
