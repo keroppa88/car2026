@@ -783,7 +783,29 @@ function buildWater(data, g) {
       wall.p.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
       for (let q = 0; q < 6; q++) wall.n.push(nx, 0, nz);
     };
-    const ringWall = (r) => { for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; quad(a[0], a[1], b[0], b[1]); } };
+    // 海の中・海との境目に川の岸の壁を立てない(海に浮く柵に見えるので)
+    const seaR = data.water.filter((w) => w.sea);
+    const inSea = (x, z) => seaR.some((w) => pointIn(w.o, x, z) && !(w.h || []).some((h) => pointIn(h, x, z)));
+    const nearSea = (ax, az, bx, bz) => {
+      if (s.color === SEA || !seaR.length) return false;
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2, L = Math.hypot(bx - ax, bz - az) || 1, nx = (bz - az) / L * 3, nz = -(bx - ax) / L * 3;
+      return inSea(mx, mz) || inSea(mx + nx, mz + nz) || inSea(mx - nx, mz - nz);
+    };
+    // 両側が水の所(水どうしの境目)にも壁を立てない
+    const onRiverLine = (x, z) => (data.rivers || []).some((rv) => {
+      for (let i = 0; i + 1 < rv.pts.length; i++) {
+        const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+        const u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        if ((ax + dx * u - x) ** 2 + (az + dz * u - z) ** 2 < (rv.w / 2) ** 2) return true;
+      }
+      return false;
+    });
+    const wet = (x, z) => inAnyWater(x, z) || onRiverLine(x, z);
+    const between = (ax, az, bx, bz) => {
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2, L = Math.hypot(bx - ax, bz - az) || 1, nx = (bz - az) / L * 1.5, nz = -(bx - ax) / L * 1.5;
+      return wet(mx + nx, mz + nz) && wet(mx - nx, mz - nz);
+    };
+    const ringWall = (r) => { for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; if (!nearSea(a[0], a[1], b[0], b[1]) && !between(a[0], a[1], b[0], b[1])) quad(a[0], a[1], b[0], b[1]); } };
     for (const w of s.rings) { ringWall(w.o); (w.h || []).forEach(ringWall); }
     const floor = [], mask = [];
     for (const rv of s.lines) {
@@ -794,7 +816,7 @@ function buildWater(data, g) {
         const e = offset(rv.pts, sd * rv.w / 2);
         for (let i = 0; i + 1 < e.length; i++) {
           const mx = (e[i][0] + e[i + 1][0]) / 2, mz = (e[i][1] + e[i + 1][1]) / 2;
-          if (inAnyWater(mx, mz)) continue;
+          if (inAnyWater(mx, mz) || nearSea(e[i][0], e[i][1], e[i + 1][0], e[i + 1][1]) || between(e[i][0], e[i][1], e[i + 1][0], e[i + 1][1])) continue;
           quad(e[i][0], e[i][1], e[i + 1][0], e[i + 1][1]);
         }
       }
@@ -1425,6 +1447,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
     if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x4b4c4e));   // 岩場(黒っぽいグレー)
     if (data.piers && data.piers.length) city.add(polyFill(data.piers, 0.028, 0x9a9b98));   // 堤防・突堤(グレー)
+    if (data.parking && data.parking.length) city.add(polyFill(data.parking, 0.03, ASPHALT));   // 駐車場(アスファルトの面)
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));

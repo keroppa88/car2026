@@ -13,7 +13,7 @@ for _, e in etree.iterparse('tools/shonan.osm', events=('end',)):
     if e.tag == 'node': N[e.get('id')] = xy(float(e.get('lat')), float(e.get('lon')))
     elif e.tag == 'way':
         t = {x.get('k'): x.get('v') for x in e.findall('tag')}
-        if t.get('highway') in ('trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'tertiary'):
+        if t.get('highway') in ('trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'tertiary', 'motorway'):
             W.append(([n.get('ref') for n in e.findall('nd')], t))
         e.clear()
 def lanes_of(t):
@@ -21,6 +21,15 @@ def lanes_of(t):
     oneway = t.get('oneway') in ('yes', '1')
     if v.isdigit(): return int(v), oneway
     return (2 if oneway else 4), oneway
+# 大磯: 西湘バイパスと並走する134号は osm_to_city.py で外した → ここでも外し、134号の端を西湘バイパスにつなぐ
+def _inbox(r): x, z = N[r]; return -8665 < x < -8150 and -265 < z < -25
+W = [(refs, t) for refs, t in W if not (t.get('name') == '国道134号' and all(_inbox(r) for r in refs if r in N))]
+_wn = {r for refs, _ in W for r in refs if r in N}
+def _at(p): return min(_wn, key=lambda r: math.dist(N[r], p))
+_a, _b, _c = _at((-8639.82, -58.31)), _at((-8621.28, -39.28)), _at((-8624.19, -46.85))
+print('大磯でつなぐ点', [N[r] for r in (_a, _b, _c)])
+W.append(([_a, _b], {'ref': '134', 'name': '国道134号', 'lanes': '4'}))
+W.append(([_a, _c], {'ref': '134', 'name': '国道134号', 'lanes': '4'}))
 # 有向グラフ: 辺ごとに「左の車線へずらす量」を持つ
 G = {}
 for refs, t in W:

@@ -142,6 +142,7 @@ def lanes_of(t, kind):
 
 roads, elevated, buildings, water, parks, rivers, beaches, rocks = [], [], [], [], [], [], [], []
 piers = []
+parking = []   # 駐車場(アスファルトの面)
 oiso_grey = []
 _sea_woods = []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
@@ -218,6 +219,7 @@ for wid, (refs, t) in WAYS.items():
             up = t.get('bridge') in ('yes', 'viaduct') or layer_of(t) >= 1   # 高架の部分か(違えば地上の取り付け道路)
             elevated.append({'pts': cp, 'lanes': lanes_of(t, 'trunk') if hw == 'motorway' else 1, 'up': up})
         continue
+    if hw == 'service' and t.get('service') == 'parking_aisle': continue   # 駐車場の中の通路は道路にしない(駐車場の面で描く)
     if hw in DRIVE:
         if t.get('tunnel') in ('yes',) or t.get('layer', '0').startswith('-'): continue
         if t.get('area') == 'yes': continue
@@ -267,6 +269,9 @@ for wid, (refs, t) in WAYS.items():
         if o: beaches.append({'o': o, 'h': []})
     elif refs[0] == refs[-1] and len(pts) >= 4 and t.get('landuse') == 'construction':
         if not CLIP or inside(centroid(pts[:-1])): sites.append({'o': pts[:-1]})
+    elif refs[0] == refs[-1] and len(pts) >= 4 and t.get('amenity') == 'parking' and t.get('parking') not in ('underground', 'multi-storey', 'rooftop'):
+        o = clip_poly(pts[:-1])
+        if o: parking.append({'o': o, 'h': []})
     elif refs[0] == refs[-1] and len(pts) >= 4 and is_park(t):
         o = clip_poly(pts[:-1])
         if o: parks.append({'o': o, 'h': [], 'name': t.get('name', '')})
@@ -285,6 +290,9 @@ for rel in root.findall('relation'):
         elif 'building' in t:
             if CLIP and not inside(centroid(o)): continue
             buildings.append({'p': o, 'h': height_of(t, o), 'holes': hs})
+        elif t.get('amenity') == 'parking' and t.get('parking') not in ('underground', 'multi-storey', 'rooftop'):
+            o = clip_poly(o)
+            if o: parking.append({'o': o, 'h': [h for h in (clip_poly(h) for h in hs) if h]})
         elif is_water(t) or is_park(t):
             o = clip_poly(o)
             if not o: continue
@@ -377,6 +385,41 @@ if sites:
     _sp = [_SP(s_['o']).buffer(0) for s_ in sites]
     buildings[:] = [b for b in buildings if b.get('look') or not any(sp.contains(_SPt(centroid(b['p']))) for sp in _sp)]
 
+# 湘南・大磯: 西湘バイパスと並走する134号(花水川〜大磯の入口)は外し、134号は大磯の入口で西湘バイパスにつなぐ
+if SEA:
+    def _near(p, q, d=3): return math.dist(p, q) < d
+    _gone = [r for r in roads if r['name'] == '国道134号' and all(-8665 < x < -8150 and -265 < z < -25 for x, z in r['pts'])]
+    _gn = {n for r in _gone for n in r['nodes']}
+    roads[:] = [r for r in roads if r not in _gone]
+    _bp = next((r for r in roads if r['name'] == '西湘バイパス' and _near(r['pts'][-1], [-8621.28, -39.28])), None)
+    _r876 = next((r for r in roads if r['name'] == '国道134号' and _near(r['pts'][-1], [-8639.82, -58.31])), None)
+    if _bp and _r876:
+        _r876['pts'].append(list(_bp['pts'][-1])); _r876['nodes'].append(_bp['nodes'][-1])
+    # 外した道路にだけつながっていた短い細い道は外す
+    _n0 = len(roads)
+    roads[:] = [r for r in roads if not (r['kind'] not in ('trunk', 'primary', 'secondary') and (r['nodes'][0] in _gn or r['nodes'][-1] in _gn)
+                                          and sum(math.dist(a, b) for a, b in zip(r['pts'], r['pts'][1:])) < 80)]
+    print('大磯: 並走する134号を外す', len(_gone), '/ つながっていた細い道', _n0 - len(roads), '/ 西湘バイパスにつないだ', bool(_bp and _r876))
+    # 公園・緑地にかかる細い道は、緑地の中の部分を切る
+    from shapely.geometry import Polygon as _GP, Point as _GPt
+    from shapely.ops import unary_union as _GU
+    _pk = _GU([_GP(p_['o']).buffer(0) for p_ in parks if len(p_['o']) >= 3]).buffer(1)
+    _new, _cut = [], 0
+    for r in roads:
+        if r['kind'] in ('trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link') or r['bridge'] or max(x for x, _ in r['pts']) > -7300: _new.append(r); continue   # 大磯の側だけ
+        ins = [_pk.contains(_GPt(p)) for p in r['pts']]
+        if not any(ins): _new.append(r); continue
+        _cut += 1; run = []
+        for i, p in enumerate(r['pts']):
+            if ins[i]:
+                if len(run) >= 2: _new.append({**r, 'pts': [r['pts'][j] for j in run], 'nodes': [r['nodes'][j] for j in run]})
+                run = []
+            else: run.append(i)
+        if len(run) >= 2: _new.append({**r, 'pts': [r['pts'][j] for j in run], 'nodes': [r['nodes'][j] for j in run]})
+    _new = [r for r in _new if sum(math.dist(a, b) for a, b in zip(r['pts'], r['pts'][1:])) > 12]
+    roads[:] = _new
+    print('緑地にかかる細い道を切る', _cut)
+
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
 for r in roads:
@@ -386,6 +429,52 @@ for r in roads:
     ends = {r['nodes'][0], r['nodes'][-1]}
     r['junctions'] = [i for i, n in enumerate(r['nodes']) if use.get(n, 0) >= 2 or (n in ends and use.get(n, 0) >= 2)]
     del r['nodes']
+
+# 湘南: 実データの細かい乱れを整理(デフォルメ)
+if SEA:
+    _MAJOR = ('trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link')
+    def _len(r): return sum(math.dist(a, b) for a, b in zip(r['pts'], r['pts'][1:]))
+    _n0 = len(roads)
+    def _junk(r):
+        if r['kind'] in _MAJOR or r['bridge']: return False
+        L = _len(r); j = set(r['junctions']); e0, e1 = 0 in j, len(r['pts']) - 1 in j
+        if not e0 and not e1 and not j: return L < 120            # どこにもつながらない短い道
+        if e0 != e1 and len(j) <= 1: return L < 30                 # 行き止まりの短い枝
+        return False
+    roads[:] = [r for r in roads if not _junk(r)]
+    # どこともつながっていない道路(いちばん大きな道路網に入らないもの)は外す
+    _par = list(range(len(roads)))
+    def _f(i):
+        while _par[i] != i: _par[i] = _par[_par[i]]; i = _par[i]
+        return i
+    _at = {}
+    for i, r in enumerate(roads):
+        for p in r['pts']:
+            k = (round(p[0], 1), round(p[1], 1))
+            if k in _at: _par[_f(i)] = _f(_at[k])
+            else: _at[k] = i
+    _sz = {}
+    for i, r in enumerate(roads): _sz[_f(i)] = _sz.get(_f(i), 0) + _len(r)
+    _main = max(_sz, key=_sz.get)
+    print('道路網の大きさ', sorted((round(v) for v in _sz.values()), reverse=True)[:12])
+    _n1 = len(roads)
+    roads[:] = [r for i, r in enumerate(roads) if _sz[_f(i)] > 2000]   # 大きな道路網(範囲の端で分かれたものも)は残す
+    print('湘南: ほかとつながらない道路を外す', _n1 - len(roads))
+    # 細い道の細かい折れ曲がりをならす(交差点の点は残す)
+    from shapely.geometry import LineString as _SL
+    for r in roads:
+        if r['kind'] in _MAJOR or r['bridge'] or len(r['pts']) < 3: continue
+        keep = set(r['junctions']) | {0, len(r['pts']) - 1}
+        _sout, idx = [], []
+        segs = sorted(keep)
+        for a_, b_ in zip(segs, segs[1:]):
+            s = _SL(r['pts'][a_:b_ + 1]).simplify(2.0) if b_ - a_ >= 2 else _SL(r['pts'][a_:b_ + 1])
+            cs = [list(map(lambda v: round(v, 2), c)) for c in s.coords]
+            if _sout: cs = cs[1:]
+            _sout += cs; idx.append(len(_sout) - 1)
+        r['junctions'] = sorted({0 if 0 in r['junctions'] else -1} - {-1} | {idx[k] for k, b_ in enumerate(segs[1:]) if b_ in r['junctions']})
+        r['pts'] = _sout
+    print('湘南: 短い行き止まり・孤立した道を外す', _n0 - len(roads))
 
 # 線路の高さ: 首都高の高さの 4/5 くらい。首都高と交わる所では線路が下をくぐる
 ELEV_H = 9.5   # 本物の形が無い首都高(OSM の線から作る板)の高さ
@@ -840,6 +929,15 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
                                 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]})
         return out
     _n = len(parks); parks[:] = _clip_list(parks)
+    # 緑地: 近い切れ端どうしをつなぎ、細かい凸凹と小さすぎる切れ端をなくす
+    from shapely.ops import unary_union as _PU
+    _pu = _PU([_AP(p_['o'], p_.get('h') or []).buffer(0) for p_ in parks]).buffer(6, join_style=2).buffer(-6, join_style=2).simplify(1.0)
+    parks[:] = []
+    for q in (getattr(_pu, 'geoms', None) or [_pu]):
+        if q.geom_type == 'Polygon' and q.area > 150:
+            parks.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]],
+                          'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors if _AP(i).area > 60], 'name': ''})
+    print('緑地をまとめる', _n, '→', len(parks))
     woods[:] = _clip_list(woods)
     # 河口: 川の先が砂浜でふさがっていたら、川の端から一番近い海まで水路を通す
     from shapely.geometry import Point as _MP, LineString as _ML
@@ -872,6 +970,15 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
             _mouths.append(mouth)
         for ch in _mouths:
             water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(ch.exterior.coords)[:-1]], 'h': [], 'sea': True})
+        # 水と水のあいだの細い陸(すき間)は水で埋める
+        _allw = _MU([_AP(w['o'], w.get('h') or []).buffer(0) for w in water] + [_ML(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
+        _sl = _allw.buffer(8, join_style=2).buffer(-8, join_style=2).difference(_allw)
+        _nsl = 0
+        for q in (getattr(_sl, 'geoms', None) or [_sl]):
+            if q.geom_type == 'Polygon' and q.area > 15 and q.area / max(q.length, 1) < 4:
+                q = q.buffer(1, join_style=2)
+                water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [], 'sea': True}); _nsl += 1
+        print('水のすき間を埋める', _nsl)
         # 砂浜・岩場から川と水路を抜く
         _wet = _MU([_AP(w['o'], w.get('h') or []).buffer(0) for w in water if not w.get('sea')]
                    + [_ML(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1] + _mouths)
@@ -903,7 +1010,7 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
