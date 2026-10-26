@@ -493,6 +493,17 @@ function buildRailways(data, g, onRoad) {
   // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
   for (const v of data.viaducts || []) {
     const tp = v.top;
+    if (v.ceil) {   // れんがのトンネル・橋の天井: 上面と下面だけ(まわりの壁はとなりのれんがの塊が持つ)
+      for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
+      for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
+      for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {   // 外側の縁(桁の厚み)
+        const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+        const nx = (bz - az) / L, nz = -(bx - ax) / L;
+        deck.p.push(ax, ah - 1.6, az, bx, bh - 1.6, bz, bx, bh, bz, ax, ah - 1.6, az, bx, bh, bz, ax, ah, az);
+        for (let q = 0; q < 6; q++) deck.n.push(nx, 0, nz);
+      }
+      continue;
+    }
     if (v.concrete) {   // 空中に浮いたコンクリートの高架: 上面・下面・厚み 1.6m の縁だけ
       for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1], tp[k + 2]); conc.n.push(0, 1, 0); }
       for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); conc.n.push(0, -1, 0); }
@@ -517,24 +528,9 @@ function buildRailways(data, g, onRoad) {
           let open = false;
           for (const d of [-3.5, -1.75, 0, 1.75, 3.5]) {
             const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
-            // 水の上・道路がくぐる所はあける
-            if (overWater(qx, qz) || onRoad(qx, qz) || onRoad(mx + tx * d, mz + tz * d) || onRoad(mx + nx * 1.5 + tx * d, mz + nz * 1.5 + tz * d)) { open = true; break; }
+            // 道路・川の所はあらかじめ切り抜いてあるので、れんがの塊のまわりは全部壁
           }
           segs.push({ x0, z0, x1, z1, h0, h1, nx, nz, len: L / n, open });
-        }
-      }
-      // あいた所にはさまれた短い壁(20m 未満)もあける(橋脚のように残らないように)
-      const N = segs.length;
-      if (N && segs.some((q) => q.open)) {
-        const st = segs.findIndex((q) => q.open);
-        let i = 0;
-        while (i < N) {
-          const a = (st + i) % N;
-          if (segs[a].open) { i++; continue; }
-          let j = i, len = 0;
-          while (j < N && !segs[(st + j) % N].open) { len += segs[(st + j) % N].len; j++; }
-          if (len < 20) for (let k = i; k < j; k++) segs[(st + k) % N].open = true;
-          i = j;
         }
       }
       for (const q of segs) {
@@ -559,7 +555,7 @@ function buildRailways(data, g, onRoad) {
     }
     return 0;
   };
-  for (const r of data.roads || []) {
+  for (const r of [] /* トンネルの壁は切り抜いた形の壁で足りる */) {
     if (r.bridge) continue;
     const half = roadWidth(r) / 2 + 1.6;   // 道路の印(車道 + 0.5m・1m 角)より外
     for (const sd of [-1, 1]) {
@@ -583,7 +579,7 @@ function buildRailways(data, g, onRoad) {
   }
   // 下面(道路の上で見上げた時)
   for (const v of data.viaducts || []) {
-    if (v.concrete) continue;
+    if (v.concrete || v.ceil) continue;
     const tp = v.top;
     for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
   }
@@ -1400,7 +1396,7 @@ function makeBlocker(data) {
     add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
   }
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
-  for (const v of data.viaducts || []) if (!v.concrete) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
+  for (const v of data.viaducts || []) if (!v.concrete && !v.ceil) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
   for (const s of data.sites || []) add(s.o, [], 'b');   // 工事中の敷地には入れない(街路樹・林は当たり判定なし)
   const area = data.area;

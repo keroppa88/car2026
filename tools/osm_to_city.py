@@ -547,6 +547,11 @@ if rails:
         _u = _UU([_UU(_un), _UU([_LS(r['pts']).buffer(3.5, cap_style=2) for r in rails if len(r['pts']) > 1])]
                  + [_PG(q['o']).buffer(0).buffer(2) for q in platforms if len(q['o']) >= 3])
         _u = _u.buffer(8, join_style=2).buffer(-8, join_style=2).simplify(0.8)
+        # 描いてもらった地図の形をそのまま使う(赤=れんが、黄緑=宙に浮いたコンクリート)
+        _SH = json.load(open('tools/tokyo-rail/shapes.json'))
+        _brickU = _UU([_PG(p).buffer(0) for p in _SH['brick']])
+        _concU = _UU([_PG(p).buffer(0) for p in _SH['concrete']])
+        _u = _brickU
         # 線路の下を線路に沿って走る道路は外す(構築物の中に入ってしまうので)
         _core = _u.buffer(-1)
         _n0 = len(roads)
@@ -558,7 +563,11 @@ if rails:
         print('線路の下を沿って走る道路を外す', _n0 - len(roads))
         # 構築物にかかる建物は外す
         _n0 = len(buildings)
-        buildings[:] = [b for b in buildings if len(b['p']) < 3 or _PG(b['p']).buffer(0).intersection(_u).area < 0.2 * max(_PG(b['p']).buffer(0).area, 1)]
+        _all = _u.union(_concU)
+        # 構築物の上のホーム・屋根(白い板)は置かない
+        platforms[:] = [q for q in platforms if len(q['o']) < 3 or not _PG(q['o']).buffer(0).intersects(_all)]
+        canopies[:] = [c for c in canopies if len(c['o']) < 3 or not _PG(c['o']).buffer(0).intersects(_all)]
+        buildings[:] = [b for b in buildings if len(b['p']) < 3 or _PG(b['p']).buffer(0).intersection(_all).area < 0.2 * max(_PG(b['p']).buffer(0).area, 1)]
         print('線路の上の建物を外す', _n0 - len(buildings))
     _u = _u.difference(_UU([_PG(rg).buffer(0).buffer(1.5) for L_ in json.load(open(LMK))['landmarks'] if '丸の内駅舎' in L_['label'] for rg in L_['fp'] if len(rg) >= 3]))
     _rp = [(x, z, h) for r in rails for (x, z), h in zip(r['pts'], r.get('hs') or [r['h']] * len(r['pts']))]
@@ -598,14 +607,23 @@ if rails:
         # 描いてもらった地図どおり: 赤=地面に接続したれんが、黄緑=宙に浮いたコンクリート(神田の先・有楽町の南の z 60〜230 と z 540〜)
         _cz = _UU([_VB(-1e5, -1e5, 1e5, _cut_z), _VB(-1e5, 60, 1e5, 230), _VB(-1e5, 540, 1e5, 1e5)])
         _G = lambda x: getattr(x, 'geoms', None) or [x]
-        _pieces = [(g2, 0) for g2 in _G(_brk.difference(_cz))] + [(g2, 1) for g2 in _G(_u.intersection(_cz)) if g2.area > 3000]
+        # れんが: 道路・川が重なる所だけ切り抜く(そこがトンネル/橋)。残りは全部壁で囲う。切り抜いた所には天井
+        _cutR = _UU([_LS(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 1.5, cap_style=2)
+                     for r in roads if len(r['pts']) > 1 and not r['bridge']]
+                    + [_PG(w['o']).buffer(0) for w in water if len(w['o']) >= 3]
+                    + [_LS(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
+        _bfill = _UU([_PG(g2.exterior) for g2 in _G(_u) if g2.geom_type == 'Polygon'])   # れんがの中の穴は埋める
+        _solid = _bfill.difference(_cutR)
+        _ceil = _bfill.intersection(_cutR)
+        _pieces = [(g2, 0) for g2 in _G(_solid)] + [(g2, 2) for g2 in _G(_ceil)] + [(g2, 1) for g2 in _G(_concU.difference(_bfill))]
     else:
         _pieces = [(g2, 0) for g2 in (_u.geoms if hasattr(_u, 'geoms') else [_u])]
     for g_, _conc in _pieces:
-        if g_.geom_type != 'Polygon' or g_.area < 50: continue
-        g_ = g_.simplify(0.5)
+        if g_.geom_type != 'Polygon' or g_.area < (2 if LMK else 50): continue
+        g_ = g_.simplify(0.3)
+        if g_.is_empty or g_.geom_type != 'Polygon': continue
         ext = list(g_.exterior.coords)[:-1]
-        holes = [list(i.coords)[:-1] for i in g_.interiors if not LMK or _PG(i).area > 3000]   # 線路のあいだの穴は埋める(敷地いっぱいの構築物)
+        holes = [list(i.coords)[:-1] for i in g_.interiors]
         rings = [ext] + holes
         pts = [p for r_ in rings for p in r_]
         ends = _np.cumsum([len(r_) for r_ in rings]).astype(_np.uint32)
@@ -614,7 +632,8 @@ if rails:
         top = []
         for k in idx: top += [round(pts[k][0], 1), hs[k], round(pts[k][1], 1)]
         viaducts.append({'top': top, 'rings': [[[round(x, 1), round(z, 1), round(_h_at(x, z), 1)] for x, z in r_] for r_ in rings]})
-        if _conc: viaducts[-1]['concrete'] = 1   # 空中に浮いたコンクリートの高架(壁なし・下は通れる)
+        if _conc == 1: viaducts[-1]['concrete'] = 1   # 空中に浮いたコンクリートの高架(壁なし・下は通れる)
+        if _conc == 2: viaducts[-1]['ceil'] = 1       # れんがのトンネル・橋の天井(壁なし・下は通れる)
     print('高架(まとめた形)', len(viaducts))
 
 # 屋根だけのもの(building=roof)は駅のホームの近くだけ残す(街中のは宙に浮いて見えるので消す)
