@@ -806,7 +806,9 @@ if SEA:
 # 上下線が別々の橋が並んでいる所は1本の橋にまとめる(JS で床を広げ、真ん中にグレーの壁)
 from shapely.geometry import LineString as _BL, Point as _BP
 _br = [r for r in roads if r['bridge'] and len(r['pts']) > 1]
+_HANA = [-7495.0, -460.0]   # 花水川橋は上下線の2本のまま
 for r in _br:
+    if SEA and min(math.dist(p, _HANA) for p in r['pts']) < 250: continue
     ln = _BL(r['pts']); m = ln.interpolate(0.5, normalized=True)
     a, b = r['pts'][0], r['pts'][-1]; L = math.dist(a, b) or 1; tx, tz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
     best = None
