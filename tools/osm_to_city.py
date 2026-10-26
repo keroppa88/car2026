@@ -661,18 +661,18 @@ if rails:
                     best = (L_, a_[:2], b_[:2], [round(nx, 3), round(nz, 3)], a_[2])
         if best: yaesu = {'a': best[1], 'b': best[2], 'n': best[3], 'h': best[4]}
     print('八重洲の壁', yaesu)
-    # 大手町側のグレーのビル(取りやめ)
-    if False:
+    # 大手町側: れんがの東側の北の端(ロータリーの手前)を10階建てのビルに
+    if LMK:
         from shapely.geometry import box as _OB
-        _ob = _OB(-260, -895, -145, -760)
+        _ob = _OB(-135, -822, -65, -768)
         for v in list(viaducts):
             if v.get('concrete') or v.get('ceil'): continue
             pg = _PG([(x, z) for x, z, _ in v['rings'][0]], [[(x, z) for x, z, _ in h_] for h_ in v['rings'][1:]]).buffer(0)
             q = pg.intersection(_ob)
-            if q.is_empty or q.area < 500: continue
+            if q.is_empty or q.area < 200: continue
             for g2 in (getattr(q, 'geoms', None) or [q]):
                 if g2.geom_type == 'Polygon' and g2.area > 300:
-                    buildings.append({'p': [[round(x, 2), round(z, 2)] for x, z in list(g2.simplify(0.5).buffer(0.5, join_style=2).exterior.coords)[:-1]], 'h': 30.0, 'holes': [], 'grey': 1})
+                    buildings.append({'p': [[round(x, 2), round(z, 2)] for x, z in list(g2.simplify(0.5).buffer(0.5, join_style=2).exterior.coords)[:-1]], 'h': 35.0, 'holes': [], 'grey': 1})
             print('大手町のグレーのビル', round(q.area))
 
 # 屋根だけのもの(building=roof)は駅のホームの近くだけ残す(街中のは宙に浮いて見えるので消す)
