@@ -505,30 +505,47 @@ function buildRailways(data, g, onRoad) {
       continue;
     }
     for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
-    for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {
-      const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
-      const nx = (bz - az) / L, nz = -(bx - ax) / L, n = Math.max(1, Math.round(L / 3));
-      for (let k = 0; k < n; k++) {
-        const t0 = k / n, t1 = (k + 1) / n;
-        const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
-        const h0 = ah + (bh - ah) * t0, h1 = ah + (bh - ah) * t1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-        // 道路が通る所は、少なくとも2車線ぶん(約7m)あける: 前後 3.5m 以内に道路があれば壁を作らない
-        const tx = (bx - ax) / L, tz = (bz - az) / L;
-        let open = false;
-        for (const d of [-3.5, -1.75, 0, 1.75, 3.5]) {
-          const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
-          if (overWater(qx, qz)) { open = true; break; }
-          // 道路が高架の下をくぐる所だけあける(高架に沿って並ぶ道路では壁を残す)
-          // 道路がくぐる所はあける(線路わきの道路は構築物の外に出してあるので、構築物の縁にかかる道路はくぐる道路)
-          if (onRoad(qx, qz) || onRoad(mx + tx * d, mz + tz * d) || onRoad(mx + nx * 1.5 + tx * d, mz + nz * 1.5 + tz * d)) { open = true; break; }
+    for (const ring of v.rings) {
+      const segs = [];
+      for (let i = 0; i < ring.length; i++) {
+        const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+        const nx = (bz - az) / L, nz = -(bx - ax) / L, n = Math.max(1, Math.round(L / 3)), tx = (bx - ax) / L, tz = (bz - az) / L;
+        for (let k = 0; k < n; k++) {
+          const t0 = k / n, t1 = (k + 1) / n;
+          const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+          const h0 = ah + (bh - ah) * t0, h1 = ah + (bh - ah) * t1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+          let open = false;
+          for (const d of [-3.5, -1.75, 0, 1.75, 3.5]) {
+            const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
+            // 水の上・道路がくぐる所はあける
+            if (overWater(qx, qz) || onRoad(qx, qz) || onRoad(mx + tx * d, mz + tz * d) || onRoad(mx + nx * 1.5 + tx * d, mz + nz * 1.5 + tz * d)) { open = true; break; }
+          }
+          segs.push({ x0, z0, x1, z1, h0, h1, nx, nz, len: L / n, open });
         }
-        const y0 = open ? Math.min(h0, h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
-        deck.p.push(x0, y0, z0, x1, y0, z1, x1, h1, z1, x0, y0, z0, x1, h1, z1, x0, h0, z0);
-        for (let q = 0; q < 6; q++) deck.n.push(nx, 0, nz);
+      }
+      // あいた所にはさまれた短い壁(20m 未満)もあける(橋脚のように残らないように)
+      const N = segs.length;
+      if (N && segs.some((q) => q.open)) {
+        const st = segs.findIndex((q) => q.open);
+        let i = 0;
+        while (i < N) {
+          const a = (st + i) % N;
+          if (segs[a].open) { i++; continue; }
+          let j = i, len = 0;
+          while (j < N && !segs[(st + j) % N].open) { len += segs[(st + j) % N].len; j++; }
+          if (len < 20) for (let k = i; k < j; k++) segs[(st + k) % N].open = true;
+          i = j;
+        }
+      }
+      for (const q of segs) {
+        const y0 = q.open ? Math.min(q.h0, q.h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
+        deck.p.push(q.x0, y0, q.z0, q.x1, y0, q.z1, q.x1, q.h1, q.z1, q.x0, y0, q.z0, q.x1, q.h1, q.z1, q.x0, q.h0, q.z0);
+        for (let k = 0; k < 6; k++) deck.n.push(q.nx, 0, q.nz);
       }
     }
   }
   // 道路が高架の下をくぐる所: 道路の両側に壁を立ててトンネルのように囲む(中の空洞が見えないように)
+  const nearWater = makeWaterMask(data, 45);
   const vsList = (data.viaducts || []).filter((v) => !v.concrete).map((v) => {
     const r0 = v.rings[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
     for (const [x, z] of r0) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
@@ -553,6 +570,7 @@ function buildRailways(data, g, onRoad) {
         for (let k = 0; k < n; k++) {
           const x0 = ax + (bx - ax) * k / n, z0 = az + (bz - az) * k / n, x1 = ax + (bx - ax) * (k + 1) / n, z1 = az + (bz - az) * (k + 1) / n;
           const H = underVia((x0 + x1) / 2, (z0 + z1) / 2); if (!H) continue;
+          if (nearWater((x0 + x1) / 2, (z0 + z1) / 2)) continue;   // 川の近く(橋の所)は壁なし
           // 交差する別の道路の上には壁を立てない(交差点がふさがらないように)
           const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, nx = (z1 - z0) / (L / n), nz = -(x1 - x0) / (L / n);
           if (onRoad(mx, mz) || [1.2, 4, 8, 12].some((k) => onRoad(mx + nx * sd * k, mz + nz * sd * k))) continue;   // 中央分離帯など道路と道路のあいだには立てない(橋脚のように見えるので)

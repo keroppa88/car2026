@@ -576,6 +576,21 @@ if rails:
     _pieces = []
     if LMK:
         _cut_z = -1600
+        # 高架道路(首都高)は線路の上: 線路より低い所を通る首都高の下には構築物を置かない(埋もれないように)
+        if BRG:
+            from shapely.geometry import Point as _BPt
+            _low = []
+            for B_ in json.load(open(BRG))['bridges']:
+                tp = B_['top']
+                for r_ in B_['fp']:
+                    if len(r_) < 3: continue
+                    pg = _PG(r_).buffer(0)
+                    if not pg.intersects(_u): continue
+                    ys = [tp[k + 1] for k in range(0, len(tp), 3) if pg.buffer(1).contains(_BPt(tp[k], tp[k + 2])) and _u.contains(_BPt(tp[k], tp[k + 2]))]
+                    if ys and min(ys) < RAIL_H[1] + 4: _low.append(pg.buffer(2, join_style=2))
+            if _low:
+                _u = _u.difference(_UU(_low))
+                print('首都高の下を外す', len(_low))
         for g_ in (_u.intersection(_VB(-1e5, _cut_z, 1e5, 1e5)), _u.intersection(_VB(-1e5, -1e5, 1e5, _cut_z))):
             pass
         _brk = _u.intersection(_VB(-1e5, _cut_z, 1e5, 1e5)).buffer(-9, join_style=2).buffer(9, join_style=2)   # 細い枝(引き込み線など)は落とす
