@@ -1350,6 +1350,11 @@ if AREA:
     parks[:] = [p_ for p_ in parks if not (_outside(p_['o']) and (_OP(p_['o']).buffer(0).area < 20000 or _far(p_['o'])))]   # 範囲から離れた緑地も消す(皇居などとなりの大きな緑地は残す)
     woods[:] = [w_ for w_ in woods if not _far(w_['o'])] if woods and isinstance(woods[0], dict) else woods
     trees[:] = [tr for tr in trees if _OA2.contains(__import__('shapely.geometry', fromlist=['Point']).Point(tr[0], tr[1]))]
+    # 範囲から離れた池・水路(どこにもつながらない)も消す
+    _nw = len(water) + len(rivers)
+    water[:] = [w for w in water if w.get('sea') or not _far(w['o'])]
+    rivers[:] = [rv for rv in rivers if len(rv['pts']) < 2 or __import__('shapely.geometry', fromlist=['LineString']).LineString(rv['pts']).intersects(_OA2)]
+    print('範囲の外の池・水路を消す', _nw - len(water) - len(rivers))
     print('範囲の外の駐車場・小さな緑地を消す', _n0 - len(parking) - len(parks))
 # 勝鬨橋・永代橋: 高さを変えない平らな橋。永代橋には両わきに水色のアーチ
 arches = []
