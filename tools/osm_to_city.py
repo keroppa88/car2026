@@ -482,13 +482,36 @@ if TSUKIJI is not None:
     _cj = _pt((-319, 1439))   # 新大橋通りとの交差点
     P1 = [-24.0, 1738.0]
     mk = lambda pts, nodes, ln_, ow: {'pts': pts, 'lanes': ln_, 'oneway': ow, 'kind': 'primary', 'bridge': False, 'name': '環二通り', 'nodes': nodes}
-    roads.append(mk([list(_cj[1]), P1], [_cj[2], 'tsukiji-b'], 2, False))
-    for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 3, True))   # 橋の上下線の幅に広げる
-    _c1 = _cj
-    for r in roads:   # 築地大橋は地面と同じ高さの平らな橋(欄干なし)にする
-        if r['bridge'] and r['name'] == '環二通り' and all(-30 < x < 160 and 1730 < z < 1960 for x, z in r['pts']): r['flat'] = 1
-    roads[:] = [r for r in roads if not (r.get('flat') and r['kind'].endswith('_link'))]   # 橋の上の細い取り付け道路はなし
-    print('築地: 道路を外す', _n0 - len(roads) + 5, '/ まっすぐな道でつなぐ', round(_b1[0], 1), round(_c1[0], 1))
+    # 築地大橋(片側3車線の上下線)をそのまままっすぐ伸ばして、新大橋通りの曲線の交差点につなぐ
+    _fl = [r for r in roads if r['bridge'] and r['name'] == '環二通り' and all(-30 < x < 160 and 1730 < z < 1960 for x, z in r['pts'])]
+    for r in _fl: r['flat'] = 1
+    roads[:] = [r for r in roads if not (r.get('flat') and r['kind'].endswith('_link'))]
+    _fl = [r for r in _fl if r in roads]
+    from shapely.geometry import LineString as _XL, Point as _XP
+    _curve = [r for r in roads if r['name'] in ('新大橋通り', '晴海通り', '環二通り') and not r['bridge'] and any(-420 < x < -150 and 1280 < z < 1470 for x, z in r['pts'])]
+    _hits = 0
+    for (d_, pt, nd) in (_b1, _b2):
+        br = next(r for r in _fl if nd in (r['nodes'][0], r['nodes'][-1]))
+        a_, b_ = (br['pts'][-1], br['pts'][0]) if br['nodes'][0] == nd else (br['pts'][0], br['pts'][-1])   # a_: 向こう, b_: 手前(陸側)
+        L_ = math.dist(a_, b_); ux, uz = (b_[0] - a_[0]) / L_, (b_[1] - a_[1]) / L_
+        ray = _XL([pt, (pt[0] + ux * 600, pt[1] + uz * 600)])
+        best = None
+        for r in _curve:
+            for i in range(len(r['pts']) - 1):
+                seg = _XL([r['pts'][i], r['pts'][i + 1]]); x_ = ray.intersection(seg)
+                if x_.is_empty or x_.geom_type != 'Point': continue
+                dd = math.dist(pt, (x_.x, x_.y))
+                if best is None or dd < best[0]: best = (dd, r, i, [round(x_.x, 2), round(x_.y, 2)])
+        if not best: continue
+        _, r, i, hp = best; nid = 'tsukiji-x%d' % _hits
+        r['pts'].insert(i + 1, hp); r['nodes'].insert(i + 1, nid)
+        ow_to_land = br['nodes'][-1] == nd   # 橋が陸へ向かう向き
+        pts = [list(pt), hp] if ow_to_land else [hp, list(pt)]
+        nodes = [nd, nid] if ow_to_land else [nid, nd]
+        roads.append({'pts': pts, 'lanes': br['lanes'], 'oneway': True, 'kind': 'primary', 'bridge': False, 'name': '環二通り', 'nodes': nodes})
+        _hits += 1
+    F = None
+    print('築地: 橋をまっすぐ伸ばして交差点へ', _hits)
 
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
@@ -1274,7 +1297,7 @@ if TSUKIJI is not None:
     # 跡地の区画の残り(道路と建物に囲まれた空き地)も一緒に: 道路・建物のすき間で、跡地につながる所
     from shapely.geometry import box as _TB
     _blk = _TB(-500, 1120, 340, 1560).intersection(_TP(AREA).buffer(0)).difference(_wet)
-    _isnew = lambda r: [-24.0, 1738.0] in r['pts']
+    _isnew = lambda r: any(isinstance(n, str) and n.startswith('tsukiji-x') for n in r.get('nodes') or [])
     _rd = _BU0([_TL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 1.0) for r in roads if len(r['pts']) > 1 and not _isnew(r)])
     _bl = _BU0([_TP(b['p']).buffer(0).buffer(6) for b in buildings if len(b['p']) >= 3 and _TP(b['p']).buffer(0).intersects(_blk) and not _TS.intersects(_TP(b['p']).buffer(0))])
     _free = _blk.difference(_rd).difference(_bl)
@@ -1293,6 +1316,17 @@ if TSUKIJI is not None:
     trees[:] = [tr for tr in trees if not _land.contains(_TPt(tr[0], tr[1]))]
     strips[:] = [s_ for s_ in strips if not _land.contains(_TPt(s_[0], s_[1]))]
     medians[:] = [m_ for m_ in medians if not _land.contains(_TPt(m_[0], m_[1]))]
+    # 南の岸壁(グレーの細長い陸)が跡地につながる所はコンクリートのグレー
+    _qw = _TL([(-230, 1980), (-60, 1795)]).buffer(16, cap_style=2).intersection(_land)
+    for g2 in (getattr(_qw, 'geoms', None) or [_qw]):
+        if g2.geom_type == 'Polygon' and g2.area > 30: piers.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': []})
+    _land = _land.difference(_qw.buffer(0.05))
+    # 細く突き出した所(岸壁の付け根)はコンクリートのグレー
+    _thin = _land.difference(_land.buffer(-9, join_style=2).buffer(9, join_style=2))
+    for g2 in (getattr(_thin, 'geoms', None) or [_thin]):
+        if g2.geom_type == 'Polygon' and g2.area > 150:
+            piers.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': []})
+    _land = _land.difference(_thin.buffer(0.05))
     for g2 in (getattr(_land, 'geoms', None) or [_land]):
         if g2.geom_type == 'Polygon' and g2.area > 100:
             beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in g2.interiors]})
@@ -1314,7 +1348,18 @@ if AREA:
     woods[:] = [w_ for w_ in woods if not _far(w_['o'])] if woods and isinstance(woods[0], dict) else woods
     trees[:] = [tr for tr in trees if _OA2.contains(__import__('shapely.geometry', fromlist=['Point']).Point(tr[0], tr[1]))]
     print('範囲の外の駐車場・小さな緑地を消す', _n0 - len(parking) - len(parks))
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'yaesu': yaesu if 'yaesu' in globals() else None, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+# 勝鬨橋・永代橋: 高さを変えない平らな橋。永代橋には両わきに水色のアーチ
+arches = []
+if LMK:
+    for r in roads:
+        if r['bridge'] and r['name'] in ('晴海通り', '永代橋') and (r['name'] == '永代橋' or all(350 < x < 530 and 1400 < z < 1640 for x, z in r['pts'])): r['flat'] = 1
+    _ei = [r for r in roads if r['bridge'] and r['name'] == '永代橋' and r.get('pair')]
+    if len(_ei) == 2:
+        a0, b0 = _ei[0]['pts'][0], _ei[0]['pts'][-1]; a1, b1 = _ei[1]['pts'][-1], _ei[1]['pts'][0]
+        A_ = [(a0[0] + a1[0]) / 2, (a0[1] + a1[1]) / 2]; B_ = [(b0[0] + b1[0]) / 2, (b0[1] + b1[1]) / 2]
+        hw = _ei[0]['pair']['gap'] / 2 + max(r['lanes'] for r in _ei) * 3.25 + 2.5
+        arches.append({'a': [round(v, 2) for v in A_], 'b': [round(v, 2) for v in B_], 'w': round(hw, 2), 'h': 22, 'color': '#8fb7d8'})
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'arches': arches if 'arches' in globals() else [], 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'yaesu': yaesu if 'yaesu' in globals() else None, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

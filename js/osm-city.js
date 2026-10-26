@@ -472,6 +472,32 @@ function buildUnderPiers(data, br, g) {
   if (out.p.length) { const m = solidMesh(out, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'under-piers'; g.add(m); }
 }
 
+// ---- 橋のアーチ(飾り。道路の両わきに弓なりの桁と吊り材) ----
+function buildArches(data, g) {
+  const out = { p: [], n: [] };
+  const beam = (x0, y0, z0, x1, y1, z1, r) => {
+    const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, len = Math.hypot(dx, dy, dz); if (len < 0.05) return;
+    const geo = new THREE.BoxGeometry(r, len, r).toNonIndexed(), m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / len, dy / len, dz / len));
+    m.compose(new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), q, new THREE.Vector3(1, 1, 1));
+    geo.applyMatrix4(m); out.p.push(...geo.getAttribute('position').array); out.n.push(...geo.getAttribute('normal').array); geo.dispose();
+  };
+  let color = 0x8fb7d8;
+  for (const A of data.arches || []) {
+    color = new THREE.Color(A.color).getHex();
+    const [ax, az] = A.a, [bx, bz] = A.b, L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = tz, nz = -tx;
+    const N = 24, base = 1.2;
+    for (const sd of [-1, 1]) {
+      const P = (u) => { const y = base + A.h * 4 * u * (1 - u); return [ax + tx * L * u + nx * sd * A.w, y, az + tz * L * u + nz * sd * A.w]; };
+      for (let i = 0; i < N; i++) { const p0 = P(i / N), p1 = P((i + 1) / N); beam(...p0, ...p1, 1.4); }
+      // 下の桁(道路の高さ)
+      beam(ax + nx * sd * A.w, base, az + nz * sd * A.w, bx + nx * sd * A.w, base, bz + nz * sd * A.w, 1.0);
+      for (let i = 2; i < N - 1; i += 2) { const p = P(i / N); beam(p[0], base, p[2], p[0], p[1], p[2], 0.35); }   // 吊り材
+    }
+  }
+  if (out.p.length) { const m = solidMesh(out, new THREE.MeshLambertMaterial({ color })); m.name = 'bridge-arches'; g.add(m); }
+}
+
 function buildElevated(data, g) {
   // 首都高(OSM の線から作る板)。点ごとの高さ hs で坂にする(上り下り口は地面まで下りる)
   const deck = { p: [], n: [] }, EH = data.elevH ?? 9.5;
@@ -1687,6 +1713,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildUnderPiers', () => buildUnderPiers(data, br, city));
+    T('buildArches', () => buildArches(data, city));
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));
