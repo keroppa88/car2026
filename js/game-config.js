@@ -602,7 +602,7 @@ export const MAP_CONFIGS = {
     label: 'TOKYO',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/nihonbashi.png',
-    cityData: 'map/nihonbashi-city.json?v=20261026-21',
+    cityData: 'map/nihonbashi-city.json?v=20261026-23',
     // 主な建物は PLATEAU(国土交通省 3D都市モデル)の本物の形に置き換える
     landmarkData: 'map/nihonbashi-landmarks.json?v=20261026-4',
     // 首都高・東京高速道路(KK線)は PLATEAU の橋梁モデルの形
@@ -632,7 +632,7 @@ export const MAP_CONFIGS = {
     label: '湘南',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261026-21',
+    cityData: 'map/shonan-city.json?v=20261026-22',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,

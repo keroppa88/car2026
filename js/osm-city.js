@@ -641,7 +641,7 @@ function buildRailways(data, g, onRoad) {
 }
 
 // ---- 首都高・KK線(PLATEAU の橋梁モデルの形)。見た目だけで、下はくぐれる ----
-function buildBridges(br, g) {
+function buildBridges(br, g, area) {
   const top = { p: [], n: [] }, side = { p: [], n: [] };
   const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), T = new THREE.Vector3();
   const put = (arr, o) => {
@@ -662,7 +662,9 @@ function buildBridges(br, g) {
     }
     return out;
   };
-  for (const b of br.bridges) { put(noPier(b.top), top); put(noPier(b.side), side); }
+  // 走れる範囲の外にぽつんとある高架(どこにもつながっていない)は描かない
+  const inArea = (b) => !area || b.fp.some((r) => r.some(([x, z]) => pointIn(area, x, z)));
+  for (const b of br.bridges) { if (!inArea(b)) continue; put(noPier(b.top), top); put(noPier(b.side), side); }
   const m1 = solidMesh(top, new THREE.MeshLambertMaterial({ color: 0x5d6064, side: THREE.DoubleSide })); m1.name = 'shutoko-deck'; g.add(m1);
   const m2 = solidMesh(side, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); m2.name = 'shutoko'; g.add(m2);
 }
@@ -1568,7 +1570,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildTrees', () => buildTrees(data, city));
     T('buildRoads', () => buildRoads(data, city));
     T('buildElevated', () => buildElevated(data, city));
-    if (br) T('buildBridges', () => buildBridges(br, city));
+    if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));

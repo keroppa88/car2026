@@ -1120,6 +1120,29 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
+# 橋(道路)の上にかぶさる建物・屋根・塔は消す(橋をふさがないように)
+from shapely.geometry import Polygon as _BP2, LineString as _BL2
+from shapely.ops import unary_union as _BU2
+_brU = _BU2([_BL2(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 3) for r in roads if r['bridge'] and len(r['pts']) > 1])
+if not _brU.is_empty:
+    def _onbr(o):
+        try: return _BP2(o).buffer(0).intersection(_brU).area > 5
+        except Exception: return False
+    _n0 = len(buildings) + len(canopies)
+    buildings[:] = [b for b in buildings if b.get('look') or not _onbr(b['p'])]
+    canopies[:] = [c for c in canopies if not _onbr(c['o'])]
+    print('橋の上の建物を消す', _n0 - len(buildings) - len(canopies))
+# 走れる範囲の外にぽつんとある駐車場・小さな緑地は消す(どこにもつながっていないので)
+if AREA:
+    from shapely.geometry import Polygon as _OP
+    _OA = _OP(AREA).buffer(5)
+    def _outside(o):
+        try: return not _OP(o).buffer(0).intersects(_OA)
+        except Exception: return False
+    _n0 = len(parking) + len(parks)
+    parking[:] = [p_ for p_ in parking if not _outside(p_['o'])]
+    parks[:] = [p_ for p_ in parks if not (_outside(p_['o']) and _OP(p_['o']).buffer(0).area < 20000)]   # 皇居などの大きな緑地は残す
+    print('範囲の外の駐車場・小さな緑地を消す', _n0 - len(parking) - len(parks))
 json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
