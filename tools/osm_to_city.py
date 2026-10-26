@@ -598,7 +598,7 @@ if rails:
         # 描いてもらった地図どおり: 赤=地面に接続したれんが、黄緑=宙に浮いたコンクリート(神田の先・有楽町の南の z 60〜230 と z 540〜)
         _cz = _UU([_VB(-1e5, -1e5, 1e5, _cut_z), _VB(-1e5, 60, 1e5, 230), _VB(-1e5, 540, 1e5, 1e5)])
         _G = lambda x: getattr(x, 'geoms', None) or [x]
-        _pieces = [(g2, 0) for g2 in _G(_brk.difference(_cz))] + [(g2, 1) for g2 in _G(_u.intersection(_cz))]
+        _pieces = [(g2, 0) for g2 in _G(_brk.difference(_cz))] + [(g2, 1) for g2 in _G(_u.intersection(_cz)) if g2.area > 3000]
     else:
         _pieces = [(g2, 0) for g2 in (_u.geoms if hasattr(_u, 'geoms') else [_u])]
     for g_, _conc in _pieces:
