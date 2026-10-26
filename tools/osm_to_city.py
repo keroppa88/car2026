@@ -1152,6 +1152,27 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
 # TOKYO: ホーム・屋根の板は使わない(駅はれんがの構築物。宙に浮く白い板になるので)
 if LMK:
     print('ホーム・屋根の板を消す', len(platforms) + len(canopies)); platforms[:] = []; canopies[:] = []
+from shapely.geometry import Polygon as _BP0, LineString as _BL0
+from shapely.ops import unary_union as _BU0
+# 高速道路(高架)の上にも下にも建物を置かない: 首都高の形(PLATEAU)と OSM の高架の線にかかる建物は消す
+_hw = []
+if BRG:
+    for B_ in json.load(open(BRG))['bridges']:
+        for r_ in B_['fp']:
+            if len(r_) >= 3:
+                try: _hw.append(_BP0(r_).buffer(0).buffer(2))
+                except Exception: pass
+for e in elevated:
+    if len(e['pts']) > 1: _hw.append(_BL0(e['pts']).buffer(e['lanes'] * 3.25 / 2 + 3))
+if _hw:
+    _hwU = _BU0(_hw)
+    _n0 = len(buildings)
+    def _onhw(b):
+        try: pb = _BP0(b['p']).buffer(0)
+        except Exception: return False
+        return pb.intersection(_hwU).area > max(15, 0.05 * pb.area)
+    buildings[:] = [b for b in buildings if b.get('look') or not _onhw(b)]
+    print('高速道路にかかる建物を消す', _n0 - len(buildings))
 # 橋(道路)の上にかぶさる建物・屋根・塔は消す(橋をふさがないように)
 from shapely.geometry import Polygon as _BP2, LineString as _BL2
 from shapely.ops import unary_union as _BU2

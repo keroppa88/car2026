@@ -536,7 +536,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 5000 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 12000 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -2390,7 +2390,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   window.addEventListener('wheel', (e) => {
     if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
     // 日本橋はビルを眺められるよう、ずっと遠くまで引ける
-    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, OSM_COURSE ? 600 : 28);
+    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, OSM_COURSE ? 4000 : 28);
   }, { passive: true });
 
   window.addEventListener('resize', () => {
