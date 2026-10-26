@@ -593,10 +593,12 @@ if rails:
                 print('首都高の下を外す', len(_low))
         for g_ in (_u.intersection(_VB(-1e5, _cut_z, 1e5, 1e5)), _u.intersection(_VB(-1e5, -1e5, 1e5, _cut_z))):
             pass
-        _brk = _u.intersection(_VB(-1e5, _cut_z, 1e5, 1e5)).buffer(-9, join_style=2).buffer(9, join_style=2)   # 細い枝(引き込み線など)は落とす
+        _brk = _u.buffer(-9, join_style=2).buffer(9, join_style=2)   # 細い枝(引き込み線など)は落とす
         _brk = _UU([_PG(g2.exterior) for g2 in (getattr(_brk, 'geoms', None) or [_brk]) if g2.geom_type == 'Polygon' and g2.area > 4000])   # 穴・小さな切れ端なし
-        _pieces = [(g2, 0) for g2 in (lambda x: getattr(x, 'geoms', None) or [x])(_brk)] \
-                + [(g2, 1) for g2 in (lambda x: getattr(x, 'geoms', None) or [x])(_u.intersection(_VB(-1e5, -1e5, 1e5, _cut_z)))]
+        # 描いてもらった地図どおり: 赤=地面に接続したれんが、黄緑=宙に浮いたコンクリート(神田の先・有楽町の南の z 60〜230 と z 540〜)
+        _cz = _UU([_VB(-1e5, -1e5, 1e5, _cut_z), _VB(-1e5, 60, 1e5, 230), _VB(-1e5, 540, 1e5, 1e5)])
+        _G = lambda x: getattr(x, 'geoms', None) or [x]
+        _pieces = [(g2, 0) for g2 in _G(_brk.difference(_cz))] + [(g2, 1) for g2 in _G(_u.intersection(_cz))]
     else:
         _pieces = [(g2, 0) for g2 in (_u.geoms if hasattr(_u, 'geoms') else [_u])]
     for g_, _conc in _pieces:
