@@ -506,7 +506,9 @@ function buildRailways(data, g, onRoad) {
         let open = false;
         for (const d of [-3.5, -1.75, 0, 1.75, 3.5]) {
           const qx = mx - nx * 1.5 + tx * d, qz = mz - nz * 1.5 + tz * d;
-          if (onRoad(qx, qz) || overWater(qx, qz)) { open = true; break; }
+          if (overWater(qx, qz)) { open = true; break; }
+          // 道路が高架の下をくぐる所だけあける(高架に沿って並ぶ道路では壁を残す)
+          if (onRoad(qx, qz) && onRoad(mx + nx * 2 + tx * d, mz + nz * 2 + tz * d) && onRoad(mx - nx * 7 + tx * d, mz - nz * 7 + tz * d)) { open = true; break; }
         }
         const y0 = open ? Math.min(h0, h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
         deck.p.push(x0, y0, z0, x1, y0, z1, x1, h1, z1, x0, y0, z0, x1, h1, z1, x0, h0, z0);

@@ -244,16 +244,12 @@ for wid, (refs, t) in WAYS.items():
         for cp, _ in clip_line(pts, [r for r in refs if r in N]):
             rails.append({'pts': cp, 'h': RAIL_H.get(min(layer_of(t), 3))})
         continue
-    # 在来線の高架も新幹線とまとめて幅広いれんがの高架にする(東京駅の構内は除く)
-    if LMK and rw == 'rail' and t.get('tunnel') != 'yes' and (layer_of(t) >= 1 or t.get('bridge') in ('yes', 'viaduct')):
-        for cp, _ in clip_line(pts, [r for r in refs if r in N]):
-            run = []
-            for p in cp:
-                if not (-440 < p[0] < -80 and -775 < p[1] < -330): run.append(p)   # 駅の構内以外
-                else:
-                    if len(run) >= 2: rails.append({'pts': run, 'h': RAIL_H[1], 'north': 1})
-                    run = []
-            if len(run) >= 2: rails.append({'pts': run, 'h': RAIL_H[1], 'north': 1})
+    # 在来線の高架・東京駅の構内の線路も新幹線とまとめて、線路の敷地いっぱいの1つの構築物(れんがの高架)にする
+    if LMK and rw == 'rail' and t.get('tunnel') != 'yes' and not t.get('layer', '0').startswith('-'):
+        _stb = lambda p: -480 < p[0] < -60 and -830 < p[1] < -300
+        if t.get('location') != 'underground' and t.get('covered') != 'yes' and t.get('service') not in ('yard', 'siding', 'spur'):   # 地上・高架の線路はぜんぶ(マップの端から端まで)
+            for cp, _ in clip_line(pts, [r for r in refs if r in N]):
+                rails.append({'pts': cp, 'h': RAIL_H[1], 'north': 1})
         continue
     if rw == 'platform' and refs[0] == refs[-1] and len(pts) >= 4 and t.get('tunnel') != 'yes' and layer_of(t) >= 0:
         if not CLIP or inside(centroid(pts[:-1])): platforms.append({'o': pts[:-1], 'h': []})
@@ -545,7 +541,8 @@ if rails:
     import mapbox_earcut as _ec, numpy as _np
     _u = _UU([_LS(r['pts']).buffer(2.7, cap_style=2) for r in rails if len(r['pts']) > 1 and not r.get('north')]).buffer(4.0).buffer(-4.0)
     _un = [_LS(r['pts']).buffer(3.5, cap_style=2) for r in rails if len(r['pts']) > 1 and r.get('north')]
-    if _un: _u = _UU([_u, _UU(_un).buffer(10, join_style=2).buffer(-10, join_style=2)]).buffer(1).buffer(-1)
+    if _un: _u = _UU([_u, _UU(_un).buffer(12, join_style=2).buffer(-12, join_style=2)]).buffer(1).buffer(-1)
+    _u = _u.difference(_UU([_PG(rg).buffer(0).buffer(1.5) for L_ in json.load(open(LMK))['landmarks'] if '丸の内駅舎' in L_['label'] for rg in L_['fp'] if len(rg) >= 3]))
     _rp = [(x, z, h) for r in rails for (x, z), h in zip(r['pts'], r.get('hs') or [r['h']] * len(r['pts']))]
     _rg = {}
     for x, z, h in _rp: _rg.setdefault((int(x // 25), int(z // 25)), []).append((x, z, h))
@@ -561,7 +558,7 @@ if rails:
         if g_.area < 50: continue
         g_ = g_.simplify(0.5)
         ext = list(g_.exterior.coords)[:-1]
-        holes = [list(i.coords)[:-1] for i in g_.interiors]
+        holes = [list(i.coords)[:-1] for i in g_.interiors if not LMK or _PG(i).area > 20000]   # 線路のあいだの穴は埋める(敷地いっぱいの構築物)
         rings = [ext] + holes
         pts = [p for r_ in rings for p in r_]
         ends = _np.cumsum([len(r_) for r_ in rings]).astype(_np.uint32)
@@ -579,7 +576,7 @@ def _near_pf(o):
 canopies[:] = [c for c in canopies if _near_pf(c['o'])]
 
 # 東京駅の構内(駅舎と北の高架のあいだ): 線路のすき間を低い建物で埋める
-if LMK and _stn_rails:
+if False and LMK and _stn_rails:   # 構内は高架の構築物で埋めるので使わない
     from shapely.geometry import LineString as _QL, Polygon as _QP, box as _QB
     from shapely.ops import unary_union as _QU
     _box = _QB(-430, -800, -90, -340)
