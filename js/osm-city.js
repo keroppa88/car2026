@@ -363,13 +363,37 @@ function buildRoads(data, g) {
           for (const [k, RJ] of J) { const [jx, jz] = k.split(',').map(Number); if (jx === p[i][0] && jz === p[i][1]) continue; if (Math.hypot(jx - ax, jz - az) < RJ + 6) { inJ = true; break; } }
           if (inJ) continue;
           const ang = Math.atan2(tx, tz);
-          // 同じ向きの横断歩道が近くにあれば作らない
-          if (placedCw.some(c => {
-            const dx = c[0] - ax, dz = c[1] - az;
-            return Math.abs(Math.sin(c[2] - ang)) < 0.3 && Math.abs(dx * tx + dz * tz) < 30 && Math.abs(dx * tz - dz * tx) < half;
-          })) continue;
-          placedCw.push([ax, az, ang]);
-          for (let o = -half + 0.6; o < half - 0.4; o += 0.9) rect(ax + tz * o, az - tx * o, ang, 4, 0.45, 0.085, white);
+          // 横断歩道: 道路を横切る線の上で、車道の端から端まで(中央分離帯をはさむ上下線もまとめて)。
+          // 両端が歩道(車道でない所)に着き、車道の部分が全部まっすぐな道の上にある時だけ置く。
+          const road = (x, z) => shared(x, z, -1);
+          const edge = (sd) => {   // 中心から sd 方向へ、車道が途切れて 8m 以上続かなくなる所まで
+            let last = 0, d = 0;
+            while (d < 45) { d += 0.5; if (road(ax + tz * d * sd, az - tx * d * sd)) last = d; else if (d - last > 8) break; }
+            return last;
+          };
+          const e1 = edge(1), e2 = edge(-1);
+          if (e1 + e2 < 5 || e1 + e2 > 45) continue;
+          let ok = true;
+          const segs = [];
+          for (let o = -e2; o <= e1 + 1e-6 && ok; o += 0.9) {
+            const x = ax + tz * o, z = az - tx * o;
+            if (!road(x, z)) continue;
+            // 横断歩道の幅(前後 ±2.5m)が全部車道の上(交差点の角にかからない)
+            if (!road(x + tx * 2.5, z + tz * 2.5) || !road(x - tx * 2.5, z - tz * 2.5)) ok = false;
+            segs.push(o);
+          }
+          // 両端の先は歩道(前後どちらにずらしても車道でない)
+          const away = sc > s[i] ? 1 : -1;   // 交差点から離れる向き
+          for (const [o, sd] of [[e1, 1], [-e2, -1]]) for (const dd of [0, 3 * away, 6 * away]) {
+            const x = ax + tz * (o + sd * 2.5) + tx * dd, z = az - tx * (o + sd * 2.5) + tz * dd;
+            if (road(x, z)) ok = false;
+          }
+          if (!ok || !segs.length) continue;
+          const mo = (e1 - e2) / 2, cx = ax + tz * mo, cz = az - tx * mo;
+          // 同じ向きの横断歩道が近くにあれば作らない(上下線で2回作らない)
+          if (placedCw.some(c => Math.abs(Math.sin(c[2] - ang)) < 0.3 && Math.hypot(c[0] - cx, c[1] - cz) < 25)) continue;
+          placedCw.push([cx, cz, ang]);
+          for (const o of segs) rect(ax + tz * o, az - tx * o, ang, 4, 0.45, 0.085, white);
         }
       }
     }
