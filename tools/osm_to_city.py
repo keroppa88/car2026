@@ -33,6 +33,7 @@ root = ET.parse(src).getroot()
 b = root.find('bounds').attrib
 KZ = 110574.0
 AREA = None
+TSUKIJI = None
 if len(sys.argv) == 4 and sys.argv[3].endswith('.json'):
     LL = json.load(open(sys.argv[3]))['lonlat']
     lat0 = (min(p[1] for p in LL) + max(p[1] for p in LL)) / 2
@@ -40,6 +41,12 @@ if len(sys.argv) == 4 and sys.argv[3].endswith('.json'):
     KX = math.cos(math.radians(lat0)) * 111320.0
     AREA = [[round((p[0] - lon0) * KX, 2), round(-(p[1] - lat0) * KZ, 2)] for p in LL]
     M = 60   # 範囲の外側に少し余白(川の水面などを見せる)
+    if LMK and 'tokyo-center' in sys.argv[3]:   # 築地の跡地(浜離宮のとなり)も走れる範囲に
+        from shapely.geometry import Polygon as _AP0
+        TSUKIJI = _AP0([(-330, 1492), (-120, 1492), (60, 1470), (250, 1480), (250, 1850), (-450, 1850), (-450, 1520)])
+        _au = _AP0(AREA).union(TSUKIJI.buffer(0))
+        if _au.geom_type == 'Polygon': AREA = [[round(x, 2), round(z, 2)] for x, z in list(_au.exterior.coords)[:-1]]
+    else: TSUKIJI = None
     X0, Z0 = min(p[0] for p in AREA) - M, min(p[1] for p in AREA) - M
     X1, Z1 = max(p[0] for p in AREA) + M, max(p[1] for p in AREA) + M
     CLIP = True
@@ -429,6 +436,44 @@ if SEA:
     _new = [r for r in _new if sum(math.dist(a, b) for a, b in zip(r['pts'], r['pts'][1:])) > 12]
     roads[:] = _new
     print('緑地にかかる細い道を切る', _cut)
+
+# 築地の跡地: 中の道路は全部外し、築地大橋から街の交差点まで まっすぐな2車線の道を1本
+if TSUKIJI is not None:
+    from shapely.geometry import LineString as _TL
+    _TS = TSUKIJI.buffer(0)
+    _n0 = len(roads)
+    def _intsu(r):
+        if len(r['pts']) < 2: return False
+        ln = _TL(r['pts'])
+        if r['bridge'] and r['kind'].endswith('_link'): return ln.intersection(_TS).length > 5   # 橋のわきの取り付け道路
+        return False
+    from shapely.geometry import Point as _TPt0
+    _new = []
+    for r in roads:
+        if _intsu(r): continue
+        if r['bridge'] or not _TL(r['pts']).intersects(_TS): _new.append(r); continue
+        rest = _TL(r['pts']).difference(_TS)
+        nmap = {(round(p[0], 2), round(p[1], 2)): n for p, n in zip(r['pts'], r['nodes'])}
+        for g2 in (getattr(rest, 'geoms', None) or [rest]):
+            if g2.geom_type != 'LineString' or g2.length < 3: continue
+            pts = [[round(x, 2), round(z, 2)] for x, z in g2.coords]
+            _new.append({**r, 'pts': pts, 'nodes': [nmap.get((p[0], p[1])) for p in pts]})
+    roads[:] = _new
+    def _end(p):
+        best = None
+        for r in roads:
+            for k in (0, -1):
+                d_ = math.dist(r['pts'][k], p)
+                if best is None or d_ < best[0]: best = (d_, r['pts'][k], r['nodes'][k])
+        return best
+    _b1, _b2 = _end((-7, 1747)), _end((-16, 1754))   # 築地大橋の上下線の端
+    _c1, _c2 = _end((-299.5, 1492.0)), _end((-309.8, 1492.0))   # 街の交差点の上下線の端
+    P1, P2 = [-24.0, 1738.0], [-305.0, 1496.0]
+    mk = lambda pts, nodes, ln_, ow: {'pts': pts, 'lanes': ln_, 'oneway': ow, 'kind': 'primary', 'bridge': False, 'name': '環二通り', 'nodes': nodes}
+    roads.append(mk([P2, P1], ['tsukiji-c', 'tsukiji-b'], 2, False))
+    for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 2, False))
+    for (_, pt, nd) in (_c1, _c2): roads.append(mk([list(pt), P2], [nd, 'tsukiji-c'], 2, False))
+    print('築地: 道路を外す', _n0 - len(roads) + 5, '/ まっすぐな道でつなぐ', round(_b1[0], 1), round(_c1[0], 1))
 
 # 交差点の節(2本以上の車道が共有する点)
 use = {}
@@ -1185,6 +1230,29 @@ if not _brU.is_empty:
     buildings[:] = [b for b in buildings if b.get('look') or not _onbr(b['p'])]
     canopies[:] = [c for c in canopies if not _onbr(c['o'])]
     print('橋の上の建物を消す', _n0 - len(buildings) - len(canopies))
+# 築地の跡地: 建物・敷地・緑地・街路樹をなくして砂色の空き地に
+if TSUKIJI is not None:
+    from shapely.geometry import Polygon as _TP, Point as _TPt
+    _TS = TSUKIJI.buffer(0)
+    _wet = _BU0([_TP(w['o']).buffer(0) for w in water if len(w['o']) >= 3] + [_TL(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1])
+    _hama = [_TP(p_['o']).buffer(0) for p_ in parks if len(p_['o']) >= 3 and _TP(p_['o']).buffer(0).area > 50000]
+    _land = _TS.difference(_wet).difference(_BU0(_hama) if _hama else _TS.buffer(-1e4))
+    def _inT(o):
+        try: return _TP(o).buffer(0).intersection(_land).area > 0.3 * _TP(o).buffer(0).area
+        except Exception: return False
+    _n0 = len(buildings)
+    buildings[:] = [b for b in buildings if not _inT(b['p'])]
+    lots[:] = [q for q in lots if not _inT(q['o'])]
+    parks[:] = [q for q in parks if not _inT(q['o'])]
+    parking[:] = [q for q in parking if not _inT(q['o'])]
+    woods[:] = [q for q in woods if not _inT(q['o'])]
+    trees[:] = [tr for tr in trees if not _land.contains(_TPt(tr[0], tr[1]))]
+    strips[:] = [s_ for s_ in strips if not _land.contains(_TPt(s_[0], s_[1]))]
+    medians[:] = [m_ for m_ in medians if not _land.contains(_TPt(m_[0], m_[1]))]
+    for g2 in (getattr(_land, 'geoms', None) or [_land]):
+        if g2.geom_type == 'Polygon' and g2.area > 100:
+            beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(g2.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in g2.interiors]})
+    print('築地: 建物を消して砂色の空き地に', _n0 - len(buildings))
 # 走れる範囲の外にぽつんとある駐車場・小さな緑地は消す(どこにもつながっていないので)
 if AREA:
     from shapely.geometry import Polygon as _OP
