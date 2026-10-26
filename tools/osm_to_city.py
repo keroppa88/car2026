@@ -311,8 +311,12 @@ if LMK:
     for b in buildings:
         try: pb = Polygon(b['p']).buffer(0)
         except Exception: keep.append(b); continue
-        hit = any(lm[j].intersection(pb).area > 0.3 * max(pb.area, 1e-6) for j in tree.query(pb))
+        hit = any(lm[j].intersection(pb).area > 0.3 * min(max(pb.area, 1e-6), lm[j].area) for j in tree.query(pb))   # 建物の3割、またはランドマークの3割と重なれば外す
         if not hit: keep.append(b)
+    # 東京駅丸の内駅舎の裏(線路側)の細長い建物は外す
+    _st = [Polygon(r).buffer(45) for L_ in json.load(open(LMK))['landmarks'] if L_['label'] == '東京駅 丸の内駅舎' for r in L_['fp']]
+    if _st:
+        keep = [b for b in keep if not any(s.intersection(Polygon(b['p']).buffer(0)).area > 0.5 * Polygon(b['p']).buffer(0).area for s in _st)]
     print('ランドマークと重なる OSM の建物を外す:', len(buildings) - len(keep))
     buildings[:] = keep
 
