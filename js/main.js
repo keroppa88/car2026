@@ -2268,7 +2268,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let demoSequenceLeaving = false;
 
   // ------------------------------------------------------------- camera ---
-  const cam = { yaw: 0, pitch: 0.34, dist: 10, dragging: false, lastDrag: 0 };
+  const cam = { yaw: 0, pitch: 0.34, dist: 10, dragging: false, lastDrag: 0, panX: 0, panZ: 0, panning: false };
   // 追従カメラの振れる範囲。下げすぎると地面へ潜るので 0.08 で止める。
   const CAM_PITCH_MIN = 0.08;
   const CAM_PITCH_MAX = 1.25;
@@ -2287,6 +2287,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     cam.pitch = 0.34;
     cam.dist = 10;
     cam.lastDrag = 0;
+    cam.panX = cam.panZ = 0;
   }
   renderer.domElement.addEventListener('pointerdown', (e) => {
     AUDIO.unlock();
@@ -2299,11 +2300,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         return;
       }
     }
-    cam.dragging = true;
+    // 右ドラッグ(または Shift + 左ドラッグ): 視点の中心を車から離して地面に沿って動かす
+    cam.panning = e.button === 2 || e.shiftKey;
+    cam.dragging = !cam.panning;
     renderer.domElement.setPointerCapture(e.pointerId);
   });
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+  // ダブルクリックで視点の中心を車に戻す
+  renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
   window.addEventListener('pointerup', () => {
     cam.dragging = false;
+    cam.panning = false;
     cam.lastDrag = performance.now();
     // デモ中、ほぼ動かさずに離した(クリック/タップ)なら視点を切り替える。
     // ドラッグした場合はデモを継続し、カメラだけ動かす。
@@ -2315,6 +2322,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     demoTapMove = 1e9;
   });
   window.addEventListener('pointermove', (e) => {
+    if (cam.panning) {
+      // 画面の左右・上下の動きを、カメラの向きに合わせた地面の向きへ(遠いほど大きく動く)
+      const a = player.heading + Math.PI + cam.yaw, k = Math.max(0.05, cam.dist * 0.0022);
+      const rx = Math.cos(a), rz = -Math.sin(a), fx = -Math.sin(a), fz = -Math.cos(a);
+      cam.panX += (-e.movementX * rx + e.movementY * fx) * k * 2;
+      cam.panZ += (-e.movementX * rz + e.movementY * fz) * k * 2;
+      return;
+    }
     if (!cam.dragging) return;
     demoTapMove += Math.abs(e.movementX) + Math.abs(e.movementY);
     cam.yaw -= e.movementX * 0.005;
@@ -10934,7 +10949,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     // ドラッグで振ったカメラは、そのままの向きで置いておく。
     // 車の背後へ戻すのは視点切替(V)のときだけ。
-    const target = new THREE.Vector3(player.pos.x, player.pos.y + 1.4, player.pos.z);
+    const target = new THREE.Vector3(player.pos.x + cam.panX, player.pos.y + 1.4, player.pos.z + cam.panZ);
     const a = player.heading + Math.PI + cam.yaw;
     const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
     camera.position.set(
