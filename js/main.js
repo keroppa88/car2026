@@ -10705,7 +10705,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
   // ---- Q の地図 ----
   // 真上から地図全体を1回だけ描いて画像にしておき、その上に自車(二等辺三角形・鋭い角が車の向き)を重ねる。
-  const miniMap = { mode: 0, el: null, cv: null, img: null, frame: null, osmReady: false, zoom: 1, panX: 0, panY: 0, drag: null };
+  const miniMap = { mode: 0, el: null, cv: null, img: null, frame: null, osmReady: false };
   function miniMapFrame() {
     const ob = tokyoEkiCity?.bounds?.();
     if (ob) return { x0: ob[0], z0: ob[1], x1: ob[2], z1: ob[3] };
@@ -10742,24 +10742,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       el.style.cssText = 'position:fixed;z-index:40;pointer-events:none;border:2px solid rgba(255,255,255,0.7);border-radius:6px;overflow:hidden;box-sizing:border-box;';
       const cv = document.createElement('canvas'); cv.style.cssText = 'width:100%;height:100%;display:block;';
       el.appendChild(cv); document.body.appendChild(el); miniMap.el = el; miniMap.cv = cv;
-      // 全画面の地図は自由に動かせる: ドラッグで移動、ホイールで拡大縮小、ダブルクリックで元に戻す
-      const dpr = () => Math.min(2, window.devicePixelRatio || 1);
-      el.addEventListener('pointerdown', (e) => { if (miniMap.mode !== 2) return; miniMap.drag = [e.clientX, e.clientY]; el.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); });
-      el.addEventListener('pointermove', (e) => { if (!miniMap.drag) return; miniMap.panX += (e.clientX - miniMap.drag[0]) * dpr(); miniMap.panY += (e.clientY - miniMap.drag[1]) * dpr(); miniMap.drag = [e.clientX, e.clientY]; e.stopPropagation(); });
-      el.addEventListener('pointerup', (e) => { miniMap.drag = null; e.stopPropagation(); });
-      el.addEventListener('wheel', (e) => {
-        if (miniMap.mode !== 2) return;
-        e.preventDefault(); e.stopPropagation();
-        const r = el.getBoundingClientRect(), mx = (e.clientX - r.left) * dpr(), my = (e.clientY - r.top) * dpr();
-        const W = cv.width, H = cv.height, z0 = miniMap.zoom, z1 = Math.max(1, Math.min(12, z0 * Math.exp(-e.deltaY * 0.0015)));
-        // カーソルの下の点を動かさない
-        const cx = W / 2 + miniMap.panX, cy = H / 2 + miniMap.panY;
-        miniMap.panX = mx - W / 2 - (mx - cx) * z1 / z0; miniMap.panY = my - H / 2 - (my - cy) * z1 / z0;
-        miniMap.zoom = z1;
-      }, { passive: false });
-      el.addEventListener('dblclick', (e) => { miniMap.zoom = 1; miniMap.panX = miniMap.panY = 0; e.stopPropagation(); });
     }
-    miniMap.zoom = 1; miniMap.panX = miniMap.panY = 0; miniMap.drag = null;
+
     const osmNow = !!tokyoEkiCity?.bounds?.();
     if (miniMap.mode && (!miniMap.img || (osmNow && !miniMap.osmReady))) { buildMiniMapImage(); miniMap.osmReady = osmNow; }
     // 地図の縦横比に合わせた枠にする(余白の黒い部分を作らない)
@@ -10767,10 +10751,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const fit = (maxW, maxH) => { let w = maxW, h = w / ar; if (h > maxH) { h = maxH; w = h * ar; } return [Math.round(w), Math.round(h)]; };
     if (miniMap.mode === 1) {
       const [w, h] = fit(window.innerWidth * 0.5, window.innerHeight * 0.5);
-      Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto', width: w + 'px', height: h + 'px', pointerEvents: 'none', cursor: '' });
+      Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto', width: w + 'px', height: h + 'px' });
     } else if (miniMap.mode === 2) {
       const [w, h] = fit(window.innerWidth, window.innerHeight);
-      Object.assign(s, { display: 'block', top: Math.round((window.innerHeight - h) / 2) + 'px', left: Math.round((window.innerWidth - w) / 2) + 'px', right: 'auto', width: w + 'px', height: h + 'px', pointerEvents: 'auto', cursor: 'grab' });
+      Object.assign(s, { display: 'block', top: Math.round((window.innerHeight - h) / 2) + 'px', left: Math.round((window.innerWidth - w) / 2) + 'px', right: 'auto', width: w + 'px', height: h + 'px' });
     } else s.display = 'none';
     document.body.dataset.miniMap = String(miniMap.mode);
   }
@@ -10781,9 +10765,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     const g = cv.getContext('2d'), img = miniMap.img, f = miniMap.frame;
     g.clearRect(0, 0, W, H);
-    if (miniMap.mode === 2) { g.fillStyle = '#20242a'; g.fillRect(0, 0, W, H); }
-    const z = miniMap.mode === 2 ? miniMap.zoom : 1, px = miniMap.mode === 2 ? miniMap.panX : 0, py = miniMap.mode === 2 ? miniMap.panY : 0;
-    const sc = Math.min(W / img.width, H / img.height) * z, dw = img.width * sc, dh = img.height * sc, ox = (W - dw) / 2 + px, oy = (H - dh) / 2 + py;
+    const sc = Math.min(W / img.width, H / img.height), dw = img.width * sc, dh = img.height * sc, ox = (W - dw) / 2, oy = (H - dh) / 2;
     g.drawImage(img, ox, oy, dw, dh);
     // 自車: 正面が鋭い角の二等辺三角形
     const x = ox + (player.pos.x - f.x0) / (f.x1 - f.x0) * dw, y = oy + (player.pos.z - f.z0) / (f.z1 - f.z0) * dh;
