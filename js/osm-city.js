@@ -522,6 +522,13 @@ function buildRailways(data, g, onRoad) {
   // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
   const overWater = makeWaterMask(data, 8);
   const deck = { p: [], n: [] }, rail = [], conc = { p: [], n: [] };
+  const grey = { p: [], n: [] }, yr = data.yaesu;
+  const onYaesu = (x, z) => {
+    if (!yr) return false;
+    const [ax, az] = yr.a, [bx, bz] = yr.b, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+    const u = ((x - ax) * dx + (z - az) * dz) / L2; if (u < -0.01 || u > 1.01) return false;
+    return Math.hypot(ax + dx * u - x, az + dz * u - z) < 1.5;
+  };
   // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
   for (const v of data.viaducts || []) {
     const tp = v.top;
@@ -567,6 +574,11 @@ function buildRailways(data, g, onRoad) {
       }
       for (const q of segs) {
         const y0 = q.open ? Math.min(q.h0, q.h1) - 1.6 : 0;   // 道路・水の上は桁の厚みだけ
+        if (onYaesu((q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2)) {   // 八重洲側の壁は薄いグレー
+          grey.p.push(q.x0, y0, q.z0, q.x1, y0, q.z1, q.x1, q.h1, q.z1, q.x0, y0, q.z0, q.x1, q.h1, q.z1, q.x0, q.h0, q.z0);
+          for (let k = 0; k < 6; k++) grey.n.push(q.nx, 0, q.nz);
+          continue;
+        }
         deck.p.push(q.x0, y0, q.z0, q.x1, y0, q.z1, q.x1, q.h1, q.z1, q.x0, y0, q.z0, q.x1, q.h1, q.z1, q.x0, q.h0, q.z0);
         for (let k = 0; k < 6; k++) deck.n.push(q.nx, 0, q.nz);
       }
@@ -634,6 +646,34 @@ function buildRailways(data, g, onRoad) {
   const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture(), side: THREE.DoubleSide }));
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
+  if (grey.p.length) g.add(solidMesh(grey, new THREE.MeshLambertMaterial({ color: 0xc9cbcc, side: THREE.DoubleSide })));
+  if (yr) {   // 八重洲口の白い斜めの屋根(グランルーフ)と、斜めの柱
+    const [ax, az] = yr.a, [bx, bz] = yr.b, [nx, nz] = yr.n, H = yr.h, roof = { p: [], n: [] }, mast = { p: [], n: [] };
+    const I0 = 1, I1 = 20, Y0 = H + 4, Y1 = H + 10;   // 壁から 1m(高さ H+4) → 20m(高さ H+10)
+    const P = (t, o, y) => [ax + (bx - ax) * t + nx * o, y, az + (bz - az) * t + nz * o];
+    const N = 24;
+    for (let i = 0; i < N; i++) {
+      const t0 = i / N, t1 = (i + 1) / N, a0 = P(t0, I0, Y0), a1 = P(t1, I0, Y0), b0 = P(t0, I1, Y1), b1 = P(t1, I1, Y1);
+      roof.p.push(...a0, ...a1, ...b1, ...a0, ...b1, ...b0);
+      for (let k = 0; k < 6; k++) roof.n.push(0, 1, 0);
+      // 屋根の先の縁(厚み)
+      const c0 = [b0[0], b0[1] - 0.6, b0[2]], c1 = [b1[0], b1[1] - 0.6, b1[2]];
+      roof.p.push(...b0, ...b1, ...c1, ...b0, ...c1, ...c0);
+      for (let k = 0; k < 6; k++) roof.n.push(nx, 0, nz);
+    }
+    const L = Math.hypot(bx - ax, bz - az), M = Math.max(2, Math.round(L / 22));
+    for (let i = 0; i <= M; i++) {   // 地面(壁から 12m)から屋根の先へ斜めの細い柱
+      const t = 0.03 + 0.94 * i / M, [x0, , z0] = P(t, 12, 0), [x1, , z1] = P(t, I1 - 1, 0);
+      const dx = x1 - x0, dz = z1 - z0, dy = Y1 - 0.6, len = Math.hypot(dx, dy, dz);
+      const geo = new THREE.CylinderGeometry(0.25, 0.35, len, 6).toNonIndexed();
+      const m = new THREE.Mesh(geo); m.position.set((x0 + x1) / 2, dy / 2, (z0 + z1) / 2);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize()); m.updateMatrix();
+      geo.applyMatrix4(m.matrix);
+      mast.p.push(...geo.getAttribute('position').array); mast.n.push(...geo.getAttribute('normal').array);
+    }
+    const rm = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xf2f2ee, side: THREE.DoubleSide })); rm.name = 'grand-roof'; g.add(rm);
+    g.add(solidMesh(mast, new THREE.MeshLambertMaterial({ color: 0xd8dadb })));
+  }
   if (conc.p.length) { const mc = solidMesh(conc, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mc.name = 'rail-viaduct-concrete'; g.add(mc); }
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
@@ -819,6 +859,7 @@ function buildBuildings(data, g, wallMats, roofMat) {
     const small = area < SMALL_AREA && !lk;
     let wallHex = small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base);
     if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
+    if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
     const col = new THREE.Color(wallHex), S = STYLES[style], W = walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk

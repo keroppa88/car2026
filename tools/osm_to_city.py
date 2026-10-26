@@ -645,6 +645,35 @@ if rails:
         if _conc == 1: viaducts[-1]['concrete'] = 1   # 空中に浮いたコンクリートの高架(壁なし・下は通れる)
         if _conc == 2: viaducts[-1]['ceil'] = 1       # れんがのトンネル・橋の天井(壁なし・下は通れる)
     print('高架(まとめた形)', len(viaducts))
+    # 東京駅 八重洲側: 外堀通りに沿った長い壁(薄いグレー + 白い斜めの屋根)
+    yaesu = None
+    if LMK:
+        best = None
+        for v in viaducts:
+            if v.get('concrete') or v.get('ceil'): continue
+            r_ = v['rings'][0]; pg = _PG([(x, z) for x, z, _ in r_]).buffer(0)
+            for i in range(len(r_)):
+                a_, b_ = r_[i], r_[(i + 1) % len(r_)]; mx, mz = (a_[0] + b_[0]) / 2, (a_[1] + b_[1]) / 2
+                L_ = math.dist(a_[:2], b_[:2])
+                if -140 < mx < -80 and -820 < mz < -550 and (best is None or L_ > best[0]):
+                    nx, nz = (b_[1] - a_[1]) / L_, -(b_[0] - a_[0]) / L_
+                    if pg.contains(__import__("shapely.geometry", fromlist=["Point"]).Point(mx + nx * 2, mz + nz * 2)): nx, nz = -nx, -nz   # 外向き
+                    best = (L_, a_[:2], b_[:2], [round(nx, 3), round(nz, 3)], a_[2])
+        if best: yaesu = {'a': best[1], 'b': best[2], 'n': best[3], 'h': best[4]}
+    print('八重洲の壁', yaesu)
+    # 大手町側(東京駅の北の端): れんがの構築物の一部をグレーのビルに置き換える
+    if LMK:
+        from shapely.geometry import box as _OB
+        _ob = _OB(-260, -895, -145, -760)
+        for v in list(viaducts):
+            if v.get('concrete') or v.get('ceil'): continue
+            pg = _PG([(x, z) for x, z, _ in v['rings'][0]], [[(x, z) for x, z, _ in h_] for h_ in v['rings'][1:]]).buffer(0)
+            q = pg.intersection(_ob)
+            if q.is_empty or q.area < 500: continue
+            for g2 in (getattr(q, 'geoms', None) or [q]):
+                if g2.geom_type == 'Polygon' and g2.area > 300:
+                    buildings.append({'p': [[round(x, 2), round(z, 2)] for x, z in list(g2.simplify(0.5).buffer(0.5, join_style=2).exterior.coords)[:-1]], 'h': 30.0, 'holes': [], 'grey': 1})
+            print('大手町のグレーのビル', round(q.area))
 
 # 屋根だけのもの(building=roof)は駅のホームの近くだけ残す(街中のは宙に浮いて見えるので消す)
 def _near_pf(o):
@@ -1143,7 +1172,7 @@ if AREA:
     parking[:] = [p_ for p_ in parking if not _outside(p_['o'])]
     parks[:] = [p_ for p_ in parks if not (_outside(p_['o']) and _OP(p_['o']).buffer(0).area < 20000)]   # 皇居などの大きな緑地は残す
     print('範囲の外の駐車場・小さな緑地を消す', _n0 - len(parking) - len(parks))
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'parking': parking, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'yaesu': yaesu if 'yaesu' in globals() else None, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])
