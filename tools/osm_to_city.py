@@ -142,6 +142,7 @@ def lanes_of(t, kind):
 
 roads, elevated, buildings, water, parks, rivers, beaches, rocks = [], [], [], [], [], [], [], []
 piers = []
+oiso_grey = []
 _sea_woods = []
 rails, platforms, canopies, sites = [], [], [], []   # sites: 工事中の敷地   # 線路の高架・ホーム・ホームの屋根(見た目)
 RAIL_H = {1: 7.5, 2: 12.5, 3: 17.0}       # 高架の線路面の高さ(layer ごと)
@@ -760,6 +761,23 @@ if SEA:
             if np_.y > rp.y: continue          # 幹線道路より海側(南 = z が大きい)だけ
             beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]}); nb += 1
         print('大磯の砂浜', nb)
+        # 大磯港(堤防・岸壁)と町の中は砂浜にしない → グレー。そこに接する足した一戸建ては外す
+        ex0, ex1 = -9150 + (X1 - 9976), -8650 + (X1 - 9976)
+        _port = _OU([box(ex0, -50, ex1, 700), box(ex0 - 300, -50, ex0, 400)])
+        _keep, _grey = [], []
+        for b in beaches[-nb:] if nb else []:
+            pg = _HP2(b['o'], b.get('h') or []).buffer(0)
+            for part, lst in ((pg.difference(_port), _keep), (pg.intersection(_port), _grey)):
+                for q in (getattr(part, 'geoms', None) or [part]):
+                    if q.geom_type == 'Polygon' and q.area > 20: lst.append(q)
+        if nb: del beaches[-nb:]
+        for q in _keep: beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': []})
+        oiso_grey = [{'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]} for q in _grey]
+        _gU = _OU(_grey).buffer(8) if _grey else None
+        if _gU is not None:
+            n0 = len(buildings)
+            buildings[:] = [b for b in buildings if not (b.get('house') and _HP2(b['p']).intersects(_gU))]
+            print('大磯港をグレーに', len(_grey), '/ 外した一戸建て', n0 - len(buildings))
 
 # 湘南: 幹線道路に面した建物・海沿いの建物・江の島の建物は白っぽい色を多めに(JS 側で white を見る)
 if SEA:
@@ -873,7 +891,7 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
-json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
+json.dump({'bounds': [X0, Z0, X1, Z1], 'elevH': ELEV_H, 'trees': trees, 'piers': piers + oiso_grey, 'rocks': rocks, 'beaches': beaches, 'woods': woods, 'palace': [[round(x, 1), round(z, 1)] for x, z in _PALP], 'sites': sites, 'lots': lots, 'sidewalk': SIDEWALK, 'viaducts': viaducts, 'strips': strips, 'medians': medians, 'area': AREA, 'rivers': rivers, 'rails': rails, 'platforms': platforms, 'canopies': canopies, 'roads': roads, 'elevated': elevated, 'buildings': buildings,
            'water': water, 'parks': parks}, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print('roads', len(roads), 'elevated', len(elevated), 'buildings', len(buildings), 'water', len(water), 'parks', len(parks), 'rivers', len(rivers), 'rails', len(rails), 'platforms', len(platforms), 'canopies', len(canopies),
       'bounds', [round(v) for v in (X0, Z0, X1, Z1)])

@@ -632,7 +632,7 @@ export const MAP_CONFIGS = {
     label: '湘南',
     file: 'map/map_tokyoeki.glb',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261026-17',
+    cityData: 'map/shonan-city.json?v=20261026-18',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
