@@ -51,6 +51,8 @@ sea = sea.difference(isl)
 # 帯: 134号の線を陸側に 320m、海側に 30m(海岸線までで切る)
 r134 = unary_union([LineString(p) for p in road])
 band = r134.buffer(320).difference(sea.buffer(-40))      # 砂浜と波打ち際 40m は入れる
+# 134号と海の間(海から 450m 以内の陸)も入れる: 道が内陸へ曲がる所(相模川の河口など)に灰色の地面が出ないように
+band = unary_union([band, sea.buffer(450).difference(sea.buffer(-40)).intersection(r134.buffer(900))])
 # 江の島: 島と、島へ渡る橋(島に届く橋の道路)を入れる
 isl_big = max(isl.geoms, key=lambda g: g.area) if hasattr(isl, 'geoms') else isl
 br = [LineString(p).buffer(12) for p in bridges if len(p) > 1 and LineString(p).distance(isl_big) < 30]

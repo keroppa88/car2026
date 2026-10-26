@@ -209,6 +209,8 @@ for wid, (refs, t) in WAYS.items():
     pts = ring_pts(refs)
     if len(pts) < 2: continue
     hw = t.get('highway')
+    if hw in ('motorway', 'motorway_link') and SEA:
+        hw = 'trunk' if hw == 'motorway' else 'trunk_link'   # 湘南: 西湘バイパスは地上の普通の道路として走れる
     if hw in ('motorway', 'motorway_link'):
         if t.get('tunnel') in ('yes', 'building_passage'): continue
         for cp, _ in clip_line(pts, refs):
@@ -717,6 +719,26 @@ if SEA:
         if pb.intersects(_main) or pb.intersects(_seaz) or _eno.contains(pb.centroid): b['white'] = 1; _nw += 1
     print('白っぽくする建物', _nw)
 
+# 上下線が別々の橋が並んでいる所は1本の橋にまとめる(JS で床を広げ、真ん中にグレーの壁)
+from shapely.geometry import LineString as _BL, Point as _BP
+_br = [r for r in roads if r['bridge'] and len(r['pts']) > 1]
+for r in _br:
+    ln = _BL(r['pts']); m = ln.interpolate(0.5, normalized=True)
+    a, b = r['pts'][0], r['pts'][-1]; L = math.dist(a, b) or 1; tx, tz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+    best = None
+    for o in _br:
+        if o is r: continue
+        lo = _BL(o['pts']); d = lo.distance(m)
+        if d > 40 or d < 3: continue
+        oa, ob = o['pts'][0], o['pts'][-1]; oL = math.dist(oa, ob) or 1
+        if ((ob[0] - oa[0]) * tx + (ob[1] - oa[1]) * tz) / oL > -0.8: continue   # 逆向き・平行のものだけ
+        if best is None or d < best[0]: best = (d, lo)
+    if best:
+        q = best[1].interpolate(best[1].project(m))
+        side = 1 if (tz * (q.x - m.x) - tx * (q.y - m.y)) > 0 else -1   # 左(offset の正)なら 1
+        r['pair'] = {'side': side, 'gap': round(best[0], 2), 'wall': 1 if id(r) < id(best[1]) else 0}
+print('並んだ橋をまとめる', sum(1 for r in roads if r.get('pair')))
+
 # 公園・林・砂地は走れる範囲(+ 少し)の中だけにする(範囲の外の灰色の地面に浮かないように)
 if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地を範囲の外にも見せる)
     from shapely.geometry import Polygon as _AP
@@ -754,6 +776,14 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
                 if seg.length < 1 or seg.difference(_beachU.union(_ML(rv['pts']).buffer(rv['w']))).length > 0.3 * seg.length: continue   # 砂浜でふさがっている所だけ
                 ch = _ML([end, (q.x + (q.x - pe.x) / max(1e-6, pe.distance(q)) * 15, q.y + (q.y - pe.y) / max(1e-6, pe.distance(q)) * 15)]).buffer(max(rv['w'], 30) / 2, cap_style=2)
                 _mouths.append(ch)
+        # 大きな川(面の水)が海の近くで終わっていたら、河口を大きく開ける
+        for w in [w for w in water if not w.get('sea')]:
+            pw = _AP(w['o'], w.get('h') or []).buffer(0)
+            if pw.area < 20000 or pw.distance(_seap) > 150: continue
+            near = pw.intersection(_seap.buffer(160))
+            if near.is_empty: continue
+            mouth = near.union(_seap.intersection(near.buffer(160))).convex_hull.buffer(10)
+            _mouths.append(mouth)
         for ch in _mouths:
             water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(ch.exterior.coords)[:-1]], 'h': [], 'sea': True})
         # 砂浜・岩場から川と水路を抜く

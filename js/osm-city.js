@@ -262,7 +262,7 @@ function makeCoverage(data) {
 
 function buildRoads(data, g) {
   const shared = makeCoverage(data);
-  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] };
+  const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] }, median = { p: [], n: [] };
   // 交差点の点と、その半径(集まる道の半幅の最大)
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
@@ -270,7 +270,26 @@ function buildRoads(data, g) {
   }
   data.roads.forEach((r, rid) => {
     const w = roadWidth(r), half = w / 2, p = r.pts;
-    if (r.bridge) {
+    if (r.bridge && r.pair) {
+      // 上下線が並んだ橋: 外側の欄干から真ん中までを1枚の床に。真ん中にグレーの壁
+      const s = r.pair.side, outer = half + 3.2, inner = r.pair.gap / 2 + 0.3;
+      ribbon(offset(p, s * (inner - outer) / 2), inner + outer, 0.05, deck);
+      ribbon(offset(p, s * (inner - outer) / 2), inner + outer - 0.6, 0.055, asphalt);
+      const e = offset(p, -s * outer);
+      for (let i = 0; i + 1 < e.length; i++) {
+        const [x0, z0] = e[i], [x1, z1] = e[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
+        const ang = Math.atan2(x1 - x0, z1 - z0);
+        boxInto(parapet, (x0 + x1) / 2, 0.6, (z0 + z1) / 2, 0.55, 1.2, L + 0.3, ang);
+        boxInto(parapet, (x0 + x1) / 2, 1.27, (z0 + z1) / 2, 0.7, 0.14, L + 0.3, ang);
+      }
+      if (r.pair.wall) {
+        const mline = offset(p, s * r.pair.gap / 2);
+        for (let i = 0; i + 1 < mline.length; i++) {
+          const [x0, z0] = mline[i], [x1, z1] = mline[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
+          boxInto(median, (x0 + x1) / 2, 0.5, (z0 + z1) / 2, 0.6, 1.0, L + 0.3, Math.atan2(x1 - x0, z1 - z0));
+        }
+      }
+    } else if (r.bridge) {
       ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
       for (const sd of [-1, 1]) {      // 両側に石の欄干(厚めの低い壁)
         const e = offset(p, sd * (half + 3.2));
@@ -352,6 +371,7 @@ function buildRoads(data, g) {
   });
   g.add(flatMesh(walk, SIDEWALK_COLOR), flatMesh(curb, 0x9d9e9b));
   if (parapet.p.length) g.add(solidMesh(parapet, new THREE.MeshLambertMaterial({ color: 0xb3ada1 })));
+  if (median.p.length) g.add(solidMesh(median, new THREE.MeshLambertMaterial({ color: 0x8e9196 })));   // 橋の真ん中の壁(グレー)
   g.add(flatMesh(deck, SIDEWALK_COLOR), flatMesh(asphalt, ASPHALT), flatMesh(white, 0xe9e9e6), flatMesh(yellow, 0xd9b23a));
 }
 
