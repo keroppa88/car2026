@@ -661,8 +661,8 @@ if rails:
                     best = (L_, a_[:2], b_[:2], [round(nx, 3), round(nz, 3)], a_[2])
         if best: yaesu = {'a': best[1], 'b': best[2], 'n': best[3], 'h': best[4]}
     print('八重洲の壁', yaesu)
-    # 大手町側(東京駅の北の端): れんがの構築物の一部をグレーのビルに置き換える
-    if LMK:
+    # 大手町側のグレーのビル(取りやめ)
+    if False:
         from shapely.geometry import box as _OB
         _ob = _OB(-260, -895, -145, -760)
         for v in list(viaducts):
