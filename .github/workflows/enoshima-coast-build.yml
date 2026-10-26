@@ -1,0 +1,73 @@
+name: Build Enoshima coast changes
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  build:
+    if: github.head_ref == 'fix/enoshima-coast'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/enoshima-coast
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install geometry dependencies
+        run: python -m pip install numpy 'shapely>=2.1'
+      - name: Edit and rebuild surfaces
+        run: |
+          python -m py_compile tools/shonan/edit_enoshima.py
+          python tools/shonan/edit_enoshima.py
+          python tools/shonan/build_surfaces.py
+          node test/shonan-surfaces.mjs
+      - name: Verify unchanged surroundings and the pink connection
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          from shapely.geometry import Polygon, box
+          from shapely.ops import unary_union
+          from pathlib import Path
+          before=json.loads(subprocess.check_output(['git','show','HEAD:map/shonan-city.json']))
+          after=json.loads(Path('map/shonan-city.json').read_text())
+          assert before['buildings']==after['buildings']
+          assert before['woods']==after['woods']
+          old_primary=[r for r in before['roads'] if r['kind'] in ('trunk','primary')]
+          new_primary=[r for r in after['roads'] if r['kind'] in ('trunk','primary')]
+          assert old_primary==new_primary
+          assert any(r['pts']==[[6222.42,257.03],[6217.06,265.78]] for r in after['roads'])
+          assert any(r['pts']==[[6976.73,308.47],[7029.88,252.98]] for r in after['roads'])
+          region=box(5650,100,7500,780)
+          for key in ('beaches','piers','parks','water'):
+              def merged(d):
+                  return unary_union([Polygon(q['o'],q.get('h',[])).buffer(0) for q in d[key]])
+              diff=merged(before).symmetric_difference(merged(after)).difference(region).area
+              print(key, 'outside change', diff)
+              assert diff < .01
+          print('PASS: surroundings, buildings, woods and primary roads preserved')
+          PY
+      - name: Install browser
+        run: |
+          npm --prefix test install --no-package-lock
+          cd test
+          npx playwright install --with-deps chromium
+      - name: Check game startup and driving
+        run: node test/enoshima-browser.mjs
+      - name: Commit generated geometry
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add map/shonan-city.json map/shonan-surfaces.json map/shonan-surfaces.bin.gz
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "江の島: 地表を再生成して検証 [skip ci]"
+            git push origin HEAD:fix/enoshima-coast
+          fi

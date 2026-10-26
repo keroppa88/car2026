@@ -54,6 +54,17 @@ check(9250,785,0,0x9a9b98);
 check(9490,795,0,0x9a9b98);
 check(8850,710,2);   // 指示範囲より西の砂浜はそのまま。
 
+// 江の島の画像指示: 黄色=砂、赤=海、橙=コンクリート、桃=接続道路。
+check(5790,350,3);
+check(6800,600,3);
+check(6860,385,3);   // コンクリートの内側を埋めない。
+check(6200,400,2);
+check(6010,580,2);
+check(5809.06,435.75,0,0x9a9b98);
+check(6942.75,426.1,0,0x9a9b98);
+check(6219.74,261.405,1);
+check(7106,450,0);   // 岬の本体を保持。
+
 let raised=0,sand=0,water=0;
 for(const chunk of info.chunks) {
  const m=native.meshes[info.chunks.indexOf(chunk)],p=m.geometry.attributes.position;
