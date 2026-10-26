@@ -489,10 +489,21 @@ function makeWaterMask(data, margin) {
 function buildRailways(data, g, onRoad) {
   // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
   const overWater = makeWaterMask(data, 8);
-  const deck = { p: [], n: [] }, rail = [];
+  const deck = { p: [], n: [] }, rail = [], conc = { p: [], n: [] };
   // まとめた高架: 上面と、まわりの壁(道路・水の上は壁なし)
   for (const v of data.viaducts || []) {
     const tp = v.top;
+    if (v.concrete) {   // 空中に浮いたコンクリートの高架: 上面・下面・厚み 1.6m の縁だけ
+      for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1], tp[k + 2]); conc.n.push(0, 1, 0); }
+      for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); conc.n.push(0, -1, 0); }
+      for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {
+        const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+        const nx = (bz - az) / L, nz = -(bx - ax) / L;
+        conc.p.push(ax, ah - 1.6, az, bx, bh - 1.6, bz, bx, bh + 1.0, bz, ax, ah - 1.6, az, bx, bh + 1.0, bz, ax, ah + 1.0, az);
+        for (let q = 0; q < 6; q++) conc.n.push(nx, 0, nz);
+      }
+      continue;
+    }
     for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
     for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {
       const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
@@ -518,7 +529,7 @@ function buildRailways(data, g, onRoad) {
     }
   }
   // 道路が高架の下をくぐる所: 道路の両側に壁を立ててトンネルのように囲む(中の空洞が見えないように)
-  const vsList = (data.viaducts || []).map((v) => {
+  const vsList = (data.viaducts || []).filter((v) => !v.concrete).map((v) => {
     const r0 = v.rings[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
     for (const [x, z] of r0) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
     return { v, box: [a, b, c, d], H: r0[0][2] };
@@ -554,6 +565,7 @@ function buildRailways(data, g, onRoad) {
   }
   // 下面(道路の上で見上げた時)
   for (const v of data.viaducts || []) {
+    if (v.concrete) continue;
     const tp = v.top;
     for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
   }
@@ -576,6 +588,7 @@ function buildRailways(data, g, onRoad) {
   const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture(), side: THREE.DoubleSide }));
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
+  if (conc.p.length) { const mc = solidMesh(conc, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mc.name = 'rail-viaduct-concrete'; g.add(mc); }
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
   if (rail.length) g.add(flatMesh(rail, 0x4a4540));
@@ -1369,7 +1382,7 @@ function makeBlocker(data) {
     add([[Math.min(ax, bx) - h, Math.min(az, bz) - h], [Math.max(ax, bx) + h, Math.max(az, bz) + h]], [ax, az, bx, bz, h], 'r');
   }
   // 線路の高架・ホーム: 道路の上(高架下をくぐる所)以外は通れない
-  for (const v of data.viaducts || []) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
+  for (const v of data.viaducts || []) if (!v.concrete) add(v.rings[0].map(([x, z]) => [x, z]), v.rings.slice(1).map((r) => r.map(([x, z]) => [x, z])), 'w');   // 高架: 道路の所だけ通れる
   (data.platforms || []).forEach((pf) => { if (pf.y > 0) add(pf.o, pf.h, 'w'); });
   for (const s of data.sites || []) add(s.o, [], 'b');   // 工事中の敷地には入れない(街路樹・林は当たり判定なし)
   const area = data.area;
