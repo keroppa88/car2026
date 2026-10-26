@@ -709,6 +709,58 @@ for g_ in (_lots.geoms if hasattr(_lots, 'geoms') else [_lots]):
                  'h': [[[round(x, 1), round(z, 1)] for x, z in list(i.coords)[:-1]] for i in g_.interiors if i.length > 8]})
 print('敷地', len(lots))
 
+# 湘南・大磯: 建物のデータが少ないので、細い道の両側に小さな一戸建て(1〜2階)を並べる
+if SEA:
+    from shapely.geometry import Polygon as _HP2, LineString as _HL, Point as _HPt2, box
+    from shapely.strtree import STRtree as _HT2
+    import random as _rnd
+    _rnd.seed(7)
+    WEST_X = xy(35.31, 139.345)[0]   # 大磯より西
+    _ap2 = _HP2(AREA).buffer(-5) if AREA else None
+    _roadsU = [_HL(r['pts']).buffer((4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 1.5) for r in roads if len(r['pts']) > 1]
+    _wat2 = [_HP2(w['o']).buffer(0) for w in water] + [_HL(rv['pts']).buffer(rv['w'] / 2 + 3) for rv in rivers if len(rv['pts']) > 1]
+    _occ = [_HP2(b['p']).buffer(2) for b in buildings if len(b['p']) >= 3]
+    _TR, _TW, _TO = _HT2(_roadsU), _HT2(_wat2), _HT2(_occ)
+    added = []
+    for r in roads:
+        if r['kind'] not in ('residential', 'unclassified', 'tertiary', 'living_street', 'service'): continue
+        if max(p[0] for p in r['pts']) > WEST_X: continue
+        half = (4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2
+        ln = _HL(r['pts'])
+        d = 6.0
+        while d < ln.length - 6:
+            p0, p1 = ln.interpolate(d), ln.interpolate(min(ln.length, d + 1))
+            tx, tz = p1.x - p0.x, p1.y - p0.y; L = math.hypot(tx, tz) or 1; tx, tz = tx / L, tz / L
+            for sd in (-1, 1):
+                w_, dpt = 7 + _rnd.random() * 4, 7 + _rnd.random() * 4
+                off = half + 3 + dpt / 2
+                cx, cz = p0.x - tz * sd * off, p0.y + tx * sd * off
+                hx, hz, nx, nz = tx * w_ / 2, tz * w_ / 2, -tz * dpt / 2, tx * dpt / 2
+                poly = _HP2([(cx - hx - nx, cz - hz - nz), (cx + hx - nx, cz + hz - nz), (cx + hx + nx, cz + hz + nz), (cx - hx + nx, cz - hz + nz)])
+                if _ap2 is not None and not _ap2.contains(poly): continue
+                if any(_roadsU[j].intersects(poly) for j in _TR.query(poly)): continue
+                if any(_wat2[j].intersects(poly) for j in _TW.query(poly)): continue
+                if any(_occ[j].intersects(poly) for j in _TO.query(poly)): continue
+                if any(a.intersects(poly) for a in added[-40:]): continue
+                added.append(poly.buffer(1.5))
+                buildings.append({'p': [[round(x, 2), round(z, 2)] for x, z in list(poly.exterior.coords)[:-1]], 'h': round(3.5 + _rnd.random() * 3.5, 1), 'holes': [], 'house': 1})
+            d += 11 + _rnd.random() * 3
+    print('大磯に足した一戸建て', len(added))
+    # 大磯: 幹線道路の海側は、堤防の手前まで砂浜
+    from shapely.ops import unary_union as _OU, nearest_points as _ONP
+    _seaU = _OU([_HP2(w['o'], w.get('h') or []).buffer(0) for w in water if w.get('sea')])
+    _trunk = _OU([_HL(r['pts']) for r in roads if r['kind'] in ('trunk', 'trunk_link', 'primary') and len(r['pts']) > 1])
+    if _ap2 is not None and not _seaU.is_empty:
+        land = _HP2(AREA).buffer(0).intersection(_seaU.buffer(260)).difference(_seaU).intersection(box(-1e7, -1e7, WEST_X, 1e7))
+        land = land.difference(_OU(_roadsU + _occ + [a for a in added] + _wat2))
+        nb = 0
+        for q in (getattr(land, 'geoms', None) or [land]):
+            if q.geom_type != 'Polygon' or q.area < 200: continue
+            rp = q.representative_point(); np_ = _ONP(rp, _trunk)[1]
+            if np_.y > rp.y: continue          # 幹線道路より海側(南 = z が大きい)だけ
+            beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]}); nb += 1
+        print('大磯の砂浜', nb)
+
 # 湘南: 幹線道路に面した建物・海沿いの建物・江の島の建物は白っぽい色を多めに(JS 側で white を見る)
 if SEA:
     from shapely.geometry import Polygon as _WP, LineString as _WL
