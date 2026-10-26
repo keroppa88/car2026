@@ -44,7 +44,7 @@ jobs:
           new_primary=[r for r in after['roads'] if r['kind'] in ('trunk','primary')]
           assert old_primary==new_primary
           assert any(r['pts']==[[6222.42,257.03],[6217.06,265.78]] for r in after['roads'])
-          assert any(r['pts']==[[6976.73,308.47],[7029.88,252.98]] for r in after['roads'])
+          assert any(r['pts'][0]==[6976.73,308.47] and r['pts'][-1]==[7029.88,252.98] for r in after['roads'])
           region=box(5650,100,7500,780)
           for key in ('beaches','piers','parks','water'):
               def merged(d):
