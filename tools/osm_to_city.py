@@ -542,6 +542,35 @@ if rails:
     _u = _UU([_LS(r['pts']).buffer(2.7, cap_style=2) for r in rails if len(r['pts']) > 1 and not r.get('north')]).buffer(4.0).buffer(-4.0)
     _un = [_LS(r['pts']).buffer(3.5, cap_style=2) for r in rails if len(r['pts']) > 1 and r.get('north')]
     if _un: _u = _UU([_u, _UU(_un).buffer(12, join_style=2).buffer(-12, join_style=2)]).buffer(1).buffer(-1)
+    if LMK and _un:
+        # 線路わきの空き地も埋める: 線路から 30m までを敷地とし、線路に沿って並ぶ道路と建物の手前まで広げる(交差する道路・川の上はそのまま高架)
+        from shapely.strtree import STRtree as _ST
+        _rl = [_LS(r['pts']) for r in rails if len(r['pts']) > 1]
+        _rt = _ST(_rl)
+        _wide = _UU(_rl).buffer(30, join_style=2)
+        _side = []
+        for r in roads:
+            p = r['pts']
+            for (ax, az), (bx, bz) in zip(p, p[1:]):
+                L = math.hypot(bx - ax, bz - az)
+                if L < 0.5: continue
+                seg = _LS([(ax, az), (bx, bz)])
+                if not seg.intersects(_wide): continue
+                near = _rl[_rt.nearest(seg)]
+                q = near.interpolate(near.project(seg.interpolate(0.5, normalized=True)))
+                d0 = near.project(q); q2 = near.interpolate(min(near.length, d0 + 2)); q1 = near.interpolate(max(0, d0 - 2))
+                tx, tz = q2.x - q1.x, q2.y - q1.y; tl = math.hypot(tx, tz) or 1
+                if abs(((bx - ax) * tx + (bz - az) * tz) / (L * tl)) > 0.6:   # 線路に沿う道路
+                    w_ = (4.5 if r['lanes'] == 1 and not r['oneway'] else r['lanes'] * 3.25) / 2 + 5
+                    _side.append(seg.buffer(w_, cap_style=2))
+        _bl = [_PG(b['p']).buffer(0).buffer(1) for b in buildings if len(b['p']) >= 3 and _PG(b['p']).buffer(0).intersects(_wide)]
+        _fillu = _wide.difference(_UU(_side + _bl))
+        # 線路の帯につながっている部分だけ
+        _fillu = _UU([g2 for g2 in (getattr(_fillu, 'geoms', None) or [_fillu]) if g2.intersects(_u)])
+        _u = _UU([_u, _fillu.intersection(_u.buffer(30))]).buffer(2, join_style=2).buffer(-2, join_style=2)
+        _u = _u.buffer(-4, join_style=2).buffer(4, join_style=2)   # 細い切れ端はなくす
+        _bl_ids = [b for b in buildings if len(b['p']) >= 3 and _PG(b['p']).buffer(0).within(_u)]
+        print('線路わきの空き地を埋める')
     _u = _u.difference(_UU([_PG(rg).buffer(0).buffer(1.5) for L_ in json.load(open(LMK))['landmarks'] if '丸の内駅舎' in L_['label'] for rg in L_['fp'] if len(rg) >= 3]))
     _rp = [(x, z, h) for r in rails for (x, z), h in zip(r['pts'], r.get('hs') or [r['h']] * len(r['pts']))]
     _rg = {}

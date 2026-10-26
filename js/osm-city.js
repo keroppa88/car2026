@@ -516,6 +516,41 @@ function buildRailways(data, g, onRoad) {
       }
     }
   }
+  // 道路が高架の下をくぐる所: 道路の両側に壁を立ててトンネルのように囲む(中の空洞が見えないように)
+  const vsList = (data.viaducts || []).map((v) => {
+    const r0 = v.rings[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const [x, z] of r0) { a = Math.min(a, x); b = Math.min(b, z); c = Math.max(c, x); d = Math.max(d, z); }
+    return { v, box: [a, b, c, d], H: r0[0][2] };
+  });
+  const underVia = (x, z) => {
+    for (const it of vsList) {
+      const [a, b, c, d] = it.box; if (x < a || x > c || z < b || z > d) continue;
+      const rs = it.v.rings;
+      if (pointIn(rs[0], x, z) && !rs.slice(1).some((h) => pointIn(h, x, z))) return it.H;
+    }
+    return 0;
+  };
+  for (const r of data.roads || []) {
+    if (r.bridge) continue;
+    const half = roadWidth(r) / 2 + 1.6;   // 道路の印(車道 + 0.5m・1m 角)より外
+    for (const sd of [-1, 1]) {
+      const e = offset(r.pts, sd * half);
+      for (let i = 0; i + 1 < e.length; i++) {
+        const [ax, az] = e[i], [bx, bz] = e[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+        const n = Math.max(1, Math.round(L / 2));
+        for (let k = 0; k < n; k++) {
+          const x0 = ax + (bx - ax) * k / n, z0 = az + (bz - az) * k / n, x1 = ax + (bx - ax) * (k + 1) / n, z1 = az + (bz - az) * (k + 1) / n;
+          const H = underVia((x0 + x1) / 2, (z0 + z1) / 2); if (!H) continue;
+          // 交差する別の道路の上には壁を立てない(交差点がふさがらないように)
+          const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, nx = (z1 - z0) / (L / n), nz = -(x1 - x0) / (L / n);
+          if (onRoad(mx, mz) || onRoad(mx + nx * sd * 1.2, mz + nz * sd * 1.2)) continue;
+          const y1 = H - 1.6;
+          deck.p.push(x0, 0, z0, x1, 0, z1, x1, y1, z1, x0, 0, z0, x1, y1, z1, x0, y1, z0);
+          for (let q = 0; q < 6; q++) deck.n.push(-nx * sd, 0, -nz * sd);
+        }
+      }
+    }
+  }
   // 下面(道路の上で見上げた時)
   for (const v of data.viaducts || []) {
     const tp = v.top;
@@ -537,7 +572,7 @@ function buildRailways(data, g, onRoad) {
   for (const c of data.canopies || []) slab([{ o: c.o, h: [] }], c.y, 0.5, roof);
   // 線路の高架はれんが造り
   addWallUV(deck, 4, 2);
-  const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture() }));
+  const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture(), side: THREE.DoubleSide }));
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
