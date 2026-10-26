@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261026-osm-119';
+import { decorateOsmCity } from './osm-city.js?v=20261027-native-surfaces-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261026-osm-82';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261027-native-surfaces-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -69,7 +69,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const DEMO_SEQUENCE_STAGE_MS = COURSE_KEY === 'tokyo' ? 25000 : 21000;
   const carParam = (pageQuery.get('car') || 'toyota86').toLowerCase();
   const PLAYER_CAR_KEY = Object.hasOwn(CAR_CONFIGS, carParam) ? carParam : 'toyota86';
-  const MAP_GLTF = MAP_CONFIG.file;
+  const MAP_GLTF = MAP_CONFIG.surfaceData || MAP_CONFIG.file;
   const GUNMA_SEED = Number.isFinite(Number(pageQuery.get('seed')))
     ? (Number(pageQuery.get('seed')) >>> 0 || Math.floor(Math.random() * 0xffffffff))
     : Math.floor(Math.random() * 0xffffffff);
@@ -5734,6 +5734,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         originalBox = new THREE.Box3().setFromObject(map);
         document.body.dataset.gunmaSeed = String(GUNMA_SEED);
         document.body.dataset.mapConnectionAxis = 'procedural-closed-loop';
+      } else if (MAP_CONFIG.surfaceData) {
+        // 湘南: 元地図の GLB は読み込まず、現在の形状から作った地表で街を構築する。
+        map = new THREE.Group(); map.name = 'shonan-native-root';
+        originalBox = new THREE.Box3();
+        document.body.dataset.mapSource = 'native-surfaces';
       } else if (sourceUrls.length === 1) {
         const revision = MAP_CONFIG.assetRevision;
         const separator = url.includes('?') ? '&' : '?';
@@ -6090,22 +6095,28 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const collisionVerticalFaceCount = countVerticalFaces(collisionMeshes);
     // 東京駅: 建物に色と窓、路面・地面に色を付ける(形と当たり判定はそのまま)。
     if (TOKYOEKI_COURSE) {
-      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData, MAP_CONFIG.bridgeData, MAP_CONFIG.terrainData) : decorateTokyoEki(wrap);
+      tokyoEkiCity = OSM_COURSE ? decorateOsmCity(wrap, MAP_CONFIG.cityData, MAP_CONFIG.landmarkData, MAP_CONFIG.bridgeData, MAP_CONFIG.terrainData, MAP_CONFIG.surfaceData) : decorateTokyoEki(wrap);
       window.__osmCity = tokyoEkiCity;
-      // 東京駅: 街は tokyoeki-city.js がゼロから組み立てる。地図のメッシュは使わず、
-      // 平らな走行面を1枚だけ敷く(見えない)。建物・街の外へは tokyoEkiCity.isBlocked で出られない。
-      const flatSize = COURSE_KEY === 'shonan' ? 24000 : OSM_COURSE ? 6400 : 2400;
-      const flat = new THREE.Mesh(new THREE.PlaneGeometry(flatSize, flatSize).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ name: 'M06_Steel_Smoke', visible: false, side: THREE.DoubleSide }));
-      if (OSM_COURSE) flat.position.set(0, 0, 0); else flat.position.set(50, 0, 20);
-      wrap.add(flat); flat.updateMatrixWorld(true);
+      // 従来の街は見えない支持面を使う。湘南は表示用の実メッシュを直接使う。
       for (const list of [mapSurfaceMeshes, nonWallMeshes, car2DrivableMeshes, roadMeshes, wallMeshes, sandMeshes, blockedSurfaceMeshes, treeSurfaceMeshes]) list.length = 0;
-      mapSurfaceMeshes.push(flat); car2DrivableMeshes.push(flat); roadMeshes.push(flat);
-      // 江の島の地形: 読み込めたら走る面に加える(坂を上り下りできる)
+      if (!MAP_CONFIG.surfaceData) {
+        const flatSize = OSM_COURSE ? 6400 : 2400;
+        const flat = new THREE.Mesh(new THREE.PlaneGeometry(flatSize, flatSize).rotateX(-Math.PI / 2),
+          new THREE.MeshBasicMaterial({ name: 'M06_Steel_Smoke', visible: false, side: THREE.DoubleSide }));
+        if (OSM_COURSE) flat.position.set(0, 0, 0); else flat.position.set(50, 0, 20);
+        wrap.add(flat); flat.updateMatrixWorld(true);
+        mapSurfaceMeshes.push(flat); car2DrivableMeshes.push(flat); roadMeshes.push(flat);
+      }
+      // 湘南の地表は表示しているメッシュ自体を支持面にする。
       tokyoEkiCity.onTerrain?.((ms) => {
         for (const m of ms) { m.updateMatrixWorld(true); mapSurfaceMeshes.push(m); car2DrivableMeshes.push(m); roadMeshes.push(m); }
         mapRayTop = Math.max(mapRayTop, 90);   // 島の上(最高 約60m)まで下向きの光線が届くように
       });
+      if (MAP_CONFIG.surfaceData) {
+        await tokyoEkiCity.ready;
+        wrap.updateMatrixWorld(true);
+        originalBox.setFromObject(wrap);
+      }
     }
 
     car2RoadMeshes = roadMeshes;
@@ -6180,7 +6191,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
     }
 
-    const fin = new THREE.Box3().setFromObject(wrap);
+    const fin = new THREE.Box3();
+    if (MAP_CONFIG.surfaceData) {
+      for (const mesh of mapSurfaceMeshes) fin.expandByObject(mesh);
+      originalBox.copy(fin);
+    } else fin.setFromObject(wrap);
     mapBounds = fin.clone();
     const roadBounds = new THREE.Box3();
     for (const mesh of roadMeshes) roadBounds.expandByObject(mesh);
@@ -7033,7 +7048,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         }),
       };
       window.__mapDebug = {
-        camera, scene, mapRoot, THREE, BOUND_X_MIN, BOUND_X_MAX, BOUND_Z,
+        camera, scene, renderer, mapRoot, THREE, BOUND_X_MIN, BOUND_X_MAX, BOUND_Z,
         freeze: () => { __debugFreezeCam = true; },
         unfreeze: () => { __debugFreezeCam = false; },
       };

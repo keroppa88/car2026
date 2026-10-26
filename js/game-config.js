@@ -630,7 +630,8 @@ export const MAP_CONFIGS = {
   shonan: {
     ...commonMap,
     label: '湘南',
-    file: 'map/map_tokyoeki.glb',
+    file: null,
+    surfaceData: 'map/shonan-surfaces.json?v=20261027-1',
     preview: 'picture/shonan.png',
     cityData: 'map/shonan-city.json?v=20261027-coast-restore',
     scale: 1,
