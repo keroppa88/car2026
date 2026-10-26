@@ -763,7 +763,7 @@ if SEA:
         print('大磯の砂浜', nb)
         # 大磯港(堤防・岸壁)と町の中は砂浜にしない → グレー。そこに接する足した一戸建ては外す
         ex0, ex1 = -9150 + (X1 - 9976), -8650 + (X1 - 9976)
-        _port = _OU([box(ex0, -50, ex1, 700), box(ex0 - 300, -50, ex0, 400)])
+        _port = _OU([box(ex0, -50, ex1, 700), box(ex0 - 300, -50, ex0, 400)]).difference(box(ex0 + 190, -50, ex1, 330))
         _keep, _grey = [], []
         for b in beaches[-nb:] if nb else []:
             pg = _HP2(b['o'], b.get('h') or []).buffer(0)
@@ -771,6 +771,16 @@ if SEA:
                 for q in (getattr(part, 'geoms', None) or [part]):
                     if q.geom_type == 'Polygon' and q.area > 20: lst.append(q)
         if nb: del beaches[-nb:]
+        # 港の西の付け根に残る砂浜もグレー
+        _pw = box(ex0 - 10, 420, ex1, 700)
+        _keep = [q for q in _keep if not (q.area < 3000 and q.intersects(box(ex0 - 300, -50, ex1, 700)))]
+        for b in list(beaches):
+            pg = _HP2(b['o'], b.get('h') or []).buffer(0)
+            if not pg.intersects(_pw): continue
+            beaches.remove(b)
+            for part, lst in ((pg.difference(_pw), _keep), (pg.intersection(_pw), _grey)):
+                for q in (getattr(part, 'geoms', None) or [part]):
+                    if q.geom_type == 'Polygon' and q.area > 5: lst.append(q)
         for q in _keep: beaches.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': []})
         oiso_grey = [{'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]} for q in _grey]
         _gU = _OU(_grey).buffer(8) if _grey else None
