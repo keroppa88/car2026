@@ -407,6 +407,71 @@ function placeCrosswalks(data, shared, J, white) {
   }
 }
 
+// ---- 高速道路の下を道路がくぐる所: 道路の両側だけに橋脚(厚み 2m × くぐる長さ) ----
+function buildUnderPiers(data, br, g) {
+  const [X0, Z0, X1, Z1] = data.bounds, C = 2, W = Math.ceil((X1 - X0) / C), H = Math.ceil((Z1 - Z0) / C);
+  const deckY = new Float32Array(W * H);   // 0 = 高架なし
+  const mark = (x, z, y) => { const i = Math.floor((x - X0) / C), j = Math.floor((z - Z0) / C); if (i < 0 || j < 0 || i >= W || j >= H) return; const k = j * W + i; if (!deckY[k] || y < deckY[k]) deckY[k] = y; };
+  // PLATEAU の首都高: 上面の三角形を升目に塗る
+  for (const b of (br && br.bridges) || []) {
+    const t = b.top;
+    for (let k = 0; k + 8 < t.length; k += 9) {
+      const ax = t[k], ay = t[k + 1], az = t[k + 2], bx = t[k + 3], by = t[k + 4], bz = t[k + 5], cx = t[k + 6], cy = t[k + 7], cz = t[k + 8];
+      const y = Math.min(ay, by, cy); if (y < 4) continue;
+      const n = Math.ceil(Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - ax, cz - az)) / 1.5) + 1;
+      for (let u = 0; u <= n; u++) for (let v = 0; u + v <= n; v++) mark(ax + (bx - ax) * u / n + (cx - ax) * v / n, az + (bz - az) * u / n + (cz - az) * v / n, y);
+    }
+  }
+  // OSM の首都高(板)
+  const EH = data.elevH ?? 9.5;
+  for (const e of data.elevated || []) {
+    const hs = e.hs || e.pts.map(() => EH), w = e.lanes * LANE / 2 + 0.75;
+    for (let i = 0; i + 1 < e.pts.length; i++) {
+      const [x0, z0] = e.pts[i], [x1, z1] = e.pts[i + 1], L = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(L / 1.5);
+      for (let k = 0; k <= n; k++) {
+        const y = hs[i] + (hs[i + 1] - hs[i]) * k / n; if (y < 4) continue;
+        const cx = x0 + (x1 - x0) * k / n, cz = z0 + (z1 - z0) * k / n;
+        for (let d = -w; d <= w; d += 1.5) mark(cx + (z1 - z0) / L * d, cz - (x1 - x0) / L * d, y - 0.7);
+      }
+    }
+  }
+  const at = (x, z) => { const i = Math.floor((x - X0) / C), j = Math.floor((z - Z0) / C); return i < 0 || j < 0 || i >= W || j >= H ? 0 : deckY[j * W + i]; };
+  const out = { p: [], n: [] };
+  const box = (x, z, ang, len, wid, h) => {   // 中心 x,z、向き ang(進む向き)、長さ len、厚み wid、高さ h
+    const geo = new THREE.BoxGeometry(wid, h, len).toNonIndexed();
+    geo.rotateY(ang); geo.translate(x, h / 2, z);
+    out.p.push(...geo.getAttribute('position').array); out.n.push(...geo.getAttribute('normal').array); geo.dispose();
+  };
+  for (const r of data.roads) {
+    if (r.bridge || r.pts.length < 2) continue;
+    const half = roadWidth(r) / 2, p = r.pts;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 1) continue;
+      const tx = (x1 - x0) / L, tz = (z1 - z0) / L, nx = tz, nz = -tx, ang = Math.atan2(tx, tz);
+      // 道路の中心がデッキの下にある区間(連続した所)ごとに、両側へ橋脚
+      let s0 = null, ymin = 1e9;
+      const flush = (s1) => {
+        if (s0 === null) return;
+        const len = s1 - s0;
+        if (len >= 2) {
+          const mx = x0 + tx * (s0 + s1) / 2, mz = z0 + tz * (s0 + s1) / 2, h = ymin - 0.8;
+          if (h > 2) for (const sd of [-1, 1]) {
+            const ox = mx + nx * sd * (half + 2.0), oz = mz + nz * sd * (half + 2.0);
+            if (at(ox, oz)) box(ox, oz, ang, len, 2, h);   // 橋脚の所もデッキの下の時だけ
+          }
+        }
+        s0 = null; ymin = 1e9;
+      };
+      for (let s = 0; s <= L; s += 1) {
+        const y = at(x0 + tx * s, z0 + tz * s);
+        if (y) { if (s0 === null) s0 = s; ymin = Math.min(ymin, y); } else flush(s);
+      }
+      flush(L);
+    }
+  }
+  if (out.p.length) { const m = solidMesh(out, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'under-piers'; g.add(m); }
+}
+
 function buildElevated(data, g) {
   // 首都高(OSM の線から作る板)。点ごとの高さ hs で坂にする(上り下り口は地面まで下りる)
   const deck = { p: [], n: [] }, EH = data.elevH ?? 9.5;
@@ -1612,6 +1677,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl) {
     T('buildRoads', () => buildRoads(data, city));
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
+    T('buildUnderPiers', () => buildUnderPiers(data, br, city));
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));

@@ -655,7 +655,7 @@ if rails:
             for i in range(len(r_)):
                 a_, b_ = r_[i], r_[(i + 1) % len(r_)]; mx, mz = (a_[0] + b_[0]) / 2, (a_[1] + b_[1]) / 2
                 L_ = math.dist(a_[:2], b_[:2])
-                if -140 < mx < -80 and -820 < mz < -550 and (best is None or L_ > best[0]):
+                if -200 < mx < -140 and -500 < mz < -380 and (best is None or L_ > best[0]):
                     nx, nz = (b_[1] - a_[1]) / L_, -(b_[0] - a_[0]) / L_
                     if pg.contains(__import__("shapely.geometry", fromlist=["Point"]).Point(mx + nx * 2, mz + nz * 2)): nx, nz = -nx, -nz   # 外向き
                     best = (L_, a_[:2], b_[:2], [round(nx, 3), round(nz, 3)], a_[2])
@@ -1149,6 +1149,9 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
     water[:] = [w for w in water if w.get('sea')] + _clip_list(_wn)   # 範囲の外の池などは描かない
     print('公園・林・砂地を範囲で切る', _n, '→', len(parks))
 
+# TOKYO: ホーム・屋根の板は使わない(駅はれんがの構築物。宙に浮く白い板になるので)
+if LMK:
+    print('ホーム・屋根の板を消す', len(platforms) + len(canopies)); platforms[:] = []; canopies[:] = []
 # 橋(道路)の上にかぶさる建物・屋根・塔は消す(橋をふさがないように)
 from shapely.geometry import Polygon as _BP2, LineString as _BL2
 from shapely.ops import unary_union as _BU2
