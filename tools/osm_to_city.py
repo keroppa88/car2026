@@ -485,6 +485,9 @@ if TSUKIJI is not None:
     roads.append(mk([list(_cj[1]), P1], [_cj[2], 'tsukiji-b'], 2, False))
     for (_, pt, nd) in (_b1, _b2): roads.append(mk([P1, list(pt)], ['tsukiji-b', nd], 3, True))   # 橋の上下線の幅に広げる
     _c1 = _cj
+    for r in roads:   # 築地大橋は地面と同じ高さの平らな橋(欄干なし)にする
+        if r['bridge'] and r['name'] == '環二通り' and all(-30 < x < 160 and 1730 < z < 1960 for x, z in r['pts']): r['flat'] = 1
+    roads[:] = [r for r in roads if not (r.get('flat') and r['kind'].endswith('_link'))]   # 橋の上の細い取り付け道路はなし
     print('築地: 道路を外す', _n0 - len(roads) + 5, '/ まっすぐな道でつなぐ', round(_b1[0], 1), round(_c1[0], 1))
 
 # 交差点の節(2本以上の車道が共有する点)

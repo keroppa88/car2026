@@ -276,13 +276,13 @@ function buildRoads(data, g) {
       ribbon(offset(p, s * (inner - outer) / 2), inner + outer, 0.05, deck);
       ribbon(offset(p, s * (inner - outer) / 2), inner + outer - 0.6, 0.055, asphalt);
       const e = offset(p, -s * outer);
-      for (let i = 0; i + 1 < e.length; i++) {
+      if (!r.flat) for (let i = 0; i + 1 < e.length; i++) {
         const [x0, z0] = e[i], [x1, z1] = e[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
         const ang = Math.atan2(x1 - x0, z1 - z0);
         boxInto(parapet, (x0 + x1) / 2, 0.6, (z0 + z1) / 2, 0.55, 1.2, L + 0.3, ang);
         boxInto(parapet, (x0 + x1) / 2, 1.27, (z0 + z1) / 2, 0.7, 0.14, L + 0.3, ang);
       }
-      if (r.pair.wall) {
+      if (r.pair.wall && !r.flat) {
         const mline = offset(p, s * r.pair.gap / 2);
         for (let i = 0; i + 1 < mline.length; i++) {
           const [x0, z0] = mline[i], [x1, z1] = mline[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
@@ -291,7 +291,7 @@ function buildRoads(data, g) {
       }
     } else if (r.bridge) {
       ribbon(p, w + 6, 0.05, deck);   // 橋の床(上下線のすき間と歩道)
-      for (const sd of [-1, 1]) {      // 両側に石の欄干(厚めの低い壁)
+      if (!r.flat) for (const sd of [-1, 1]) {      // 両側に石の欄干(厚めの低い壁)
         const e = offset(p, sd * (half + 3.2));
         const far = offset(p, sd * (half + 6));   // 欄干の外側: ここが別の車道(上下線が並んだ橋)なら欄干は作らない
         for (let i = 0; i + 1 < e.length; i++) {
@@ -587,7 +587,7 @@ function buildRailways(data, g, onRoad) {
   // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
   const overWater = makeWaterMask(data, 8);
   const deck = { p: [], n: [] }, rail = [], conc = { p: [], n: [] };
-  const grey = { p: [], n: [] }, yr = data.yaesu;
+  const grey = { p: [], n: [] }, yr = data.yaesu, lid = { p: [], n: [] };   // lid: 上面・下面は模様なしの一枚板
   const onYaesu = (x, z) => {
     if (!yr) return false;
     const [ax, az] = yr.a, [bx, bz] = yr.b, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
@@ -598,8 +598,8 @@ function buildRailways(data, g, onRoad) {
   for (const v of data.viaducts || []) {
     const tp = v.top;
     if (v.ceil) {   // れんがのトンネル・橋の天井: 上面と下面だけ(まわりの壁はとなりのれんがの塊が持つ)
-      for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
-      for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
+      for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1], tp[k + 2]); lid.n.push(0, 1, 0); }
+      for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); lid.n.push(0, -1, 0); }
       for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {   // 外側の縁(桁の厚み)
         const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
         const nx = (bz - az) / L, nz = -(bx - ax) / L;
@@ -619,7 +619,7 @@ function buildRailways(data, g, onRoad) {
       }
       continue;
     }
-    for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1], tp[k + 2]); deck.n.push(0, 1, 0); }
+    for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1], tp[k + 2]); lid.n.push(0, 1, 0); }
     for (const ring of v.rings) {
       const segs = [];
       for (let i = 0; i < ring.length; i++) {
@@ -690,7 +690,7 @@ function buildRailways(data, g, onRoad) {
   for (const v of data.viaducts || []) {
     if (v.concrete || v.ceil) continue;
     const tp = v.top;
-    for (let k = 0; k < tp.length; k += 3) { deck.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); deck.n.push(0, -1, 0); }
+    for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); lid.n.push(0, -1, 0); }
   }
   // レール
   for (const rl of data.rails || []) {
@@ -711,6 +711,7 @@ function buildRailways(data, g, onRoad) {
   const m1 = solidMesh(deck, new THREE.MeshLambertMaterial({ map: makeBrickTexture(), side: THREE.DoubleSide }));
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
+  if (lid.p.length) { const ml = solidMesh(lid, new THREE.MeshLambertMaterial({ color: 0x7a4232, side: THREE.DoubleSide })); ml.name = 'rail-viaduct-lid'; g.add(ml); }
   if (grey.p.length) g.add(solidMesh(grey, new THREE.MeshLambertMaterial({ color: 0xc9cbcc, side: THREE.DoubleSide })));
   if (yr) {   // 八重洲口の白い斜めの屋根(グランルーフ)と、斜めの柱
     const [ax, az] = yr.a, [bx, bz] = yr.b, [nx, nz] = yr.n, H = yr.h, roof = { p: [], n: [] }, mast = { p: [], n: [] };
