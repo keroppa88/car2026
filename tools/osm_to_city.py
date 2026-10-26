@@ -733,6 +733,43 @@ if CLIP and AREA and SEA:   # 湘南だけ(日本橋は皇居まわりの緑地�
         return out
     _n = len(parks); parks[:] = _clip_list(parks)
     woods[:] = _clip_list(woods)
+    # 河口: 川の先が砂浜でふさがっていたら、川の端から一番近い海まで水路を通す
+    from shapely.geometry import Point as _MP, LineString as _ML
+    from shapely.ops import nearest_points as _NPs
+    _seap = _PU0 = None
+    _sp = [_AP(w['o'], w.get('h') or []).buffer(0) for w in water if w.get('sea')]
+    if _sp:
+        from shapely.ops import unary_union as _MU
+        _seap = _MU(_sp)
+        _mouths = []
+        _ends = [tuple(e_) for rv in rivers for e_ in (rv['pts'][0], rv['pts'][-1])]
+        _beachU = _MU([_AP(b['o'], b.get('h') or []).buffer(0) for b in beaches + rocks]).buffer(3)
+        for rv in rivers:
+            for end in (rv['pts'][0], rv['pts'][-1]):
+                pe = _MP(end)
+                if _seap.contains(pe) or _seap.distance(pe) > 300: continue
+                if sum(1 for e_ in _ends if math.dist(e_, end) < 5) > 1: continue   # 川の途中のつなぎ目
+                q = _NPs(pe, _seap)[1]
+                seg = _ML([end, (q.x, q.y)])
+                if seg.length < 1 or seg.difference(_beachU.union(_ML(rv['pts']).buffer(rv['w']))).length > 0.3 * seg.length: continue   # 砂浜でふさがっている所だけ
+                ch = _ML([end, (q.x + (q.x - pe.x) / max(1e-6, pe.distance(q)) * 15, q.y + (q.y - pe.y) / max(1e-6, pe.distance(q)) * 15)]).buffer(max(rv['w'], 30) / 2, cap_style=2)
+                _mouths.append(ch)
+        for ch in _mouths:
+            water.append({'o': [[round(x, 2), round(z, 2)] for x, z in list(ch.exterior.coords)[:-1]], 'h': [], 'sea': True})
+        # 砂浜・岩場から川と水路を抜く
+        _wet = _MU([_AP(w['o'], w.get('h') or []).buffer(0) for w in water if not w.get('sea')]
+                   + [_ML(rv['pts']).buffer(rv['w'] / 2) for rv in rivers if len(rv['pts']) > 1] + _mouths)
+        def _minus(lst):
+            out = []
+            for it in lst:
+                g_ = _AP(it['o'], it.get('h') or []).buffer(0).difference(_wet)
+                for q in (getattr(g_, 'geoms', None) or [g_]):
+                    if q.geom_type == 'Polygon' and q.area > 20:
+                        out.append({**it, 'o': [[round(x, 2), round(z, 2)] for x, z in list(q.exterior.coords)[:-1]],
+                                    'h': [[[round(x, 2), round(z, 2)] for x, z in list(i.coords)[:-1]] for i in q.interiors]})
+            return out
+        beaches[:] = _minus(beaches); rocks[:] = _minus(rocks)
+        print('河口の水路', len(_mouths))
     beaches[:] = _clip_list(beaches)
     # 砂浜から突き出た細い所(堤防・突堤: 鋭角・直線のもの)は砂浜から外してグレーにする
     from shapely.ops import unary_union as _PU
