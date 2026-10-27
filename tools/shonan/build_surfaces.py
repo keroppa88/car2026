@@ -28,6 +28,7 @@ GRID = 0.0001  # 0.1mm。座標は最終メッシュでもタイル原点から�
 
 def clean(g):
     g = sg.set_precision(sg.make_valid(g), GRID)
+    if isinstance(g, np.ndarray): return np.array([clean(q) for q in g], dtype=object) if any(q.geom_type == 'GeometryCollection' for q in g) else g
     if g.geom_type == 'GeometryCollection':   # 線・点のくずが混じったら面だけ残す
         g = sg.set_precision(sg.union_all([p for p in g.geoms if p.geom_type in ('Polygon', 'MultiPolygon')]), GRID)
     return g
