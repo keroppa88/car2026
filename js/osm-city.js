@@ -1704,7 +1704,7 @@ export function snapshotCitySurfaceLayers(data) {
   lots.forEach((ls, i) => rings('lot-' + i, ls, LOT_COLORS[i]));
   rings('parks', data.parks || [], GRASS);
   rings('beaches', data.beaches || [], SAND, 'sand');
-  rings('rocks', data.rocks || [], 0x4b4c4e);
+  rings('rocks', data.rocks || [], 0x9a9b98);
   rings('piers', data.piers || [], 0x9a9b98);
   rings('parking', data.parking || [], ASPHALT, 'road');
   const gs = [], md = [];
@@ -1765,7 +1765,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
       T('buildLots', () => buildLots(data, city));
       T('buildWater', () => buildWater(data, city));
       if (data.beaches && data.beaches.length) city.add(polyFill(data.beaches, 0.026, SAND));   // 砂浜
-      if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x4b4c4e));   // 岩場(黒っぽいグレー)
+      if (data.rocks && data.rocks.length) city.add(polyFill(data.rocks, 0.027, 0x9a9b98));   // 岩場(黒っぽいグレー)
       if (data.piers && data.piers.length) city.add(polyFill(data.piers, 0.028, data.woods && data.woods.length ? 0x9a9b98 : WALK));   // TOKYO は地面と同じグレー   // 堤防・突堤(グレー)
       if (data.parking && data.parking.length) city.add(polyFill(data.parking, 0.03, ASPHALT));   // 駐車場(アスファルトの面)
     } else {

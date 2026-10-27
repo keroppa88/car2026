@@ -38,8 +38,12 @@ def main():
     def road_z(x):
         g = r134.intersection(LineString([(x, 0), (x, 2000)]))
         return max(p.y for p in ([g] if g.geom_type == 'Point' else list(g.geoms)) if p.geom_type == 'Point')
-    top = [(x, road_z(x)) for x in range(7150, 7481, 10)]
-    yellow = Polygon(top + [(7480, 470), (7150, 452)]).difference(roads)   # 道路の南だけ。海側の縁はまっすぐ
+    # 東の元の砂浜の海岸線(x=7600)へ、まっすぐなめらかにつなぐ
+    sand0 = unary_union([shape(q) for q in d['beaches']])
+    c = sand0.intersection(LineString([(7600, 0), (7600, 2000)]))
+    zE = max(p[1] for g in getattr(c, 'geoms', [c]) for p in g.coords)
+    top = [(x, road_z(x)) for x in range(7150, 7601, 10)]
+    yellow = Polygon(top + [(7600, zE), (7150, 452)]).difference(roads)   # 道路の南だけ。海側の縁は1本の直線
     red = unary_union([red1, red2]).difference(roads)
     for k in ('beaches', 'piers', 'rocks', 'lots', 'parking'):
         out = []
