@@ -27,3 +27,4 @@ node test/shonan-surfaces.mjs
 
 稲村ヶ崎の2回目の画像指示(道路の海側を砂浜、海側の縁を海へ、砂浜東端と岬の林のあいだを緑地、道路北の細い水路を削除)は `tools/shonan/edit_inamuragasaki2.py` に記録。
 稲村ヶ崎の3回目の画像指示(道路の海側=オレンジはコンクリート、西の砂浜とあわせて海岸線を1本のなめらかな線に、突起・へこみなし)は `tools/shonan/edit_inamuragasaki3.py` に記録。
+腰越漁港〜小動岬の画像指示(赤=海、オレンジ=コンクリート、黄=砂浜)は `tools/shonan/edit_koshigoe.py` に記録。
