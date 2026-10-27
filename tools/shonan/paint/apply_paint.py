@@ -57,7 +57,7 @@ def main():
             T_ = tiles[n]; from shapely.geometry import box as _b
             if core: g = g.intersection(_b(T_['x0'] + 75, -1e5, T_['x0'] + T_['W'] * T_['mPerPx'] - 75, 1e5))
             if g.is_empty: continue
-            M.put(g, kind, clear=kind in ('sea', 'beaches', 'ground', 'woods'))
+            M.put(g, kind, clear=True)   # 塗った面の上の建物・木は消す
             painted_all.append(g)
             if core: print(f'top{n}: {kind} {round(g.area)} m²')
     # 道路の上に塗った所は、その道路をなくす(塗った面に半分以上入っている道路を外す)
