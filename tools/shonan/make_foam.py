@@ -14,7 +14,9 @@ sea = unary_union([shape(q) for q in d['water'] if q.get('sea')])
 beach = unary_union([shape(q) for q in d['beaches']])
 LAND = ('beaches', 'piers', 'rocks', 'parks', 'woods', 'lots', 'parking')
 land = unary_union([shape(q) for k in LAND for q in d.get(k, [])])
-sea = sea.difference(land)          # 砂浜などの下に潜っている海は除く(見えている海だけ)
+import shapely
+sea = shapely.set_precision(sea, 0.01).difference(shapely.set_precision(land, 0.01))          # 砂浜などの下に潜っている海は除く(見えている海だけ)
+sea = unary_union([g for g in getattr(sea, 'geoms', [sea]) if g.geom_type in ('Polygon', 'MultiPolygon')])
 inner = sea.buffer(-0.3)
 W, STEP, ROWS = 16.0, 3.0, (0.0, 0.25, 0.5, 0.75, 1.0)
 
@@ -25,7 +27,7 @@ lines = [l for l in getattr(lines, 'geoms', [lines]) if l.length >= 20]
 
 strips = []
 for l in lines:
-    l = l.simplify(2.5)
+    l = l.simplify(0.5)
     n = max(2, int(l.length / STEP) + 1)
     pts = [l.interpolate(i / (n - 1), normalized=True) for i in range(n)]
     xs = [(p.x, p.y) for p in pts]

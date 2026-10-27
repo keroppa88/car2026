@@ -27,7 +27,10 @@ KINDS = {'land': 0, 'road': 1, 'sand': 2, 'water': 3}
 GRID = 0.0001  # 0.1mm。座標は最終メッシュでもタイル原点からの相対値で保持。
 
 def clean(g):
-    return sg.set_precision(sg.make_valid(g), GRID)
+    g = sg.set_precision(sg.make_valid(g), GRID)
+    if g.geom_type == 'GeometryCollection':   # 線・点のくずが混じったら面だけ残す
+        g = sg.set_precision(sg.union_all([p for p in g.geoms if p.geom_type in ('Polygon', 'MultiPolygon')]), GRID)
+    return g
 
 def polys(g):
     if g.geom_type == 'Polygon':
