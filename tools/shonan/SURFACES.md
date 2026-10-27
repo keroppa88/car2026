@@ -26,3 +26,4 @@ node test/shonan-surfaces.mjs
 江の島周辺の画像指示による修正は `tools/shonan/edit_enoshima.py` に記録。黄色の砂浜、赤の海への削除、オレンジのコンクリート、ピンクの道路接続をまとめて適用できる。橋の付け根の砂浜と港・防波堤のコンクリートは接続を保ち、岬の林と建物・幹線道路は維持する。適用後は上記の地表再生成と検査を実行する。ブラウザ検証は `cd test && npm install && npx playwright install chromium` の後、リポジトリ直下で `node test/enoshima-browser.mjs`。
 
 稲村ヶ崎の2回目の画像指示(道路の海側を砂浜、海側の縁を海へ、砂浜東端と岬の林のあいだを緑地、道路北の細い水路を削除)は `tools/shonan/edit_inamuragasaki2.py` に記録。
+稲村ヶ崎の3回目の画像指示(道路の海側=オレンジはコンクリート、西の砂浜とあわせて海岸線を1本のなめらかな線に、突起・へこみなし)は `tools/shonan/edit_inamuragasaki3.py` に記録。
