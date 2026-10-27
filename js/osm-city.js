@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, updateWaterTime } from './native-surfaces.js?v=20261027-sea-1';
+import { loadNativeSurfaces, loadFoam, updateWaterTime } from './native-surfaces.js?v=20261027-foam-1';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1753,6 +1753,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));   // 文字を先に描かせる
     const [X0, Z0, X1, Z1] = data.bounds;
     const native = surfaceUrl ? await loadNativeSurfaces(surfaceUrl, city) : null;
+    if (surfaceUrl) await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
     if (!native) {
       // 地面: 東の端に海がある湘南は、東側を範囲の端で切る(その先は何も描かない)
       const gEast = data.water.some((w) => w.sea) ? X1 : X1 + 300;

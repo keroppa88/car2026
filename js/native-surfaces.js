@@ -105,7 +105,12 @@ float seaT = uWaterTime;
 float blot = seaFbm(uv * vec2(0.35, 0.5) + vec2(seaT * 0.01, 0.0));
 float stroke = seaNoise(vec2(uv.x * 0.5, uv.y * 0.9) + vec2(blot * 2.0, seaT * 0.02));
 diffuseColor.rgb *= mix(0.84, 1.1, blot * 0.6 + stroke * 0.4);
-diffuseColor.rgb *= vec3(0.86, 0.98, 1.1);`)
+diffuseColor.rgb *= vec3(0.86, 0.98, 1.1);
+vec2 sp = vSeaPos.xz;
+float swellBend = seaNoise(sp * 0.004) * 6.0 + seaNoise(sp * 0.011 + 5.0) * 2.0;
+float swell = sin(sp.y * 0.045 + seaT * 0.7 + swellBend);
+float swell2 = sin(sp.y * 0.08 + sp.x * 0.012 + seaT * 1.1 + swellBend * 0.7);
+diffuseColor.rgb *= 1.0 + (swell * 0.08 + swell2 * 0.04) * (1.0 - smoothstep(250.0, 1100.0, seaDist));`)
       .replace('#include <fog_fragment>', `{
   // 手前は緑がかった浅い色、沖へ行くほど深い青(空の霞と見分けがつくように)。地平線ぎわだけ空が映って少し明るむ
   float far = smoothstep(80.0, 2500.0, seaDist);
@@ -118,12 +123,73 @@ diffuseColor.rgb *= vec3(0.86, 0.98, 1.1);`)
   float dAz = abs(mod(seaAz - sunAz + 3.14159, 6.28318) - 3.14159);
   float width = mix(0.45, 0.12, far);
   float path = exp(-dAz * dAz / (width * width));
+  // 近くは光らせない(遠くから眺めた海)。光の強さはゆっくり脈打つ
+  path *= smoothstep(250.0, 900.0, seaDist) * (0.7 + 0.3 * sin(seaT * 0.35 + uv.y * 0.4));
   float brush = smoothstep(0.4, 0.75, seaNoise(vec2(uv.x * 0.9, uv.y * 2.6) + vec2(seaT * 0.05, blot * 3.0)));
   gl_FragColor.rgb += (1.0 - smoothstep(150.0, 500.0, cameraPosition.y)) * vec3(1.0, 0.94, 0.8) * path * (0.1 + brush * 0.8) * (0.3 + 0.7 * far);
 }
 #include <fog_fragment>`);
   };
-  m.customProgramCacheKey = () => 'shonan-sea-5';
+  m.customProgramCacheKey = () => 'shonan-sea-7';
   return m;
 }
 export function updateWaterTime(t) { WATER_TIME.value = t; }
+
+// 砂浜の波打ち際の白い泡(tools/shonan/make_foam.py で作った帯)。
+// 寄せる波の白い線が岸へ進み、岸では泡が寄せたり引いたりする。
+export async function loadFoam(url, group) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const W = data.width, R = data.rows;
+  const pos = [], dd = [], uu = [], ee = [], idx = [];
+  for (const s of data.strips) {
+    const base = pos.length / 3;
+    for (let i = 0; i < s.pts.length / 2; i++) { pos.push(s.pts[i * 2], -0.01, s.pts[i * 2 + 1]); dd.push(s.d[i]); uu.push(s.u[i]); ee.push(s.e[i]); }
+    for (let c = 0; c + 1 < s.n; c++) for (let r = 0; r + 1 < R; r++) {
+      const a = base + c * R + r, b = a + R;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aD', new THREE.Float32BufferAttribute(dd, 1));
+  g.setAttribute('aU', new THREE.Float32BufferAttribute(uu, 1));
+  g.setAttribute('aE', new THREE.Float32BufferAttribute(ee, 1));
+  g.setIndex(idx); g.computeBoundingSphere();
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uWaterTime: WATER_TIME, uW: { value: W } },
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    vertexShader: `attribute float aD; attribute float aU; attribute float aE; varying float vD; varying float vU; varying float vE; varying vec3 vP;
+      void main() { vD = aD; vU = aU; vE = aE; vP = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vP, 1.0); }`,
+    fragmentShader: `precision highp float;
+      uniform float uWaterTime; uniform float uW; varying float vD; varying float vU; varying float vE; varying vec3 vP;
+      float h(vec2 p) { p = mod(p, 1024.0); return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
+      void main() {
+        float t = uWaterTime, dn = vD / uW;
+        float lag = n2(vec2(vU * 0.015, 0.0)) * 0.8;               // 場所ごとに波の来る時間をずらす
+        // 寄せる波の線(岸へ進みながら崩れる)
+        float ph = fract(dn * 0.9 + t / 7.0 + lag);
+        float crest = smoothstep(0.0, 0.08, ph) * (1.0 - smoothstep(0.08, 0.45, ph));
+        crest *= smoothstep(0.15, 0.85, n2(vec2(vU * 0.035, t * 0.15 + lag * 3.0)) * 0.7 + n2(vec2(vU * 0.12, dn * 2.0)) * 0.3);
+        // 岸の泡: 寄せては引く
+        float reach = 0.22 + 0.1 * sin(t * 0.9 + lag * 6.28);
+        float edge = 1.0 - smoothstep(reach * 0.5, reach, dn);
+        edge *= 0.7 + 0.3 * n2(vec2(vU * 0.25, dn * 12.0 + t * 0.6));
+        float a = max(crest * 0.75 * (1.0 - dn * 0.5), edge * 0.95);
+        a *= 1.0 - smoothstep(0.75, 1.0, dn);
+        a *= smoothstep(0.0, 12.0, vE);
+        a *= 1.0 - smoothstep(150.0, 700.0, length(cameraPosition - vP)) * 0.6;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(0.95, 0.97, 0.97, a);
+      }`,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.name = 'shonan-foam'; mesh.frustumCulled = false; mesh.renderOrder = 1;
+  mesh.userData.noLift = true;
+  group.add(mesh);
+  return mesh;
+}
