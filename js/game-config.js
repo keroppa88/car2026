@@ -633,9 +633,9 @@ export const MAP_CONFIGS = {
     // 木・柵・街灯などの見た目の部品は当たり判定にしない(建物・水は osm-city の判定で止まる)
     ignoreMapWallCollisions: true,
     file: null,
-    surfaceData: 'map/shonan-surfaces.json?v=20261027-enow-1',
+    surfaceData: 'map/shonan-surfaces.json?v=20261027-revert-1',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261027-enow-1',
+    cityData: 'map/shonan-city.json?v=20261027-revert-1',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
