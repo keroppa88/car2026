@@ -2307,6 +2307,27 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     renderer.domElement.setPointerCapture(e.pointerId);
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+  // 日本橋・湘南: マウスで指している地面の座標(x=東、z=南、m)を画面の下の中央に出す。修正の指示に使う
+  if (OSM_COURSE) {
+    const coordEl = document.createElement('div');
+    coordEl.id = 'cursor-coord';
+    coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;';
+    coordEl.textContent = 'x -, z -';
+    document.body.appendChild(coordEl);
+    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+    let pending = null;
+    window.addEventListener('pointermove', (e) => {   // 画面の上に重なった表示の上でも拾う
+      if (pending) { pending = e; return; }
+      pending = e;
+      requestAnimationFrame(() => {
+        const ev = pending; pending = null;
+        const r = renderer.domElement.getBoundingClientRect();
+        ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(ndc, camera);
+        coordEl.textContent = ray.ray.intersectPlane(ground, hit) ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
+      });
+    });
+  }
   // ダブルクリックで視点の中心を車に戻す
   renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
   window.addEventListener('pointerup', () => {
