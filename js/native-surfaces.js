@@ -107,9 +107,10 @@ float stroke = seaNoise(vec2(uv.x * 0.5, uv.y * 0.9) + vec2(blot * 2.0, seaT * 0
 diffuseColor.rgb *= mix(0.84, 1.1, blot * 0.6 + stroke * 0.4);
 diffuseColor.rgb *= vec3(0.86, 0.98, 1.1);
 vec2 sp = vSeaPos.xz;
-float swellBend = seaNoise(sp * 0.004) * 6.0 + seaNoise(sp * 0.011 + 5.0) * 2.0;
+// 波は地図の下(南の沖)から上(北の岸)へまっすぐ進む: 波の筋は東西(幹線道路と平行)
+float swellBend = seaNoise(vec2(sp.x * 0.002, 0.0)) * 1.2;
 float swell = sin(sp.y * 0.045 + seaT * 0.7 + swellBend);
-float swell2 = sin(sp.y * 0.08 + sp.x * 0.012 + seaT * 1.1 + swellBend * 0.7);
+float swell2 = sin(sp.y * 0.08 + seaT * 1.1 + swellBend * 0.5);
 diffuseColor.rgb *= 1.0 + (swell * 0.08 + swell2 * 0.04) * (1.0 - smoothstep(250.0, 1100.0, seaDist));`)
       .replace('#include <fog_fragment>', `{
   // 手前は緑がかった浅い色、沖へ行くほど深い青(空の霞と見分けがつくように)。地平線ぎわだけ空が映って少し明るむ
@@ -130,7 +131,7 @@ diffuseColor.rgb *= 1.0 + (swell * 0.08 + swell2 * 0.04) * (1.0 - smoothstep(250
 }
 #include <fog_fragment>`);
   };
-  m.customProgramCacheKey = () => 'shonan-sea-7';
+  m.customProgramCacheKey = () => 'shonan-sea-8';
   return m;
 }
 export function updateWaterTime(t) { WATER_TIME.value = t; }
@@ -170,9 +171,9 @@ export async function loadFoam(url, group) {
         return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
       void main() {
         float t = uWaterTime, dn = vD / uW;
-        float lag = n2(vec2(vU * 0.015, 0.0)) * 0.8;               // 場所ごとに波の来る時間をずらす
+        float lag = n2(vec2(vP.x * 0.004, 0.0)) * 0.3;              // 東西で少しだけずらす
         // 寄せる波の線(岸へ進みながら崩れる)
-        float ph = fract(dn * 0.9 + t / 7.0 + lag);
+        float ph = fract(vP.z / 18.0 + t / 7.0 + lag);   // 寄せる波の線は東西方向、南から北へ進む
         float crest = smoothstep(0.0, 0.08, ph) * (1.0 - smoothstep(0.08, 0.45, ph));
         crest *= smoothstep(0.15, 0.85, n2(vec2(vU * 0.035, t * 0.15 + lag * 3.0)) * 0.7 + n2(vec2(vU * 0.12, dn * 2.0)) * 0.3);
         // 岸の泡: 寄せては引く
