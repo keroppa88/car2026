@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces } from './native-surfaces.js';
+import { loadNativeSurfaces, updateWaterTime } from './native-surfaces.js?v=20261027-sea-1';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1818,7 +1818,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
-    update(dt, camera) { if (panorama && camera) { panorama.visible = camera.position.y < 120;   // 高い所から見下ろす時(地図・遠くへ引いた時)は山並みを出さない
+    update(dt, camera) { updateWaterTime(performance.now() / 1000); if (panorama && camera) { panorama.visible = camera.position.y < 120;   // 高い所から見下ろす時(地図・遠くへ引いた時)は山並みを出さない
       panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };

@@ -15,16 +15,25 @@ export async function loadNativeSurfaces(url, group) {
     : encoded;
   if (buffer.byteLength !== data.byteLength) throw new Error('地表メッシュのサイズが一致しません');
   const material = new THREE.MeshLambertMaterial({ name: 'shonan-native-surface', vertexColors: true, side: THREE.DoubleSide });
+  const waterMaterial = makeWaterMaterial();
   const meshes = [], support = [], grid = new Map(), cell = 25;
   for (const chunk of data.chunks) {
     const positions = new Float32Array(buffer, chunk.positions, chunk.count * 3);
     const colors = new Uint8Array(buffer, chunk.colors, chunk.count * 3);
     const kinds = new Uint8Array(buffer, chunk.kinds, chunk.count / 3);
+    // 表示用は陸→水の順に並べ替え、水の三角形だけ海面の材質で描く(判定は元の配列を使う)。
+    const order = [], wet = [];
+    for (let t = 0; t < kinds.length; t++) (kinds[t] === 3 ? wet : order).push(t);
+    const land = order.length; order.push(...wet);
+    const pos = new Float32Array(positions.length), col = new Uint8Array(colors.length);
+    order.forEach((t, i) => { pos.set(positions.subarray(t * 9, t * 9 + 9), i * 9); col.set(colors.subarray(t * 9, t * 9 + 9), i * 9); });
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3, true));
+    geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(col, 3, true));
+    if (land) geometry.addGroup(0, land * 3, 0);
+    if (wet.length) geometry.addGroup(land * 3, wet.length * 3, 1);
     geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, [material, waterMaterial]);
     mesh.position.set(chunk.x, 0, chunk.z); mesh.updateMatrix(); mesh.matrixAutoUpdate = false;
     mesh.name = chunk.water ? 'shonan-water' : 'shonan-surface';
     mesh.userData.noLift = true; mesh.userData.nativeSurface = true;
@@ -63,3 +72,58 @@ export async function loadNativeSurfaces(url, group) {
   };
   return { meshes, support, at, bounds: data.bounds, stats: data.stats };
 }
+
+// 海面: 波の形は作らず、平らな面に大まかな光の反射を描く(遠くから見た油絵のような海)。
+// ・大きなまだら(色の濃淡)  ・横に伸びた筆の筋  ・空の映り込み(浅い角度ほど明るい)
+// ・南の空の太陽のきらめきを筆の筋に沿って途切れ途切れに
+const WATER_TIME = { value: 0 };
+function makeWaterMaterial() {
+  // Lambert には cameraPosition が渡されないので、光沢なしの Phong を使う
+  const m = new THREE.MeshPhongMaterial({ name: 'shonan-sea', vertexColors: true, side: THREE.DoubleSide, specular: 0x000000, shininess: 1 });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uWaterTime = WATER_TIME;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSeaPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvSeaPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vSeaPos;
+uniform float uWaterTime;
+float seaHash(vec2 p) { p = mod(p, 1024.0); return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float seaNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(seaHash(i), seaHash(i + vec2(1.0, 0.0)), f.x), mix(seaHash(i + vec2(0.0, 1.0)), seaHash(i + 1.0), f.x), f.y);
+}
+float seaFbm(vec2 p) { return seaNoise(p) * 0.55 + seaNoise(p * 2.1 + 7.3) * 0.3 + seaNoise(p * 4.3 + 3.1) * 0.15; }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+// 道路から眺める海。筆の跡は「方角」と「距離の対数」で決める(地平線へ向かって自然に細かくなり、遠くがちらつかない)。
+vec3 seaD = vSeaPos - cameraPosition;
+float seaDist = length(seaD.xz);
+float seaAz = atan(seaD.x, seaD.z);
+vec2 uv = vec2(seaAz * 9.0, log(max(seaDist, 1.0)) * 7.0);
+float seaT = uWaterTime;
+float blot = seaFbm(uv * vec2(0.35, 0.5) + vec2(seaT * 0.01, 0.0));
+float stroke = seaNoise(vec2(uv.x * 0.5, uv.y * 0.9) + vec2(blot * 2.0, seaT * 0.02));
+diffuseColor.rgb *= mix(0.84, 1.1, blot * 0.6 + stroke * 0.4);
+diffuseColor.rgb *= vec3(0.86, 0.98, 1.1);`)
+      .replace('#include <fog_fragment>', `{
+  // 手前は緑がかった浅い色、沖へ行くほど深い青(空の霞と見分けがつくように)。地平線ぎわだけ空が映って少し明るむ
+  float far = smoothstep(80.0, 2500.0, seaDist);
+  vec3 deep = vec3(0.17, 0.36, 0.5) * mix(0.9, 1.12, stroke);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, deep, far * 0.85);
+  float rim = smoothstep(3500.0, 9000.0, seaDist);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.55, 0.7, 0.8), rim * 0.6);
+  // 南の低い太陽の光の道: 太陽の方角に幅のある筋。横長の筆の跡で途切れさせる
+  float sunAz = atan(0.1, 1.0);
+  float dAz = abs(mod(seaAz - sunAz + 3.14159, 6.28318) - 3.14159);
+  float width = mix(0.45, 0.12, far);
+  float path = exp(-dAz * dAz / (width * width));
+  float brush = smoothstep(0.4, 0.75, seaNoise(vec2(uv.x * 0.9, uv.y * 2.6) + vec2(seaT * 0.05, blot * 3.0)));
+  gl_FragColor.rgb += (1.0 - smoothstep(150.0, 500.0, cameraPosition.y)) * vec3(1.0, 0.94, 0.8) * path * (0.1 + brush * 0.8) * (0.3 + 0.7 * far);
+}
+#include <fog_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'shonan-sea-5';
+  return m;
+}
+export function updateWaterTime(t) { WATER_TIME.value = t; }

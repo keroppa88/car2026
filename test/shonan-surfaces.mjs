@@ -23,8 +23,10 @@ globalThis.fetch = originalFetch;
 group.updateMatrixWorld(true);
 assert.ok(native.support.length>0);
 for (const m of native.meshes) {
-  assert.equal(m.material.polygonOffset,false);
-  assert.equal(m.material.colorWrite,true);
+  for (const mat of [].concat(m.material)) {
+    assert.equal(mat.polygonOffset,false);
+    assert.equal(mat.colorWrite,true);
+  }
   assert.ok(m.visible);
 }
 const caster = new THREE.Raycaster();
