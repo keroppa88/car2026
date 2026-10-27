@@ -1770,7 +1770,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
       if (data.parking && data.parking.length) city.add(polyFill(data.parking, 0.03, ASPHALT));   // 駐車場(アスファルトの面)
     } else {
       terrainMesh = native.support;
-      T('buildWaterWalls', () => buildWater(data, city, true));
+      // 水辺の壁(立体の岸)は作らない: 地表は1枚の平らな面だけ
       document.body.dataset.shonanSurfaceMode = 'native-partition';
       document.body.dataset.shonanSurfaceStats = JSON.stringify(native.stats);
     }
