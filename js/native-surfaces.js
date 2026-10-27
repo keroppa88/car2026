@@ -216,3 +216,70 @@ export async function loadWalls(url, group) {
   group.add(mesh);
   return mesh;
 }
+
+// 国道134号の街灯・電柱・電線(tools/shonan/make_lamps.py が作る map/shonan-lamps.json)。寸法は街並みマップと同じ。
+// 向き a: 道路の方を向く角度(sin a, cos a)。
+export async function loadLamps(url, group, native) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const parts = new Map();   // 色ごとに箱をまとめる
+  const box = (color, x, z, a, lx, y, lz, sx, sy, sz) => {   // (lx, lz): 向きに沿った位置、y: 下端
+    if (!parts.has(color)) parts.set(color, { p: [], n: [] });
+    const o = parts.get(color), fx = Math.sin(a), fz = Math.cos(a), rx = Math.cos(a), rz = -Math.sin(a);
+    const cx = x + fx * lz + rx * lx, cz = z + fz * lz + rz * lx, hx = sx / 2, hz = sz / 2;
+    const P = (u, v, w) => [cx + rx * u + fx * w, y + v, cz + rz * u + fz * w];
+    const faces = [   // [法線, 4つの角]
+      [[rx, 0, rz], [[hx, 0, -hz], [hx, 0, hz], [hx, sy, hz], [hx, sy, -hz]]],
+      [[-rx, 0, -rz], [[-hx, 0, hz], [-hx, 0, -hz], [-hx, sy, -hz], [-hx, sy, hz]]],
+      [[fx, 0, fz], [[hx, 0, hz], [-hx, 0, hz], [-hx, sy, hz], [hx, sy, hz]]],
+      [[-fx, 0, -fz], [[-hx, 0, -hz], [hx, 0, -hz], [hx, sy, -hz], [-hx, sy, -hz]]],
+      [[0, 1, 0], [[-hx, sy, -hz], [hx, sy, -hz], [hx, sy, hz], [-hx, sy, hz]]],
+      [[0, -1, 0], [[-hx, 0, hz], [hx, 0, hz], [hx, 0, -hz], [-hx, 0, -hz]]],
+    ];
+    for (const [nrm, q] of faces) {
+      const c = q.map(([u, v, w]) => P(u, v, w));
+      for (const i of [0, 1, 2, 0, 2, 3]) { o.p.push(...c[i]); o.n.push(...nrm); }
+    }
+  };
+  const ground = (x, z) => native?.at(x, z)?.y ?? 0;
+  for (const [x, z, a] of data.lamps) {   // 街灯: 柱 7m、道路側へ腕 1.6m、灯具
+    const y = ground(x, z);
+    box(0x9aa0a6, x, z, a, 0, y, 0, 0.18, 7, 0.18);
+    box(0x9aa0a6, x, z, a, 0, y + 7.0, 0.8, 0.08, 0.08, 1.6);
+    box(0xf5f0e0, x, z, a, 0, y + 6.88, 1.55, 0.3, 0.15, 0.8);
+  }
+  const tops = [];
+  for (const [x, z, a] of data.poles) {   // 電柱: 9.5m、上に道路と直角の腕木 2.2m
+    const y = ground(x, z);
+    box(0xb9b6ae, x, z, a, 0, y, 0, 0.34, 9.5, 0.34);
+    box(0x8a8a86, x, z, a, 0, y + 8.74, 0, 0.12, 0.12, 2.2);
+    tops.push([x, z, a, y]);
+  }
+  for (const [color, o] of parts) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }));
+    m.name = 'shonan-lamps'; m.userData.noLift = true; m.frustumCulled = false; group.add(m);
+  }
+  // 電線: 腕木の両端(道路と直角に ±0.9m)を次の電柱へ、たるみ 0.7m
+  const W = [], A = new THREE.Vector3(), B = new THREE.Vector3(), M = new THREE.Vector3();
+  const curve = new THREE.QuadraticBezierCurve3(A, M, B);
+  for (const [i, j] of data.wires) {
+    const [ax, az, aa, ay] = tops[i], [bx, bz, ba, by] = tops[j];
+    for (const s of [-0.9, 0.9]) {
+      A.set(ax + Math.sin(aa) * s, ay + 8.95, az + Math.cos(aa) * s);
+      B.set(bx + Math.sin(ba) * s, by + 8.95, bz + Math.cos(ba) * s);
+      M.copy(A).lerp(B, 0.5); M.y -= 0.7;
+      const pts = curve.getPoints(6);
+      for (let k = 0; k < pts.length - 1; k++) W.push(pts[k], pts[k + 1]);
+    }
+  }
+  if (W.length) {
+    const wires = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(W), new THREE.LineBasicMaterial({ color: 0x2a2a2a }));
+    wires.name = 'shonan-wires'; wires.userData.noLift = true; wires.frustumCulled = false; group.add(wires);
+  }
+  return true;
+}
