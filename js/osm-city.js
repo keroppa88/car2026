@@ -1686,13 +1686,13 @@ export function snapshotCitySurfaceLayers(data) {
     ['sea', data.water.filter((w) => w.sea), SEA_DEPTH],
     ['river', data.water.filter((w) => !w.sea && !w.moat), SEA_DEPTH],   // 水面はすべて同じ高さ(段差の帯を作らない)
     ['moat', data.water.filter((w) => w.moat), SEA_DEPTH],
-  ]) rings(name, ws, WATER, 'water', -depth);
+  ]) rings(name, ws, WATER, 'water', -0.03);   // 水面は陸とほぼ同じ高さ(岸に段差・すき間を作らない)
   const river = [];
   for (const rv of data.rivers || []) {
     ribbon(rv.pts, rv.w, 0, river);
     for (let i = 1; i + 1 < rv.pts.length; i++) disc(rv.pts[i][0], rv.pts[i][1], rv.w / 2, 0, river);
   }
-  triangles('river-lines', river, WATER, 'water', -SEA_DEPTH);
+  triangles('river-lines', river, WATER, 'water', -0.03);
   // terrain は生成側でこの位置に挿入(既存の島の形を地表として使う)。
   layers.push({ name: 'terrain', color: GRASS, kind: 'land' });
   const lots = LOT_COLORS.map(() => []);

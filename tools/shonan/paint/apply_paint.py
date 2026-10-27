@@ -91,6 +91,16 @@ def main():
         g = unary_union([solid(q) for q in d[k]]).buffer(1.0, join_style=2).buffer(-1.0, join_style=2)
         d[k] = [{'o': [[round(x, 2), round(z, 2)] for x, z in list(p.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(h.coords)[:-1]] for h in p.interiors if _P(h).area > 4]}
                 for p in (getattr(g, 'geoms', None) or [g]) if p.geom_type == 'Polygon' and p.area > 20]
+    # 海の中の穴で、陸の面がない所(細い切れ端を消した跡)は海で埋める(地面の細い線が出ないように)
+    land = unary_union([_P(q['o'], q.get('h', [])).buffer(0) for k in ('piers', 'beaches', 'parks', 'woods', 'lots', 'parking', 'rocks') for q in d[k]])
+    for q in d['water']:
+        if not q.get('sea') or not q.get('h'): continue
+        g = _P(q['o'], q['h']).buffer(0)
+        holes = unary_union([_P(h).buffer(0) for h in q['h']])
+        g = g.union(holes.difference(land)).buffer(0.05, join_style=2).buffer(-0.05, join_style=2)
+        p = max((getattr(g, 'geoms', None) or [g]), key=lambda x: x.area)
+        q['o'] = [[round(x, 2), round(z, 2)] for x, z in list(p.exterior.coords)[:-1]]
+        q['h'] = [[[round(x, 2), round(z, 2)] for x, z in list(h.coords)[:-1]] for h in p.interiors]
     FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ for (const c of job.cams) {
     const px = JSON.parse(fs.readFileSync(c.pick));
     const res = await page.evaluate((px) => { const d = window.__mapDebug, T = d.THREE, rc = new T.Raycaster(), W = innerWidth, H = innerHeight;
       const objs = []; d.scene.traverse((o) => { if (o.isMesh && o.visible && !o.isInstancedMesh) objs.push(o); });
-      return px.map(([x, y]) => { rc.setFromCamera(new T.Vector2(x / W * 2 - 1, -(y / H * 2 - 1)), d.camera); const h = rc.intersectObjects(objs, false)[0]; return h ? h.point.toArray() : null; }); }, px);
+      return px.map(([x, y]) => { rc.setFromCamera(new T.Vector2(x / W * 2 - 1, -(y / H * 2 - 1)), d.camera); const h = rc.intersectObjects(objs, false)[0]; return h ? [...h.point.toArray(), h.object.name, h.object.material?.color?.getHexString?.()] : null; }); }, px);
     fs.writeFileSync(c.pickOut, JSON.stringify(res));
   }
 }
