@@ -30,3 +30,17 @@ node test/shonan-surfaces.mjs
 腰越漁港〜小動岬の画像指示(赤=海、オレンジ=コンクリート、黄=砂浜)は `tools/shonan/edit_koshigoe.py` に記録。
 小さな破片・鋭いとげ・細い切れ端の一括削除は `tools/shonan/clean_fragments.py`。海辺の護岸・岩場はすべて同じグレー(0x9a9b98)。
 江の島対岸・相模川河口・花水川河口・茅ヶ崎の画像指示(2回目まとめ)は `tools/shonan/edit_batch2.py`。水面はすべて同じ高さ、水辺の立体の壁なし。
+
+## 真上の地図に色を塗って直す(推奨)
+
+`tools/shonan/paint/top/topNN.png` は真上から撮った地図(1ピクセル=1m、位置は `tiles.json`)。
+同じ大きさのまま色を塗った絵を `topNN_paint.png` として置き、リポジトリ直下で
+
+```sh
+python3 tools/shonan/paint/apply_paint.py 01 02 ...
+python3 tools/shonan/build_surfaces.py
+node tools/shonan/paint/render.mjs <job.json>   # 同じ真上の角度で撮り直す
+python3 tools/shonan/paint/check.py <出力フォルダ> 01 02 ...   # 塗った絵とのズレを確認
+```
+
+塗る色はゲームの色そのもの(海・砂浜・林・緑地・黄緑=緑地・コンクリート・地面)。塗った面の下の細い道路は外す(幹線・橋は残す)。
