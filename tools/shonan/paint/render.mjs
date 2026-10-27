@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { startServer, openCourse } from '../../../test/lib/harness.mjs';
 const job = JSON.parse(fs.readFileSync(process.argv[2]));
 const s = await startServer();
-const { browser, page } = await openCourse(s, { course: 'shonan' });
+const { browser, page } = await openCourse(s, { course: process.env.COURSE || 'shonan' });
 await page.setViewportSize({ width: job.W, height: job.H });
 await page.waitForTimeout(4000);
 await page.evaluate(() => { for (const el of document.body.children) if (el.tagName !== 'CANVAS' && !el.querySelector?.('canvas')) el.style.display = 'none'; document.querySelectorAll('body *').forEach((e) => { if (e.tagName !== 'CANVAS' && !e.querySelector('canvas') && getComputedStyle(e).position === 'fixed') e.style.display = 'none'; }); });

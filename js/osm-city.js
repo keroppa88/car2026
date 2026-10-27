@@ -187,6 +187,14 @@ function boxInto(out, cx, cy, cz, sx, sy, sz, ang = 0) {
     out.n.push(nx * c + nz * s, ny, -nx * s + nz * c);
   }
 }
+// 上向きの面: 上から見て三角形の向きを揃える(裏向きだと DoubleSide で法線が反転して暗くなる)。末尾から1回だけ見ればよいよう、済んだ位置を覚える
+function upward(p) {
+  for (let k = p._up || 0; k + 8 < p.length; k += 9) {
+    const ax = p[k], az = p[k + 2], bx = p[k + 3], bz = p[k + 5], cx = p[k + 6], cz = p[k + 8];
+    if ((bz - az) * (cx - ax) - (bx - ax) * (cz - az) < 0) for (let q = 0; q < 3; q++) { const t = p[k + 3 + q]; p[k + 3 + q] = p[k + 6 + q]; p[k + 6 + q] = t; }
+  }
+  p._up = p.length - (p.length % 9);
+}
 function solidMesh(o, mat) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
@@ -618,7 +626,7 @@ function buildRailways(data, g, onRoad) {
   // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
   const overWater = makeWaterMask(data, 8);
   const deck = { p: [], n: [] }, rail = [], conc = { p: [], n: [] };
-  const grey = { p: [], n: [] }, yr = data.yaesu, lid = { p: [], n: [] };   // lid: 上面・下面は模様なしの一枚板
+  const grey = { p: [], n: [] }, yr = data.yaesu, lid = { p: [], n: [] }, lidTop = { p: [], n: [] };   // lid: 下面(茶)、lidTop: 上面(グレー)。模様なしの一枚板
   const onYaesu = (x, z) => {
     if (!yr) return false;
     const [ax, az] = yr.a, [bx, bz] = yr.b, dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
@@ -629,7 +637,8 @@ function buildRailways(data, g, onRoad) {
   for (const v of data.viaducts || []) {
     const tp = v.top;
     if (v.ceil) {   // れんがのトンネル・橋の天井: 上面と下面だけ(まわりの壁はとなりのれんがの塊が持つ)
-      for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1], tp[k + 2]); lid.n.push(0, 1, 0); }
+      for (let k = 0; k < tp.length; k += 3) { lidTop.p.push(tp[k], tp[k + 1], tp[k + 2]); lidTop.n.push(0, 1, 0); }
+      upward(lidTop.p);
       for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); lid.n.push(0, -1, 0); }
       for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {   // 外側の縁(桁の厚み)
         const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
@@ -650,7 +659,8 @@ function buildRailways(data, g, onRoad) {
       }
       continue;
     }
-    for (let k = 0; k < tp.length; k += 3) { lid.p.push(tp[k], tp[k + 1], tp[k + 2]); lid.n.push(0, 1, 0); }
+    for (let k = 0; k < tp.length; k += 3) { lidTop.p.push(tp[k], tp[k + 1], tp[k + 2]); lidTop.n.push(0, 1, 0); }
+    upward(lidTop.p);
     for (const ring of v.rings) {
       const segs = [];
       for (let i = 0; i < ring.length; i++) {
@@ -743,6 +753,7 @@ function buildRailways(data, g, onRoad) {
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
   if (lid.p.length) { const ml = solidMesh(lid, new THREE.MeshLambertMaterial({ color: 0x7a4232, side: THREE.DoubleSide })); ml.name = 'rail-viaduct-lid'; g.add(ml); }
+  if (lidTop.p.length) { const mt = solidMesh(lidTop, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mt.name = 'rail-viaduct-top'; g.add(mt); }   // 線路の上面はグレー
   if (grey.p.length) g.add(solidMesh(grey, new THREE.MeshLambertMaterial({ color: 0xc9cbcc, side: THREE.DoubleSide })));
   if (yr) {   // 八重洲口の白い斜めの屋根(グランルーフ)と、斜めの柱
     const [ax, az] = yr.a, [bx, bz] = yr.b, [nx, nz] = yr.n, H = yr.h, roof = { p: [], n: [] }, mast = { p: [], n: [] };
@@ -943,6 +954,8 @@ const WHITE_COLORS = [0xf2f1ec, 0xeeece6, 0xe9e7e0, 0xf4f3ef, 0xe3e2dd];
 const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce, 0x8a5a44, 0x7b4f3d];   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
 // 湘南の小さな建物(一戸建て・小規模ビル): 窓・入口の模様なしで、白いグレー・白・薄い茶色のどれか一色
 const SHONAN_SMALL_COLORS = [0xd3d4d0, 0xf1f0eb, 0xcdb89c];
+// TOKYO の小さな建物: 白・薄いグレー・茶色
+const TOKYO_SMALL_COLORS = [0xf1f0eb, 0xc9cac7, 0xa07f60];
 function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [] }));
   const plain = { p: [], u: [], c: [], n: [], f: [] };   // 小さい構築物: 窓なしのグレー一色
@@ -965,8 +978,8 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
     let wallHex = small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base);
     if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
     if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
-    const plainSmall = opts.plainSmall && !lk && !b.grey && area < 400 && h <= 13;
-    if (plainSmall) wallHex = SHONAN_SMALL_COLORS[Math.floor(R() * SHONAN_SMALL_COLORS.length)];
+    const plainSmall = !!opts.smallColors && !lk && !b.grey && area < 400 && h <= 13;
+    if (plainSmall) wallHex = opts.smallColors[Math.floor(R() * opts.smallColors.length)];
     const col = new THREE.Color(wallHex), S = STYLES[style], W = plainSmall ? plain : walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
@@ -1784,9 +1797,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
-    T('buildUnderPiers', () => buildUnderPiers(data, br, city));
     T('buildArches', () => buildArches(data, city));
-    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { plainSmall: !!surfaceUrl }));
+    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS }));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));
       // 当たり判定は足元の形で

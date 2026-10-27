@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261027-house-1';
+import { decorateOsmCity } from './osm-city.js?v=20261028-tokyo-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
@@ -2271,7 +2271,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const cam = { yaw: 0, pitch: 0.34, dist: 10, dragging: false, lastDrag: 0, panX: 0, panZ: 0, panning: false };
   // 追従カメラの振れる範囲。下げすぎると地面へ潜るので 0.08 で止める。
   const CAM_PITCH_MIN = 0.08;
-  const CAM_PITCH_MAX = 1.25;
+  // 日本橋・湘南: 客観視点で真上近く(約89度)まで振れるようにして、地図を真上から見られる
+  const CAM_PITCH_MAX = OSM_COURSE ? Math.PI / 2 - 0.02 : 1.25;
   // 主観視点(bonnetView 2)は車体を映さないので、真上まで見上げられるようにする。
   // 見上げる角度は lookPitch = 0.34 - cam.pitch なので、真上(π/2)には
   // cam.pitch が負まで必要になる。真上ちょうどは lookAt の上方向と重なって
