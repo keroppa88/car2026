@@ -941,7 +941,9 @@ const SMALL_AREA = 150;
 const WHITE_COLORS = [0xf2f1ec, 0xeeece6, 0xe9e7e0, 0xf4f3ef, 0xe3e2dd];
 // 小さい建物の色: 黄土色・グレー・白っぽいグレー・赤茶
 const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce, 0x8a5a44, 0x7b4f3d];   // これより小さい建物(m²)は出入口・小屋などの構築物とみなす
-function buildBuildings(data, g, wallMats, roofMat) {
+// 湘南の小さな建物(一戸建て・小規模ビル): 窓・入口の模様なしで、白いグレー・白・薄い茶色のどれか一色
+const SHONAN_SMALL_COLORS = [0xd3d4d0, 0xf1f0eb, 0xcdb89c];
+function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [] }));
   const plain = { p: [], u: [], c: [], n: [], f: [] };   // 小さい構築物: 窓なしのグレー一色
   const roofShapes = [];
@@ -963,7 +965,9 @@ function buildBuildings(data, g, wallMats, roofMat) {
     let wallHex = small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base);
     if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
     if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
-    const col = new THREE.Color(wallHex), S = STYLES[style], W = walls[style];
+    const plainSmall = opts.plainSmall && !lk && !b.grey && area < 400 && h <= 13;
+    if (plainSmall) wallHex = SHONAN_SMALL_COLORS[Math.floor(R() * SHONAN_SMALL_COLORS.length)];
+    const col = new THREE.Color(wallHex), S = STYLES[style], W = plainSmall ? plain : walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
@@ -1782,7 +1786,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildUnderPiers', () => buildUnderPiers(data, br, city));
     T('buildArches', () => buildArches(data, city));
-    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat));
+    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { plainSmall: !!surfaceUrl }));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));
       // 当たり判定は足元の形で
