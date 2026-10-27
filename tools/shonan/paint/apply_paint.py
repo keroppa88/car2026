@@ -21,8 +21,9 @@ PALETTE = {   # 塗る色 → 地図の種類
 ORDER = ['ground', 'sea', 'beaches', 'piers', 'parks', 'woods']
 
 def masks(n):
-    T = np.array(Image.open(TOP / f'top{n}.png').convert('RGB')).astype(int)
-    P = np.array(Image.open(TOP / f'top{n}_paint.png').convert('RGB')).astype(int)
+    stem = n if not n.isdigit() else f'top{n}'
+    T = np.array(Image.open(TOP / f'{stem}.png').convert('RGB')).astype(int)
+    P = np.array(Image.open(TOP / f'{stem}_paint.png').convert('RGB')).astype(int)
     changed = np.abs(P - T).sum(2) > 30
     out = {}
     for col, kind in PALETTE.items():
@@ -46,6 +47,8 @@ def to_world(mask, tile):
 
 def main():
     tiles = {t['file'][3:5]: t for t in json.loads((TOP / 'tiles.json').read_text())}
+    for extra in TOP.glob('tiles_*.json'):   # 追加の絵(eno1 など)は名前で呼ぶ
+        tiles.update({t['file'][:-4]: t for t in json.loads(extra.read_text())})
     d = json.loads(FILE.read_text()); M = Map(d); painted_all = []
     # 1回目は絵の全幅、2回目は受け持ちの範囲だけ(重なりで塗り方が食い違う所は受け持ちの絵を優先)
     for n, core in [(n, False) for n in sys.argv[1:]] + [(n, True) for n in sys.argv[1:]]:
@@ -55,11 +58,11 @@ def main():
             g = to_world(ms[kind], tiles[n])
             # となりの絵と重なる所(150m)は半分ずつ受け持つ(後の絵で前の絵を上書きしない)
             T_ = tiles[n]; from shapely.geometry import box as _b
-            if core: g = g.intersection(_b(T_['x0'] + 75, -1e5, T_['x0'] + T_['W'] * T_['mPerPx'] - 75, 1e5))
+            if core and n.isdigit(): g = g.intersection(_b(T_['x0'] + 75, -1e5, T_['x0'] + T_['W'] * T_['mPerPx'] - 75, 1e5))
             if g.is_empty: continue
             M.put(g, kind, clear=True)   # 塗った面の上の建物・木は消す
             painted_all.append(g)
-            if core: print(f'top{n}: {kind} {round(g.area)} m²')
+            if core: print(f'{n}: {kind} {round(g.area)} m²')
     # 道路の上に塗った所は、その道路をなくす(塗った面に半分以上入っている道路を外す)
     from shapely.geometry import LineString
     painted = unary_union(painted_all).buffer(-1.0) if painted_all else Polygon()
