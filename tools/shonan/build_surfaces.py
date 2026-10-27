@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 CITY = ROOT / 'map/shonan-city.json'
 TERRAIN = ROOT / 'map/shonan-terrain.json'
 KINDS = {'land': 0, 'road': 1, 'sand': 2, 'water': 3}
+DROP = 2.0   # 砂浜・海・川は道路より 2m 下。境目はグレーの垂直な護岸(map/shonan-walls.json)
+LOW = ('sand', 'water')
 GRID = 0.0001  # 0.1mm。座標は最終メッシュでもタイル原点からの相対値で保持。
 
 def clean(g):
@@ -113,6 +115,50 @@ def main():
     assert abs(area_sum-union.area) < 1, ('overlap', area_sum-union.area)
     assert expected.symmetric_difference(union).area < 1, '地表に欠落あり'
 
+    # 砂浜・水に接する幅 2m 未満の細い陸(道路以外)は、形・色はそのままで一緒に下げる(壁が板のように立たないように)
+    low0 = clean(sg.union_all([r['geometry'] for r in regions if r['kind'] in LOW]))
+    sg.prepare(low0)
+    extra = []
+    for r in regions:
+        if r['kind'] != 'land' or r['name'] == 'terrain': continue
+        g = r['geometry']
+        core = clean(sg.intersection(g.buffer(-1.0, join_style=2).buffer(1.0, join_style=2), g))
+        thin = clean(g.difference(core))
+        parts = [q for q in sg.get_parts(thin) if q.geom_type == 'Polygon' and q.area > 1e-6 and sg.intersects(low0, q.buffer(0.1))]
+        if not parts: continue
+        t = clean(sg.union_all(parts))
+        r['geometry'] = clean(g.difference(t))
+        extra.append({**r, 'geometry': t, 'lowered': True})
+        print('thin lowered', r['name'], round(t.area), flush=True)
+    regions = [r for r in regions if not r['geometry'].is_empty] + extra
+    isLow = lambda r: r['kind'] in LOW or r.get('lowered')
+    # 護岸: 低い面(砂浜・水)と高い面(道路・陸)の境目に沿った垂直の壁
+    low = clean(sg.union_all([r['geometry'] for r in regions if isLow(r)]))
+    high = clean(sg.union_all([r['geometry'] for r in regions if not isLow(r)]))
+    shared = sg.intersection(sg.boundary(high), low.buffer(0.05))
+    sg.prepare(low); sg.prepare(terrain_shape)
+    segs = []
+    parts = [q for q in sg.get_parts(shared) if q.geom_type in ('LineString', 'MultiLineString')]
+    for line in sg.get_parts(sg.line_merge(sg.union_all(parts))):
+        if line.geom_type != 'LineString' or line.length < 0.3: continue
+        cs = np.asarray(line.coords)
+        for (ax, az), (bx, bz) in zip(cs[:-1], cs[1:]):
+            L = math.hypot(bx - ax, bz - az)
+            n = max(1, math.ceil(L / 4))
+            for k in range(n):
+                segs.append((ax + (bx - ax) * k / n, az + (bz - az) * k / n, ax + (bx - ax) * (k + 1) / n, az + (bz - az) * (k + 1) / n))
+    segs = np.asarray(segs) if segs else np.empty((0, 4))
+    mx, mz = (segs[:, 0] + segs[:, 2]) / 2, (segs[:, 1] + segs[:, 3]) / 2
+    SL = np.hypot(segs[:, 2] - segs[:, 0], segs[:, 3] - segs[:, 1]) + 1e-9
+    nx, nz = (segs[:, 3] - segs[:, 1]) / SL, -(segs[:, 2] - segs[:, 0]) / SL
+    flip = ~sg.contains_xy(low, mx + nx * 0.3, mz + nz * 0.3)    # 法線は低い側(砂浜・水)へ
+    nx[flip] *= -1; nz[flip] *= -1
+    top = lambda x, z: np.where(sg.contains_xy(terrain_shape, x, z), height(np.stack([x, z], -1)), 0.0)
+    y0, y1 = top(segs[:, 0], segs[:, 1]), top(segs[:, 2], segs[:, 3])
+    walls = np.round(np.column_stack([segs[:, 0], segs[:, 1], y0, segs[:, 2], segs[:, 3], y1, nx, nz]), 2)
+    (ROOT / 'map/shonan-walls.json').write_text(json.dumps({'drop': DROP, 'w': walls.ravel().tolist()}, separators=(',', ':')))
+    print('walls', len(walls), 'segments', round(float(SL.sum())), 'm', flush=True)
+
     batches = {}
     for layer in regions:
         g = layer['geometry']
@@ -140,6 +186,7 @@ def main():
                     if not len(pts):
                         continue
                     ys = height(pts) if on_terrain else np.full(pts.shape[:2], layer.get('y', 0))
+                    if layer['kind'] in LOW or layer.get('lowered'): ys = ys - DROP
                     xyz = np.stack([pts[:,:,0]-ix*step, ys, pts[:,:,1]-iz*step], axis=-1)
                     # Three.js の表面は上向き。
                     signed = (xyz[:,1,2]-xyz[:,0,2])*(xyz[:,2,0]-xyz[:,0,0])-(xyz[:,1,0]-xyz[:,0,0])*(xyz[:,2,2]-xyz[:,0,2])

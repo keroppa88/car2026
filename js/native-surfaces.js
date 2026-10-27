@@ -77,6 +77,7 @@ export async function loadNativeSurfaces(url, group) {
 // ・大きなまだら(色の濃淡)  ・横に伸びた筆の筋  ・空の映り込み(浅い角度ほど明るい)
 // ・南の空の太陽のきらめきを筆の筋に沿って途切れ途切れに
 const WATER_TIME = { value: 0 };
+export const SEA_DROP = 2;   // 砂浜・海・川は道路より 2m 下(tools/shonan/build_surfaces.py の DROP と同じ)
 function makeWaterMaterial() {
   // Lambert には cameraPosition が渡されないので、光沢なしの Phong を使う
   const m = new THREE.MeshPhongMaterial({ name: 'shonan-sea', vertexColors: true, side: THREE.DoubleSide, specular: 0x000000, shininess: 1 });
@@ -146,7 +147,7 @@ export async function loadFoam(url, group) {
   const pos = [], dd = [], uu = [], ee = [], idx = [];
   for (const s of data.strips) {
     const base = pos.length / 3;
-    for (let i = 0; i < s.pts.length / 2; i++) { pos.push(s.pts[i * 2], -0.01, s.pts[i * 2 + 1]); dd.push(s.d[i]); uu.push(s.u[i]); ee.push(s.e[i]); }
+    for (let i = 0; i < s.pts.length / 2; i++) { pos.push(s.pts[i * 2], -SEA_DROP - 0.01, s.pts[i * 2 + 1]); dd.push(s.d[i]); uu.push(s.u[i]); ee.push(s.e[i]); }
     for (let c = 0; c + 1 < s.n; c++) for (let r = 0; r + 1 < R; r++) {
       const a = base + c * R + r, b = a + R;
       idx.push(a, b, a + 1, a + 1, b, b + 1);
@@ -191,6 +192,27 @@ export async function loadFoam(url, group) {
   const mesh = new THREE.Mesh(g, m);
   mesh.name = 'shonan-foam'; mesh.frustumCulled = false; mesh.renderOrder = 1;
   mesh.userData.noLift = true;
+  group.add(mesh);
+  return mesh;
+}
+
+// 道路・陸と、2m 下の砂浜・水面の境目のグレーの垂直な護岸(build_surfaces.py が作る map/shonan-walls.json)。
+export async function loadWalls(url, group) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json(), w = data.w, D = data.drop ?? SEA_DROP;
+  const n = w.length / 8, pos = new Float32Array(n * 18), nor = new Float32Array(n * 18);
+  for (let i = 0; i < n; i++) {
+    const k = i * 8, ax = w[k], az = w[k + 1], ay = w[k + 2], bx = w[k + 3], bz = w[k + 4], by = w[k + 5], nx = w[k + 6], nz = w[k + 7];
+    pos.set([ax, ay - D - 0.05, az, bx, by - D - 0.05, bz, bx, by, bz, ax, ay - D - 0.05, az, bx, by, bz, ax, ay, az], i * 18);
+    for (let q = 0; q < 6; q++) nor.set([nx, 0, nz], i * 18 + q * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x9a9b98, side: THREE.DoubleSide }));
+  mesh.name = 'shonan-seawalls'; mesh.userData.noLift = true; mesh.frustumCulled = false;
   group.add(mesh);
   return mesh;
 }

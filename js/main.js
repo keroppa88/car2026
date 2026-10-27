@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261028-tokyo-1';
+import { decorateOsmCity } from './osm-city.js?v=20261028-low-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261027-revert-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261028-low-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -2971,6 +2971,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const hitAt = (x, z) => [-1.4, 0, 1.4].some((d) => townBlocker.isBlocked(
         x + fx * d, z + fz * d, d === 0 ? 0.7 : 0.5));
       const last = neoLastFreePos;
+      if (last && townBlocker.setBlockFrom) townBlocker.setBlockFrom(last.x, last.z);   // 湘南: 護岸の段差の基準
       const lastOverlaps = last && hitAt(last.x, last.z);
       const blocked = (x, z) => (lastOverlaps
         ? townBlocker.isBlocked(x, z, 0.3) : hitAt(x, z));
@@ -11007,7 +11008,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
     camera.position.set(
       target.x + Math.sin(a) * cp * cam.dist,
-      Math.max(0.7, target.y + sp * cam.dist),
+      Math.max(target.y - 0.7, target.y + sp * cam.dist),   // 地面(車の下)より下へ潜らない
       target.z + Math.cos(a) * cp * cam.dist
     );
     camera.lookAt(target);
