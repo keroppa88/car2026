@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261027-paint-5';
+import { decorateOsmCity } from './osm-city.js?v=20261027-ad-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261027-paint-5';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261027-ad-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -9063,22 +9063,38 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     if (autoMode === 'shonanRoute') {
       // 行き先まで: 先のカーブを見て速度を決め、終点で止まる(ループしない)
-      let wp = wps[autoIdx];
-      const reach = Math.max(8, speed * 0.45);
-      while (autoIdx < n - 1 && Math.hypot(wp.x - player.pos.x, wp.z - player.pos.z) < reach) { autoIdx++; wp = wps[autoIdx]; }
+      // 車線(左の車線の中心線)をなぞる: いちばん近い点を探し、そこから道に沿って先の点を見る(角を内側へ切らない)
+      const near = (i0, i1) => { let b = i0, bd = Infinity; for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i++) { const d = (wps[i].x - player.pos.x) ** 2 + (wps[i].z - player.pos.z) ** 2; if (d < bd) { bd = d; b = i; } } return [b, Math.sqrt(bd)]; };
+      let [ni, nd] = autoIdx < 0 ? near(0, n - 1) : near(autoIdx - 5, autoIdx + 60);
+      if (nd > 40) [ni, nd] = near(0, n - 1);
+      autoIdx = ni;
+      { // 点ではなく線分までの距離(車線からのずれ)
+        let best = nd;
+        for (const j of [ni - 1, ni]) { if (j < 0 || j >= n - 1) continue;
+          const ax = wps[j].x, az = wps[j].z, dx = wps[j + 1].x - ax, dz = wps[j + 1].z - az, L2 = dx * dx + dz * dz || 1;
+          const u = Math.max(0, Math.min(1, ((player.pos.x - ax) * dx + (player.pos.z - az) * dz) / L2));
+          best = Math.min(best, Math.hypot(ax + dx * u - player.pos.x, az + dz * u - player.pos.z)); }
+        nd = best;
+      }
+      // 車線から外れているほど近くを見て早く戻る
+      const look = Math.max(5, Math.min(speed * 0.7, 30)) * (nd > 2 ? 0.6 : 1);
+      let acc = 0, k = autoIdx;
+      while (k < n - 1 && acc < look) { acc += Math.hypot(wps[k + 1].x - wps[k].x, wps[k + 1].z - wps[k].z); k++; }
+      let wp = wps[k];
       const left = n - 1 - autoIdx;
+      document.body.dataset.autoDriveLaneError = nd.toFixed(2);
       if (left <= 2 && Math.hypot(wps[n - 1].x - player.pos.x, wps[n - 1].z - player.pos.z) < 15) {
         if (speed < 0.5) { autoDrive = false; document.body.dataset.autoDrive = 'false'; document.body.dataset.autoDriveArrived = '1'; }
         return { throttle: false, brake: true, handbrake: false, steer: 0 };
       }
       const diff = angleTo(wp);
       let curve = 0;
-      for (const k of [4, 8, 14]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + k)])));
+      for (const kk of [6, 12, 20]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + kk)])));
       let targetKmh = curve > 0.6 ? 30 : curve > 0.35 ? 45 : curve > 0.18 ? 60 : 70;
       if (left < 12) targetKmh = Math.min(targetKmh, 20 + left * 3);   // 終点の手前で減速
       const target = targetKmh / 3.6;
       document.body.dataset.autoDriveTargetKmh = String(targetKmh);
-      return { throttle: speed < target, brake: speed > target + 2, handbrake: false, steer: clamp(diff * 1.6, -1, 1) };
+      return { throttle: speed < target, brake: speed > target + 2, handbrake: false, steer: clamp(diff * 2.0, -1, 1) };
     }
     let wp = wps[autoIdx];
     const reach = Math.max(9, speed * 0.4);

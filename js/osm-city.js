@@ -1814,6 +1814,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
   return {
     ready,
     isBlocked: (x, z, R) => blocked(x, z, R),
+    surfaceKind: (x, z) => (blocked.onRoad && blocked.onRoad(x, z) ? 1 : blocked.isSand && blocked.isSand(x, z) ? 2 : 0),
     isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
