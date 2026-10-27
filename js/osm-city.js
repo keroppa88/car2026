@@ -1817,7 +1817,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     isSand: (x, z) => !!(blocked.isSand && blocked.isSand(x, z)),
     bounds: () => cityBounds,      // 地図(Q)用。読み込み前は null
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
-    update(dt, camera) { if (panorama && camera) { panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
+    update(dt, camera) { if (panorama && camera) { panorama.visible = camera.position.y < 120;   // 高い所から見下ろす時(地図・遠くへ引いた時)は山並みを出さない
+      panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
   };
 }
