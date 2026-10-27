@@ -47,18 +47,19 @@ def to_world(mask, tile):
 def main():
     tiles = {t['file'][3:5]: t for t in json.loads((TOP / 'tiles.json').read_text())}
     d = json.loads(FILE.read_text()); M = Map(d); painted_all = []
-    for n in sys.argv[1:]:
+    # 1回目は絵の全幅、2回目は受け持ちの範囲だけ(重なりで塗り方が食い違う所は受け持ちの絵を優先)
+    for n, core in [(n, False) for n in sys.argv[1:]] + [(n, True) for n in sys.argv[1:]]:
         ms = masks(n)
         for kind in ORDER:
             if kind not in ms or not ms[kind].any(): continue
             g = to_world(ms[kind], tiles[n])
             # となりの絵と重なる所(150m)は半分ずつ受け持つ(後の絵で前の絵を上書きしない)
             T_ = tiles[n]; from shapely.geometry import box as _b
-            g = g.intersection(_b(T_['x0'] + 75, -1e5, T_['x0'] + T_['W'] * T_['mPerPx'] - 75, 1e5))
+            if core: g = g.intersection(_b(T_['x0'] + 75, -1e5, T_['x0'] + T_['W'] * T_['mPerPx'] - 75, 1e5))
             if g.is_empty: continue
             M.put(g, kind, clear=kind in ('sea', 'beaches', 'ground', 'woods'))
             painted_all.append(g)
-            print(f'top{n}: {kind} {round(g.area)} m²')
+            if core: print(f'top{n}: {kind} {round(g.area)} m²')
     # 道路の上に塗った所は、その道路をなくす(塗った面に半分以上入っている道路を外す)
     from shapely.geometry import LineString
     painted = unary_union(painted_all).buffer(-1.0) if painted_all else Polygon()
@@ -77,6 +78,16 @@ def main():
             out.append({**r, 'pts': pts, 'junctions': [i for i, p in enumerate(pts) if tuple(p) in jset]})
     d['roads'] = out
     print('塗った面の下の道路を外す', n0 - len(d['roads']))
+    # 同じ種類の面はつなげて1枚にする(境目の細い線が出ないように)
+    from shapely.geometry import Polygon as _P
+    # 幅 1.5m 未満の細い切れ端(謎の線)は消し、同じ種類の面のすき間 1m 以下は埋める
+    def solid(q):
+        g = _P(q['o'], q.get('h', [])).buffer(0)
+        return g.buffer(-0.75, join_style=2).buffer(0.75, join_style=2)
+    for k in ('beaches', 'piers', 'woods', 'parks', 'rocks', 'lots', 'parking'):
+        g = unary_union([solid(q) for q in d[k]]).buffer(1.0, join_style=2).buffer(-1.0, join_style=2)
+        d[k] = [{'o': [[round(x, 2), round(z, 2)] for x, z in list(p.exterior.coords)[:-1]], 'h': [[[round(x, 2), round(z, 2)] for x, z in list(h.coords)[:-1]] for h in p.interiors if _P(h).area > 4]}
+                for p in (getattr(g, 'geoms', None) or [g]) if p.geom_type == 'Polygon' and p.area > 20]
     FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
 
 if __name__ == '__main__':
