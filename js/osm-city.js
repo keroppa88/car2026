@@ -269,6 +269,56 @@ function makeCoverage(data) {
   };
 }
 
+// 湘南の外側線: 区間の切れ目(同じ道路が続くだけの継ぎ目)では切らず、ほかの道路の車道に入る所(交差点・合流)だけ切る
+function edgeLines(data, white) {
+  const C = 20, grid = new Map(), R = data.roads;
+  R.forEach((r, id) => {
+    const half = roadWidth(r) / 2, p = r.pts;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [ax, az] = p[i], [bx, bz] = p[i + 1];
+      for (let gx = Math.floor((Math.min(ax, bx) - half) / C); gx <= Math.floor((Math.max(ax, bx) + half) / C); gx++)
+        for (let gz = Math.floor((Math.min(az, bz) - half) / C); gz <= Math.floor((Math.max(az, bz) + half) / C); gz++) {
+          const k = gx + ',' + gz; if (!grid.has(k)) grid.set(k, []); grid.get(k).push([ax, az, bx, bz, half, id]);
+        }
+    }
+  });
+  // 継ぎ目: 2本の道路だけが集まる点でつながる相手(同じ道路の続き)
+  const at = new Map();
+  const ends = new Map();   // 点 → その点を端に持つ道路
+  R.forEach((r, id) => r.pts.forEach((q, i) => {
+    const k = q.join(','); if (!at.has(k)) at.set(k, new Set()); at.get(k).add(id);
+    if (i === 0 || i === r.pts.length - 1) { if (!ends.has(k)) ends.set(k, new Set()); ends.get(k).add(id); }
+  }));
+  const cont = R.map(() => new Set());
+  for (const [k, ids] of at) if (ids.size === 2 && ends.get(k)?.size === 2) { const [a, b] = [...ids]; cont[a].add(b); cont[b].add(a); }   // 2本とも端で、ほかに道路がない
+  const onOther = (x, z, id) => {
+    for (const [ax, az, bx, bz, half, o] of grid.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || []) {
+      if (o === id || cont[id].has(o)) continue;
+      const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if ((ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2 < (half - 0.1) ** 2) return true;
+    }
+    return false;
+  };
+  R.forEach((r, id) => {
+    if (r.bridge) return;
+    const half = roadWidth(r) / 2, inset = r.lanes === 1 && !r.oneway ? 0.4 : 0.25, wdt = r.lanes === 1 && !r.oneway ? 0.12 : 0.15;
+    for (const sd of [-1, 1]) {
+      const e = offset(r.pts, sd * (half - inset)), s = cumLen(e), L = s.at(-1);
+      if (L < 3) continue;
+      let start = null;
+      for (let d = 0; d <= L + 0.01; d += 1) {
+        const q = cut(e, s, Math.max(0, d - 0.01), Math.min(L, d + 0.01))[0] || e[0];
+        const ok = !onOther(q[0], q[1], id);
+        if (ok && start === null) start = d;
+        if ((!ok || d + 1 > L + 0.01) && start !== null) {
+          const end = ok ? L : d - 1;
+          if (end - start >= 2) ribbon(cut(e, s, start, end), wdt, 0.08, white);
+          start = null;
+        }
+      }
+    }
+  });
+}
 function buildRoads(data, g, surfaceSink = null) {
   const shonanLines = (data.water || []).some((w) => w.sea);   // 湘南: 中央分離帯に接する線は白
   const shared = makeCoverage(data);
@@ -347,18 +397,21 @@ function buildRoads(data, g, surfaceSink = null) {
       if (!r.bridge) for (const sd of [-1, 1]) ribbon(offset(body, sd * (half + 0.12)), 0.24, 0.03, curb);   // 縁石
       if (r.oneway) {
         for (let k = 1; k < r.lanes; k++) ribbon(offset(body, half - k * LANE), 0.12, 0.08, white, [5, 5]);
-        ribbon(offset(body, half - 0.25), 0.15, 0.08, white);              // 左の外側線
-        ribbon(offset(body, -(half - 0.25)), 0.15, 0.08, r.lanes >= 2 && !shonanLines ? yellow : white);   // 右(中央分離側)。湘南は白
+        if (!shonanLines) {
+          ribbon(offset(body, half - 0.25), 0.15, 0.08, white);              // 左の外側線
+          ribbon(offset(body, -(half - 0.25)), 0.15, 0.08, r.lanes >= 2 ? yellow : white);   // 右(中央分離側)
+        }
       } else if (r.lanes >= 2) {
         const per = Math.floor(r.lanes / 2);
         ribbon(body, 0.15, 0.08, per >= 2 ? yellow : white, per >= 2 ? null : [5, 5]);
         for (let k = 1; k < per; k++) for (const sd of [-1, 1]) ribbon(offset(body, sd * k * LANE), 0.12, 0.08, white, [5, 5]);
-        for (const sd of [-1, 1]) ribbon(offset(body, sd * (half - 0.25)), 0.15, 0.08, white);
+        if (!shonanLines) for (const sd of [-1, 1]) ribbon(offset(body, sd * (half - 0.25)), 0.15, 0.08, white);
       } else {
-        for (const sd of [-1, 1]) ribbon(offset(body, sd * (half - 0.4)), 0.12, 0.08, white);   // 路側帯
+        if (!shonanLines) for (const sd of [-1, 1]) ribbon(offset(body, sd * (half - 0.4)), 0.12, 0.08, white);   // 路側帯
       }
     }
   });
+  if (shonanLines) edgeLines(data, white);
   placeCrosswalks(data, shared, J, white);
   const surface = (p, color, kind) => surfaceSink ? surfaceSink(p, color, kind) : g.add(flatMesh(p, color));
   surface(walk, SIDEWALK_COLOR, 'sidewalk'); surface(curb, 0x9d9e9b, 'curb');
