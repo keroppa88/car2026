@@ -1427,26 +1427,40 @@ function billboard(mat) {
   };
   return mat;
 }
-// ---- 中央分離帯の低い植え込み(湘南): 緑地の上に高さ 0.8m の箱。端は交差点に出ないよう 0.5m ずつ縮める ----
+// ---- 中央分離帯の低い植え込み(湘南): 緑地の上に膝丈(0.5m)の箱。端は交差点に出ないよう 0.5m ずつ縮める ----
+// 色は濃い緑が基本。約 2.5m ごとに区切り、濃い緑の数種類から選んで並べる。
+const HEDGE_GREENS = [0x2c5426, 0x35612d, 0x274a22, 0x3d6b34, 0x2f5a30].map((h) => new THREE.Color(h));
 function buildHedges(data, g, native) {
-  const o = { p: [], n: [] }, H = 0.5;   // 膝丈
+  const o = { p: [], n: [], c: [] }, H = 0.5;   // 膝丈
+  let seed = 0;
   for (const [x, z, ang, len, wid] of data.medians || []) {
     const L = len - 1.0, W = Math.max(0.6, wid - 0.8); if (L < 1) continue;
     const y0 = native?.at(x, z)?.y ?? 0, y1 = y0 + H;
-    const tx = Math.sin(ang), tz = Math.cos(ang), hx = tx * L / 2, hz = tz * L / 2, nx = tz * W / 2, nz = -tx * W / 2;
-    const c = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => [x + hx * a + nx * b, z + hz * a + nz * b]);
-    const top = []; rect(x, z, ang, L, W, y1, top); upward(top);
-    for (let k = 0; k < top.length; k += 3) { o.p.push(top[k], top[k + 1], top[k + 2]); o.n.push(0, 1, 0); }
-    for (let i = 0; i < 4; i++) {
-      const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4], l = Math.hypot(bx - ax, bz - az);
-      let ex = (bz - az) / l, ez = -(bx - ax) / l;
-      if (ex * (ax - x) + ez * (az - z) < 0) { ex = -ex; ez = -ez; }   // 外向き
-      o.p.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
-      for (let q = 0; q < 6; q++) o.n.push(ex, 0, ez);
+    const tx = Math.sin(ang), tz = Math.cos(ang), n = Math.max(1, Math.round(L / 2.5)), seg = L / n;
+    const R = seeded(Math.round(x * 13 + z * 7) + seed++);
+    for (let k = 0; k < n; k++) {
+      const off = -L / 2 + seg * (k + 0.5), cx = x + tx * off, cz = z + tz * off;
+      const col = HEDGE_GREENS[Math.floor(R() * HEDGE_GREENS.length)];
+      const hx = tx * seg / 2, hz = tz * seg / 2, nx = tz * W / 2, nz = -tx * W / 2;
+      const c = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => [cx + hx * a + nx * b, cz + hz * a + nz * b]);
+      const top = []; rect(cx, cz, ang, seg, W, y1, top); upward(top);
+      for (let q = 0; q < top.length; q += 3) { o.p.push(top[q], top[q + 1], top[q + 2]); o.n.push(0, 1, 0); o.c.push(col.r, col.g, col.b); }
+      for (let i = 0; i < 4; i++) {
+        const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4], l = Math.hypot(bx - ax, bz - az);
+        let ex = (bz - az) / l, ez = -(bx - ax) / l;
+        if (ex * (ax - cx) + ez * (az - cz) < 0) { ex = -ex; ez = -ez; }   // 外向き
+        o.p.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
+        for (let q = 0; q < 6; q++) { o.n.push(ex, 0, ez); o.c.push(col.r * 0.85, col.g * 0.85, col.b * 0.85); }   // 横は少し暗く
+      }
     }
   }
   if (!o.p.length) return;
-  const m = solidMesh(o, new THREE.MeshLambertMaterial({ color: 0x4f7d3a, side: THREE.DoubleSide })); m.name = 'median-hedges'; m.userData.noLift = true; g.add(m);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  m.matrixAutoUpdate = false; m.name = 'median-hedges'; m.userData.noLift = true; g.add(m);
 }
 function buildTrees(data, g, big = 1, nativeSurfaces = false) {
   const T = data.trees || []; if (!T.length) return;
