@@ -8972,7 +8972,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   if (MAP_CONFIG.routeData) fetch(MAP_CONFIG.routeData).then((r) => r.json()).then((d) => { shonanRoutes = d; }).catch(() => {});
   // ---- 湘南: CPU車(国道134号だけ)。上り・下りの左車線を走る。
   // 自車と同じ向きの車は 60〜80km/h で巡航、自車と逆向き(対向車線)の車は 40km/h。
-  // 自車の前後 650m に片側 10 台。離れた車はずっと先へ置き直して使い回す。前のCPU車に近づくと減速。自車とはすり抜ける。
+  // 自車の前後 650m に片側 10 台。離れた車はずっと先へ置き直して使い回す。CPU車どうし・自車とも当たり判定なし(すり抜ける)。
   let shonanTraffic = null;
   const TRAFFIC_PER_LANE = 10, TRAFFIC_RANGE = 650;
   function buildShonanTraffic() {
@@ -9048,10 +9048,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const here = laneAt(lane, car.s, car), len = Math.hypot(here.dx, here.dz) || 1;
       const same = (here.dx * pdx + here.dz * pdz) / len > 0;
       let target = same ? car.cruise : 40 / 3.6;
-      // 前の車
-      let gap = 1e9, lead = null;
-      for (const o of shonanTraffic.cars) if (o !== car && o.lane === lane && o.s > car.s && o.s - car.s < gap) { gap = o.s - car.s; lead = o; }
-      if (lead && gap < 40) target = Math.min(target, Math.max(0, lead.v * (gap - 9) / 25));
+      // CPU車どうしも当たり判定・減速なし(数珠つなぎにならないよう、すり抜ける)
       car.v += THREE.MathUtils.clamp(target - car.v, -9 * dt, 2.5 * dt);
       car.s += car.v * dt;
       const a = laneAt(lane, car.s, car);
