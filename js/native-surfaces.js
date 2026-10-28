@@ -249,6 +249,14 @@ export async function loadLamps(url, group, native) {
     box(0x9aa0a6, x, z, a, 0, y + 7.0, 0.8, 0.08, 0.08, 1.6);
     box(0xf5f0e0, x, z, a, 0, y + 6.88, 1.55, 0.3, 0.15, 0.8);
   }
+  for (const [x, z, a, arm] of data.bridgeLamps || []) {   // 橋の真ん中: 柱 8m、左右に腕と灯具
+    const y = ground(x, z);
+    box(0x9aa0a6, x, z, a, 0, y, 0, 0.2, 8, 0.2);
+    for (const sd of [-1, 1]) {
+      box(0x9aa0a6, x, z, a, 0, y + 7.95, sd * arm / 2, 0.08, 0.08, arm);
+      box(0xf5f0e0, x, z, a, 0, y + 7.83, sd * (arm - 0.3), 0.3, 0.15, 0.8);
+    }
+  }
   const tops = [];
   for (const [x, z, a] of data.poles) {   // 電柱: 9.5m、上に道路と直角の腕木 2.2m
     const y = ground(x, z);
@@ -257,7 +265,7 @@ export async function loadLamps(url, group, native) {
     tops.push([x, z, a, y]);
   }
   // 夜の明かり(街並みマップと同じ): 灯具が光り、足元の道路に 16m 四方の光だまり
-  const headMat = new THREE.MeshLambertMaterial({ color: 0xf5f0e0, emissive: 0xfff0c8, emissiveIntensity: 0 });
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xf5f0e0, emissive: 0xffd49a, emissiveIntensity: 0 });   // 少しオレンジ
   for (const [color, o] of parts) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
@@ -268,16 +276,18 @@ export async function loadLamps(url, group, native) {
   }
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const cg = c.getContext('2d'), gr = cg.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gr.addColorStop(0, 'rgba(255,236,200,1)'); gr.addColorStop(0.45, 'rgba(255,226,180,.55)'); gr.addColorStop(1, 'rgba(255,220,170,0)');
+  gr.addColorStop(0, 'rgba(255,218,160,1)'); gr.addColorStop(0.45, 'rgba(255,204,138,.55)'); gr.addColorStop(1, 'rgba(255,196,124,0)');   // 少しオレンジ
   cg.fillStyle = gr; cg.fillRect(0, 0, 128, 128);
   const poolTex = new THREE.CanvasTexture(c); poolTex.colorSpace = THREE.SRGBColorSpace;
   const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
-  const PP = [], PU = [];
-  for (const [x, z, a] of data.lamps) {
-    const cx = x + Math.sin(a) * 4.5, cz = z + Math.cos(a) * 4.5, y = ground(cx, cz) + 0.2;
-    const q = [[cx - 8, cz - 8, 0, 0], [cx + 8, cz - 8, 1, 0], [cx + 8, cz + 8, 1, 1], [cx - 8, cz + 8, 0, 1]];
+  const PP = [], PU = [], PH = 9.8;   // 光だまり: 街並みマップの 16m 四方を、面積 1.5 倍(19.6m 四方)に
+  const pool = (cx, cz) => {
+    const y = ground(cx, cz) + 0.2;
+    const q = [[cx - PH, cz - PH, 0, 0], [cx + PH, cz - PH, 1, 0], [cx + PH, cz + PH, 1, 1], [cx - PH, cz + PH, 0, 1]];
     for (const i of [0, 2, 1, 0, 3, 2]) { PP.push(q[i][0], y, q[i][1]); PU.push(q[i][2], q[i][3]); }
-  }
+  };
+  for (const [x, z, a] of data.lamps) pool(x + Math.sin(a) * 4.5, z + Math.cos(a) * 4.5);
+  for (const [x, z, a, arm] of data.bridgeLamps || []) for (const sd of [-1, 1]) pool(x + Math.sin(a) * sd * (arm + 1.5), z + Math.cos(a) * sd * (arm + 1.5));
   const pg = new THREE.BufferGeometry();
   pg.setAttribute('position', new THREE.Float32BufferAttribute(PP, 3));
   pg.setAttribute('uv', new THREE.Float32BufferAttribute(PU, 2));
@@ -301,5 +311,6 @@ export async function loadLamps(url, group, native) {
     const wires = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(W), new THREE.LineBasicMaterial({ color: 0x2a2a2a }));
     wires.name = 'shonan-wires'; wires.userData.noLift = true; wires.frustumCulled = false; group.add(wires);
   }
-  return { setNight(on) { headMat.emissiveIntensity = on ? 2 : 0; poolMat.opacity = on ? 0.7 : 0; pools.visible = on; } };
+  // 明るさのピークは街並みマップ(0.7)の2割減
+  return { setNight(on) { headMat.emissiveIntensity = on ? 2 : 0; poolMat.opacity = on ? 0.56 : 0; pools.visible = on; } };
 }

@@ -66,5 +66,30 @@ while s < route.length:
     k += 1; s += 30.0
 wires = [[i, i + 1] for i in range(len(poles) - 1)
          if poles[i + 1][3] - poles[i][3] <= 31 and math.hypot(poles[i + 1][0] - poles[i][0], poles[i + 1][1] - poles[i][1]) < 40]
-(ROOT / 'map/shonan-lamps.json').write_text(json.dumps({'lamps': lamps, 'poles': [p[:3] for p in poles], 'wires': wires}, separators=(',', ':')))
+# 長い橋(80m 以上)の真ん中: 左右に腕を出して両側の車線を照らす街灯。30m おき
+bridges = [r for r in d['roads'] if r.get('bridge') and LineString(r['pts']).length >= 80]
+blamps, used = [], set()
+for i, r in enumerate(bridges):
+    if i in used: continue
+    A = LineString(r['pts'])
+    partner = None
+    if r.get('oneway'):   # 上下線が別の橋: となりの橋とのあいだ
+        for j, q in enumerate(bridges):
+            if j == i or j in used or not q.get('oneway'): continue
+            B = LineString(q['pts'])
+            if A.hausdorff_distance(B) < 40: partner = (j, B); break
+        if partner: used.add(partner[0])
+    used.add(i)
+    for k in range(int((A.length - 30) // 30) + 1):
+        p = A.interpolate(15 + k * 30)
+        if partner:
+            B = partner[1]; q = B.interpolate(B.project(p))
+            mx, mz = (p.x + q.x) / 2, (p.y + q.y) / 2
+            ang = math.atan2(q.x - p.x, q.y - p.y); arm = max(1.5, min(3.5, p.distance(q) / 2 - 1.0))
+        else:
+            a = A.interpolate(max(0, 15 + k * 30 - 2)); b = A.interpolate(min(A.length, 15 + k * 30 + 2))
+            mx, mz = p.x, p.y; ang = math.atan2(-(b.y - a.y), b.x - a.x); arm = 2.5   # 道路と直角
+        blamps.append([round(mx, 2), round(mz, 2), round(ang, 3), round(arm, 2)])
+(ROOT / 'map/shonan-lamps.json').write_text(json.dumps({'lamps': lamps, 'poles': [p[:3] for p in poles], 'wires': wires, 'bridgeLamps': blamps}, separators=(',', ':')))
+print('橋の街灯', len(blamps), '本(長い橋', len(bridges), '本)')
 print('街灯', len(lamps), '電柱', len(poles), '電線の区間', len(wires), 'ルート', round(route.length), 'm')
