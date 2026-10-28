@@ -205,20 +205,26 @@ export async function loadFoam(url, group) {
 export async function loadWalls(url, group) {
   const res = await fetch(url);
   if (!res.ok) return null;
-  const data = await res.json(), w = data.w, D = data.drop ?? SEA_DROP;
-  const n = w.length / 8, pos = new Float32Array(n * 18), nor = new Float32Array(n * 18);
-  for (let i = 0; i < n; i++) {
-    const k = i * 8, ax = w[k], az = w[k + 1], ay = w[k + 2], bx = w[k + 3], bz = w[k + 4], by = w[k + 5], nx = w[k + 6], nz = w[k + 7];
-    pos.set([ax, ay - D - 0.05, az, bx, by - D - 0.05, bz, bx, by, bz, ax, ay - D - 0.05, az, bx, by, bz, ax, ay, az], i * 18);
-    for (let q = 0; q < 6; q++) nor.set([nx, 0, nz], i * 18 + q * 3);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  g.computeBoundingSphere();
-  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x9a9b98, side: THREE.DoubleSide }));
-  mesh.name = 'shonan-seawalls'; mesh.userData.noLift = true; mesh.frustumCulled = false;
-  group.add(mesh);
+  const data = await res.json(), D = data.drop ?? SEA_DROP, S = data.stride ?? 8;
+  // 縦の面(上端 y から高さ h だけ下へ)を作る。w: 護岸、c: 歩道の縁
+  const faces = (w, color, name) => {
+    if (!w || !w.length) return;
+    const n = w.length / S, pos = new Float32Array(n * 18), nor = new Float32Array(n * 18);
+    for (let i = 0; i < n; i++) {
+      const k = i * S, ax = w[k], az = w[k + 1], ay = w[k + 2], bx = w[k + 3], bz = w[k + 4], by = w[k + 5], nx = w[k + 6], nz = w[k + 7], h = S > 8 ? w[k + 8] : D;
+      pos.set([ax, ay - h - 0.05, az, bx, by - h - 0.05, bz, bx, by, bz, ax, ay - h - 0.05, az, bx, by, bz, ax, ay, az], i * 18);
+      for (let q = 0; q < 6; q++) nor.set([nx, 0, nz], i * 18 + q * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.computeBoundingSphere();
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+    mesh.name = name; mesh.userData.noLift = true; mesh.frustumCulled = false;
+    group.add(mesh);
+  };
+  faces(data.w, 0x9a9b98, 'shonan-seawalls');
+  faces(data.c, 0x9d9e9b, 'shonan-curbs');
   return data;
 }
 
