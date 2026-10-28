@@ -414,6 +414,7 @@ function placeCrosswalks(data, shared, J, white) {
     const mo = (e1 - e2) / 2, cx = ax + nx * mo, cz = az + nz * mo, ang = Math.atan2(tx, tz);
     if (placed.some((q) => Math.abs(Math.sin(q[2] - ang)) < 0.35 && Math.abs((q[0] - cx) * tx + (q[1] - cz) * tz) < 40 && Math.abs((q[0] - cx) * nx + (q[1] - cz) * nz) < W / 2 + 10)) continue;
     if (brEnds.some(([x, z]) => Math.hypot(x - cx, z - cz) < 35)) continue;   // 橋のたもとには置かない
+    if ((data.noCrosswalks || []).some(([x, z]) => Math.hypot(x - cx, z - cz) < 25)) continue;   // 指示で横断歩道を置かない所
     placed.push([cx, cz, ang]);
     for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white);
     break;

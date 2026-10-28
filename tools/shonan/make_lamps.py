@@ -68,6 +68,9 @@ wires = [[i, i + 1] for i in range(len(poles) - 1)
          if poles[i + 1][3] - poles[i][3] <= 31 and math.hypot(poles[i + 1][0] - poles[i][0], poles[i + 1][1] - poles[i][1]) < 40]
 # 長い橋(80m 以上)の真ん中: 左右に腕を出して両側の車線を照らす街灯。30m おき
 bridges = [r for r in d['roads'] if r.get('bridge') and LineString(r['pts']).length >= 80]
+for r in d['roads']:   # 道路にまとめた中の長い橋の区間(江の島への橋)
+    if r.get('longBridge'):
+        i, j = r['longBridge']; bridges.append({**r, 'pts': r['pts'][i:j + 1], 'oneway': False})
 blamps, used = [], set()
 for i, r in enumerate(bridges):
     if i in used: continue
@@ -90,6 +93,17 @@ for i, r in enumerate(bridges):
             a = A.interpolate(max(0, 15 + k * 30 - 2)); b = A.interpolate(min(A.length, 15 + k * 30 + 2))
             mx, mz = p.x, p.y; ang = math.atan2(-(b.y - a.y), b.x - a.x); arm = 2.5   # 道路と直角
         blamps.append([round(mx, 2), round(mz, 2), round(ang, 3), round(arm, 2)])
+# 指示でつなぐ電線(交差点で途切れている所): 両端に近い電柱をつなぐ。近くに無ければ電柱を立てる
+EXTRA = [((-3740, -1076), (-3681, -1097))]
+for a, b in EXTRA:
+    ends = []
+    for x, z in (a, b):
+        best = min(range(len(poles)), key=lambda i: math.hypot(poles[i][0] - x, poles[i][1] - z)) if poles else None
+        if best is not None and math.hypot(poles[best][0] - x, poles[best][1] - z) < 12: ends.append(best)
+        else:
+            ang = math.atan2(b[1] - a[1], -(b[0] - a[0]))   # 腕木は電線と直角
+            poles.append([x, z, round(ang, 3), -1]); ends.append(len(poles) - 1)
+    wires.append(ends)
 (ROOT / 'map/shonan-lamps.json').write_text(json.dumps({'lamps': lamps, 'poles': [p[:3] for p in poles], 'wires': wires, 'bridgeLamps': blamps}, separators=(',', ':')))
 print('橋の街灯', len(blamps), '本(長い橋', len(bridges), '本)')
 print('街灯', len(lamps), '電柱', len(poles), '電線の区間', len(wires), 'ルート', round(route.length), 'm')
