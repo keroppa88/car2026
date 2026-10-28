@@ -9081,6 +9081,21 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   function chooseDest(dir) {
     closeDestMenu();
     car2AutoRoute = shonanRoutes[dir].map(([x, z]) => ({ x, z }));
+    // 車がルートから離れている(40m 超)か、ルートと逆向き(100度超)なら、いちばん近いルート上の点へ移して向きをそろえる
+    // (大磯の西の端で着いた後に稲村ヶ崎へ戻る時など。その場で U ターンさせると中央分離帯や壁に当たるため)
+    {
+      const w = car2AutoRoute, m = w.length;
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < m - 1; i++) { const d2 = (w[i].x - player.pos.x) ** 2 + (w[i].z - player.pos.z) ** 2; if (d2 < bd) { bd = d2; bi = i; } }
+      const h = Math.atan2(w[bi + 1].x - w[bi].x, w[bi + 1].z - w[bi].z);
+      let dh = h - player.heading; while (dh > Math.PI) dh -= Math.PI * 2; while (dh < -Math.PI) dh += Math.PI * 2;
+      if (Math.sqrt(bd) > 40 || Math.abs(dh) > 1.75) {
+        player.pos.x = w[bi].x; player.pos.z = w[bi].z;
+        player.heading = h; player.vel.set(0, 0, 0); player.drifting = false;
+        car2LastRoadPos.copy(player.pos); neoLastFreePos = { x: player.pos.x, z: player.pos.z };
+        document.body.dataset.autoDriveSnapped = '1';
+      }
+    }
     autoDrive = true; autoIdx = -1;
     document.body.dataset.autoDrive = 'true';
     document.body.dataset.autoDriveDest = dir === 'west' ? '大磯' : '稲村ヶ崎';
