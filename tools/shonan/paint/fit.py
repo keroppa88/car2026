@@ -47,7 +47,7 @@ for it in range(iters):
     node({'W': W, 'H': H, 'cams': [{**cam, 'pick': str(work / 'pick.json'), 'pickOut': str(work / 'pts.json')}]})
     P3 = json.loads((work / 'pts.json').read_text())
     ok = [i for i, p in enumerate(P3) if p is not None]
-    obj = np.float32([P3[i] for i in ok]); imgp = pu[ok]
+    obj = np.float32([P3[i][:3] for i in ok]); imgp = pu[ok]
     succ, rv, tv, inl2 = cv2.solvePnPRansac(obj, imgp, K, None, reprojectionError=6, iterationsCount=2000)
     Rm = cv2.Rodrigues(rv)[0]; C = (-Rm.T @ tv).ravel(); fwd = Rm.T @ np.array([0, 0, 1.]); up = Rm.T @ np.array([0, -1, 0.])
     proj, _ = cv2.projectPoints(obj[inl2.ravel()], rv, tv, K, None)
