@@ -1002,7 +1002,7 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
       : [[0, h, col, 1]];
-    const litR = 1 + Math.floor(R() * 900) + 0.2 + R() * 0.3;   // 夜の窓: 整数部は種、小数部は点いている割合(2〜5割)
+    const litR = 1 + Math.floor(R() * 900) + 0.1 + R() * 0.1;   // 夜の窓: 整数部は種、小数部は点いている割合(1〜2割)
     const ccw = a > 0;      // x-z 平面での向き
     const wall = (ring) => {
       let s = 0;
