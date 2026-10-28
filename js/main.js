@@ -240,6 +240,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let startGame = function () {};   // init 内で本体を差し込む
   let gameSpawn = null;             // デモ解除時に戻る通常スポーン {x,y?,z,heading}
   let topView = false;               // 全マップ共通の真上からの全体表示
+  let shonanTrafficVehicles = null;    // 湘南: CPU車に使う車種(読み込み後に入る)
   let bonnetView = 0;                // V: 0=通常 1=ボンネット 2=視点のみ(車体非表示)
   let hudState = 0;                  // G: 0=全表示 1=操作説明なし 2=メーターもなし
   let mirrorView = false;            // F: 画面上部のバックミラー
@@ -7018,6 +7019,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (COURSE_KEY === 'forest') {
         document.body.dataset.forestCpuCars = '0';
       }
+      if (COURSE_KEY === 'shonan') shonanTrafficVehicles = cpuCars;
       document.body.dataset.autoDriveAvailable =
         String(Boolean(car2AutoRoute?.length >= 2));
       document.body.dataset.autoDriveMode =
@@ -8968,6 +8970,104 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ---- 湘南: Y で行き先を選ぶ(大磯 / 稲村ヶ崎)。国道134号の左の車線を自動運転 ----
   let shonanRoutes = null, destMenuOpen = false, destMenuEl = null;
   if (MAP_CONFIG.routeData) fetch(MAP_CONFIG.routeData).then((r) => r.json()).then((d) => { shonanRoutes = d; }).catch(() => {});
+  // ---- 湘南: CPU車(国道134号だけ)。上り・下りの左車線を走る。
+  // 自車と同じ向きの車は 60〜80km/h で巡航、自車と逆向き(対向車線)の車は 40km/h。
+  // 自車の前後 650m に片側 10 台。離れた車はずっと先へ置き直して使い回す。前の車・自車に近づくと減速する。
+  let shonanTraffic = null;
+  const TRAFFIC_PER_LANE = 10, TRAFFIC_RANGE = 650;
+  function buildShonanTraffic() {
+    if (shonanTraffic || !shonanRoutes || !shonanTrafficVehicles?.length) return;
+    const lanes = ['west', 'east'].map((dir) => {
+      const p = shonanRoutes[dir], cum = [0];
+      for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]));
+      return { p, cum, L: cum[cum.length - 1], ps: 0, pi: 0 };
+    });
+    const cars = [];
+    lanes.forEach((lane, li) => {
+      for (let i = 0; i < TRAFFIC_PER_LANE; i++) {
+        const v = shonanTrafficVehicles[(li * TRAFFIC_PER_LANE + i) % shonanTrafficVehicles.length];
+        const g = makeCarGroup(v.mesh.clone(), false, isKabuVoxUrl(v.url));
+        cars.push({ group: g.group, lane, s: -1, v: 0, cruise: (60 + Math.random() * 20) / 3.6, idx: 0 });
+      }
+    });
+    shonanTraffic = { lanes, cars };
+  }
+  // 車線上の位置 s の座標と向き(idx は前回の位置から探す)
+  function laneAt(lane, s, car) {
+    const { p, cum } = lane;
+    let i = Math.min(Math.max(car ? car.idx : 0, 0), p.length - 2);
+    while (i < p.length - 2 && cum[i + 1] < s) i++;
+    while (i > 0 && cum[i] > s) i--;
+    if (car) car.idx = i;
+    const t = (s - cum[i]) / Math.max(1e-6, cum[i + 1] - cum[i]);
+    const dx = p[i + 1][0] - p[i][0], dz = p[i + 1][1] - p[i][1];
+    return { x: p[i][0] + dx * t, z: p[i][1] + dz * t, heading: Math.atan2(dx, dz), dx, dz };
+  }
+  // 自車に一番近い車線上の位置(前回の近くだけ探す)
+  function projectPlayer(lane) {
+    const { p, cum } = lane, px = player.pos.x, pz = player.pos.z;
+    let best = 1e18, bi = lane.pi, bt = 0;
+    const from = lane.searched ? Math.max(0, lane.pi - 40) : 0, to = lane.searched ? Math.min(p.length - 2, lane.pi + 40) : p.length - 2;
+    for (let i = from; i <= to; i++) {
+      const ax = p[i][0], az = p[i][1], dx = p[i + 1][0] - ax, dz = p[i + 1][1] - az, l2 = dx * dx + dz * dz || 1;
+      const t = Math.min(1, Math.max(0, ((px - ax) * dx + (pz - az) * dz) / l2));
+      const d = (ax + dx * t - px) ** 2 + (az + dz * t - pz) ** 2;
+      if (d < best) { best = d; bi = i; bt = t; }
+    }
+    lane.searched = best < 200 * 200; lane.pi = bi;
+    lane.ps = cum[bi] + (cum[bi + 1] - cum[bi]) * bt; lane.pd = Math.sqrt(best);
+  }
+  function placeFree(lane, from, to) {   // 他の車から 30m 以上離れた位置
+    for (let k = 0; k < 12; k++) {
+      const s = from + Math.random() * (to - from);
+      if (s < 5 || s > lane.L - 5) continue;
+      if (Math.abs(s - lane.ps) < 80) continue;   // 自車の前後 80m には置かない
+      if (!shonanTraffic.cars.some((c) => c.lane === lane && c.s >= 0 && Math.abs(c.s - s) < 30)) return s;
+    }
+    return -1;
+  }
+  function updateShonanTraffic(dt) {
+    buildShonanTraffic();
+    if (!shonanTraffic || !player.group) return;
+    const sp = Math.hypot(player.vel.x, player.vel.z);
+    const pdx = sp > 1 ? player.vel.x / sp : Math.sin(player.heading), pdz = sp > 1 ? player.vel.z / sp : Math.cos(player.heading);
+    for (const lane of shonanTraffic.lanes) projectPlayer(lane);
+    for (const car of shonanTraffic.cars) {
+      const lane = car.lane;
+      // 出番: 範囲の外・道の端なら、自車から離れた所へ置き直す
+      if (car.s < 0 || Math.abs(car.s - lane.ps) > TRAFFIC_RANGE || car.s > lane.L - 2) {
+        const first = car.s < 0;
+        const ahead = first ? Math.random() < 0.5 : car.s < lane.ps;   // 後ろへ抜けた車は前へ、前へ抜けた車は後ろへ
+        const s = first ? placeFree(lane, lane.ps - TRAFFIC_RANGE + 60, lane.ps + TRAFFIC_RANGE - 60)
+          : ahead ? placeFree(lane, lane.ps + 450, lane.ps + 620) : placeFree(lane, lane.ps - 620, lane.ps - 450);
+        car.s = s; car.idx = 0; car.group.visible = s >= 0;
+        if (s < 0) continue;
+        const a = laneAt(lane, s, car);
+        car.v = (a.dx * pdx + a.dz * pdz > 0 ? car.cruise : 40 / 3.6);
+      }
+      const here = laneAt(lane, car.s, car), len = Math.hypot(here.dx, here.dz) || 1;
+      const same = (here.dx * pdx + here.dz * pdz) / len > 0;
+      let target = same ? car.cruise : 40 / 3.6;
+      // 前の車
+      let gap = 1e9, lead = null;
+      for (const o of shonanTraffic.cars) if (o !== car && o.lane === lane && o.s > car.s && o.s - car.s < gap) { gap = o.s - car.s; lead = o; }
+      if (lead && gap < 40) target = Math.min(target, Math.max(0, lead.v * (gap - 9) / 25));
+      // 前にいる自車(同じ車線の上)
+      if (lane.pd < 3 && lane.ps > car.s && lane.ps - car.s < 40) target = Math.min(target, Math.max(0, (lane.ps - car.s - 9) / 25 * sp));
+      car.v += THREE.MathUtils.clamp(target - car.v, -9 * dt, 2.5 * dt);
+      car.s += car.v * dt;
+      const a = laneAt(lane, car.s, car);
+      car.group.position.set(a.x, 0, a.z);
+      car.group.rotation.y = a.heading;
+      // 自車とぶつかったら押し戻す
+      const ex = player.pos.x - a.x, ez = player.pos.z - a.z, d = Math.hypot(ex, ez);
+      if (d < 3.4 && d > 1e-3) {
+        player.pos.x = a.x + ex / d * 3.4; player.pos.z = a.z + ez / d * 3.4;
+        player.vel.multiplyScalar(0.6);
+      }
+    }
+    document.body.dataset.shonanTraffic = String(shonanTraffic.cars.filter((c) => c.group.visible).length);
+  }
   const DESTS = [['east', '稲村ヶ崎'], ['west', '大磯']];
   let destSel = 0;
   function paintDest() {
@@ -11117,6 +11217,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);
+        if (COURSE_KEY === 'shonan') updateShonanTraffic(dt);
         updateMission();
       }
       if (DEBUG_MAP && player.group) {
