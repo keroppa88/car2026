@@ -214,7 +214,7 @@ export async function loadWalls(url, group) {
   const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x9a9b98, side: THREE.DoubleSide }));
   mesh.name = 'shonan-seawalls'; mesh.userData.noLift = true; mesh.frustumCulled = false;
   group.add(mesh);
-  return mesh;
+  return data;
 }
 
 // 国道134号の街灯・電柱・電線(tools/shonan/make_lamps.py が作る map/shonan-lamps.json)。寸法は街並みマップと同じ。

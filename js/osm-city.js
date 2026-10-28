@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime } from './native-surfaces.js?v=20261028-lamp-1';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime } from './native-surfaces.js?v=20261028-fence-1';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1235,6 +1235,45 @@ function buildSites(data, g) {
 }
 
 // ---- 歩道の柵: 片側2車線以上の道路の、車道と歩道の間 ----
+// 車道の上か(道路の中心線からの距離で判定。歩道は含まない)。湘南の地表は歩道も「道路」なので、柵の判定に使う
+function makeCarriageTest(data) {
+  const C = 25, grid = new Map();
+  for (const r of data.roads) {
+    const half = roadWidth(r) / 2, p = r.pts;
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [ax, az] = p[i], [bx, bz] = p[i + 1], seg = [ax, az, bx, bz, half];
+      for (let gx = Math.floor((Math.min(ax, bx) - half) / C); gx <= Math.floor((Math.max(ax, bx) + half) / C); gx++)
+        for (let gz = Math.floor((Math.min(az, bz) - half) / C); gz <= Math.floor((Math.max(az, bz) + half) / C); gz++) {
+          const k = gx + ',' + gz; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(seg);
+        }
+    }
+  }
+  return (x, z) => {
+    for (const [ax, az, bx, bz, half] of grid.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || []) {
+      const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if ((ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2 < half * half) return true;
+    }
+    return false;
+  };
+}
+// ---- 湘南: 歩道と海の岸壁の境目の柵(護岸の上が歩道の所だけ)。形は歩道の柵と同じ ----
+function buildSeaFences(walls, g, native, carriage) {
+  if (!walls) return;
+  const post = { p: [], n: [] }, bar = { p: [], n: [] }, w = walls.w;
+  for (let k = 0; k < w.length; k += 8) {
+    const ax = w[k], az = w[k + 1], ay = w[k + 2], bx = w[k + 3], bz = w[k + 4], by = w[k + 5], nx = w[k + 6], nz = w[k + 7];
+    const len = Math.hypot(bx - ax, bz - az); if (len < 0.1) continue;
+    const mx = (ax + bx) / 2 - nx * 0.35, mz = (az + bz) / 2 - nz * 0.35;   // 護岸の縁から 0.35m 陸側
+    const hx = mx - nx * 0.6, hz = mz - nz * 0.6, hit = native.at(hx, hz);
+    if (!hit || hit.kind !== 1 || carriage(hx, hz)) continue;               // 上が歩道の所だけ
+    const y = (ay + by) / 2, ang = Math.atan2(bx - ax, bz - az);
+    boxInto(bar, mx, y + 0.95, mz, 0.06, 0.08, len + 0.02, ang);
+    boxInto(bar, mx, y + 0.45, mz, 0.04, 0.05, len + 0.02, ang);
+    boxInto(post, ax - nx * 0.35, y + 0.5, az - nz * 0.35, 0.07, 1.0, 0.07, ang);
+  }
+  const mat = new THREE.MeshLambertMaterial({ color: 0xd9dcdd });
+  if (post.p.length) g.add(solidMesh(post, mat), solidMesh(bar, mat));
+}
 function buildFences(data, g, onRoad) {
   const post = { p: [], n: [] }, bar = { p: [], n: [] };
   const J = new Map();
@@ -1436,7 +1475,7 @@ function buildHedges(data, g, native) {
   const o = { p: [], n: [], c: [] }, H = 0.75;   // 膝丈の1.5倍
   let seed = 0;
   for (const [x, z, ang, len, wid] of data.medians || []) {
-    const L = len - 1.0, W = Math.max(0.6, wid - 0.8); if (L < 1) continue;
+    const L = len - 1.0, W = Math.min(1.2, Math.max(0.5, wid - 0.6)); if (L < 1) continue;   // 幅は一定(1.2m)で緑地帯の真ん中。狭い所だけ細く
     const y0 = native?.at(x, z)?.y ?? 0, y1 = y0 + H;
     const tx = Math.sin(ang), tz = Math.cos(ang), n = Math.max(1, Math.round(L / 2.5)), seg = L / n;
     const R = seeded(Math.round(x * 13 + z * 7) + seed++);
@@ -1776,7 +1815,7 @@ export function snapshotCitySurfaceLayers(data) {
   scratch.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
   // 元の高さの順を明示。水面以外の色は同じ地表を分けて割り当てる。
   for (const name of ['sidewalk', 'deck']) { const q = roadLayers.get(name); triangles(name, q.p, q.color, 'road'); }
-  triangles('strips', gs, GRASS); triangles('medians', md, 0x6f8f3a);
+  triangles('strips', gs, SIDEWALK_COLOR, 'road'); triangles('medians', md, 0x6f8f3a);   // 歩道の緑地帯はなくして、ただの歩道
   for (const name of ['curb', 'road', 'white', 'yellow']) {
     const q = roadLayers.get(name); triangles(name, q.p, q.color, 'road');
   }
@@ -1814,7 +1853,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     const [X0, Z0, X1, Z1] = data.bounds;
     const native = surfaceUrl ? await loadNativeSurfaces(surfaceUrl, city) : null;
     if (surfaceUrl) await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
-    if (surfaceUrl) await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null);
+    const wallData = surfaceUrl ? await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null) : null;
     if (surfaceUrl) await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => console.warn('街灯', e));
     if (!native) {
       // 地面: 東の端に海がある湘南は、東側を範囲の端で切る(その先は何も描かない)
@@ -1855,7 +1894,11 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     T('makeBlocker', () => { blocked = makeBlocker(data, native); });
     T('buildRailways', () => buildRailways(data, city, blocked.onRoad));
     T('buildWoods', () => buildWoods(data, city, blocked.onRoad, blocked));
-    T('buildFences', () => buildFences(data, city, blocked.onRoad));
+    if (native) {   // 湘南: 車道かどうかは中心線から(歩道を車道と見なさない)
+      const carriage = makeCarriageTest(data);
+      T('buildFences', () => buildFences(data, city, carriage));
+      T('buildSeaFences', () => buildSeaFences(wallData, city, native, carriage));
+    } else T('buildFences', () => buildFences(data, city, blocked.onRoad));
     T('buildSites', () => buildSites(data, city));
     document.body.dataset.osmBuildings = String(data.buildings.length);
     document.body.dataset.osmRoads = String(data.roads.length);
