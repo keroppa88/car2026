@@ -290,10 +290,11 @@ export async function loadLamps(url, group, native) {
   gr.addColorStop(0, 'rgba(255,218,160,1)'); gr.addColorStop(0.45, 'rgba(255,204,138,.55)'); gr.addColorStop(1, 'rgba(255,196,124,0)');   // 少しオレンジ
   cg.fillStyle = gr; cg.fillRect(0, 0, 128, 128);
   const poolTex = new THREE.CanvasTexture(c); poolTex.colorSpace = THREE.SRGBColorSpace;
-  const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+  const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   const PP = [], PU = [], PH = 9.8;   // 光だまり: 街並みマップの 16m 四方を、面積 1.5 倍(19.6m 四方)に
   const pool = (cx, cz) => {
-    const y = ground(cx, cz) + 0.2;
+    // 歩道(+20cm)・縁石より上に浮かせる(同じ高さだと面どうしが重なってちらつく)
+    const y = Math.max(ground(cx, cz), ground(cx - 6, cz), ground(cx + 6, cz), ground(cx, cz - 6), ground(cx, cz + 6)) + 0.45;
     const q = [[cx - PH, cz - PH, 0, 0], [cx + PH, cz - PH, 1, 0], [cx + PH, cz + PH, 1, 1], [cx - PH, cz + PH, 0, 1]];
     for (const i of [0, 2, 1, 0, 3, 2]) { PP.push(q[i][0], y, q[i][1]); PU.push(q[i][2], q[i][3]); }
   };
