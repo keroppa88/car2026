@@ -28,6 +28,7 @@ DROP = 2.0   # 砂浜・海・川は道路より 2m 下。境目はグレーの�
 LOW = ('sand', 'water')
 RAISE = 0.2   # 歩道は車道より 20cm 高い
 RAISED = ('sidewalk', 'strips', 'curb')
+CURB_COLOR = 0x76787a   # 縁石: 前より濃いグレー(アスファルトよりは薄い)
 GRID = 0.0001  # 0.1mm。座標は最終メッシュでもタイル原点からの相対値で保持。
 
 def clean(g):
@@ -117,6 +118,18 @@ def main():
     assert abs(area_sum-union.area) < 1, ('overlap', area_sum-union.area)
     assert expected.symmetric_difference(union).area < 1, '地表に欠落あり'
 
+    # 縁石: 歩道が車道に接している所は全部、幅 25cm の縁石の帯にする(線の切れ目・交差点で途切れないように)。色は濃いめのグレー
+    walk = [r for r in regions if r['name'] in ('sidewalk', 'strips')]
+    carr = clean(sg.union_all([r['geometry'] for r in regions if r['kind'] == 'road' and r['name'] not in RAISED]))
+    band = clean(sg.intersection(sg.union_all([r['geometry'] for r in walk]), carr.buffer(0.25, join_style=2)))
+    if not band.is_empty:
+        for r in walk: r['geometry'] = clean(r['geometry'].difference(band))
+        curb_tpl = next(r for r in regions if r['name'] == 'curb') if any(r['name'] == 'curb' for r in regions) else {**walk[0], 'name': 'curb'}
+        regions.append({**curb_tpl, 'geometry': band})
+        print('縁石の帯', round(band.area), 'm²', flush=True)
+    for r in regions:
+        if r['name'] == 'curb': r['color'] = CURB_COLOR
+    regions = [r for r in regions if not r['geometry'].is_empty]
     # 砂浜・水に接する幅 2m 未満の細い陸(道路以外)は、形・色はそのままで一緒に下げる(壁が板のように立たないように)
     low0 = clean(sg.union_all([r['geometry'] for r in regions if r['kind'] in LOW]))
     sg.prepare(low0)

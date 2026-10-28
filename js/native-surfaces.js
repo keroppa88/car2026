@@ -224,7 +224,7 @@ export async function loadWalls(url, group) {
     group.add(mesh);
   };
   faces(data.w, 0x9a9b98, 'shonan-seawalls');
-  faces(data.c, 0x9d9e9b, 'shonan-curbs');
+  faces(data.c, 0x76787a, 'shonan-curbs');   // 縁石と同じ色
   return data;
 }
 
