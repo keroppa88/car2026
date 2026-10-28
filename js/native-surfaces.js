@@ -256,14 +256,34 @@ export async function loadLamps(url, group, native) {
     box(0x8a8a86, x, z, a, 0, y + 8.74, 0, 0.12, 0.12, 2.2);
     tops.push([x, z, a, y]);
   }
+  // 夜の明かり(街並みマップと同じ): 灯具が光り、足元の道路に 16m 四方の光だまり
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xf5f0e0, emissive: 0xfff0c8, emissiveIntensity: 0 });
   for (const [color, o] of parts) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
     g.computeBoundingSphere();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }));
+    const m = new THREE.Mesh(g, color === 0xf5f0e0 ? headMat : new THREE.MeshLambertMaterial({ color }));
     m.name = 'shonan-lamps'; m.userData.noLift = true; m.frustumCulled = false; group.add(m);
   }
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const cg = c.getContext('2d'), gr = cg.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,236,200,1)'); gr.addColorStop(0.45, 'rgba(255,226,180,.55)'); gr.addColorStop(1, 'rgba(255,220,170,0)');
+  cg.fillStyle = gr; cg.fillRect(0, 0, 128, 128);
+  const poolTex = new THREE.CanvasTexture(c); poolTex.colorSpace = THREE.SRGBColorSpace;
+  const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+  const PP = [], PU = [];
+  for (const [x, z, a] of data.lamps) {
+    const cx = x + Math.sin(a) * 4.5, cz = z + Math.cos(a) * 4.5, y = ground(cx, cz) + 0.2;
+    const q = [[cx - 8, cz - 8, 0, 0], [cx + 8, cz - 8, 1, 0], [cx + 8, cz + 8, 1, 1], [cx - 8, cz + 8, 0, 1]];
+    for (const i of [0, 2, 1, 0, 3, 2]) { PP.push(q[i][0], y, q[i][1]); PU.push(q[i][2], q[i][3]); }
+  }
+  const pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.Float32BufferAttribute(PP, 3));
+  pg.setAttribute('uv', new THREE.Float32BufferAttribute(PU, 2));
+  const pools = new THREE.Mesh(pg, poolMat);
+  pools.name = 'shonan-lamp-pools'; pools.userData.noLift = true; pools.frustumCulled = false; pools.renderOrder = 2; pools.visible = false;
+  group.add(pools);
   // 電線: 腕木の両端(道路と直角に ±0.9m)を次の電柱へ、たるみ 0.7m
   const W = [], A = new THREE.Vector3(), B = new THREE.Vector3(), M = new THREE.Vector3();
   const curve = new THREE.QuadraticBezierCurve3(A, M, B);
@@ -281,5 +301,5 @@ export async function loadLamps(url, group, native) {
     const wires = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(W), new THREE.LineBasicMaterial({ color: 0x2a2a2a }));
     wires.name = 'shonan-wires'; wires.userData.noLift = true; wires.frustumCulled = false; group.add(wires);
   }
-  return true;
+  return { setNight(on) { headMat.emissiveIntensity = on ? 2 : 0; poolMat.opacity = on ? 0.7 : 0; pools.visible = on; } };
 }

@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime } from './native-surfaces.js?v=20261028-fence-1';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime } from './native-surfaces.js?v=20261028-lamp-2';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1832,7 +1832,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const city = new THREE.Group(); city.name = 'osm-city';
   (surfaceUrl ? root : root.parent || root).add(city);
-  let blocked = () => false, night = false, cityBounds = null;
+  let blocked = () => false, night = false, cityBounds = null, lampCtl = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const trFetch = terrainUrl ? fetch(terrainUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
@@ -1854,7 +1854,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     const native = surfaceUrl ? await loadNativeSurfaces(surfaceUrl, city) : null;
     if (surfaceUrl) await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
     const wallData = surfaceUrl ? await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null) : null;
-    if (surfaceUrl) await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => console.warn('街灯', e));
+    if (surfaceUrl) lampCtl = await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => { console.warn('街灯', e); return null; });
+    lampCtl?.setNight(night);   // 読み込む前に夜になっていた時
     if (!native) {
       // 地面: 東の端に海がある湘南は、東側を範囲の端で切る(その先は何も描かない)
       const gEast = data.water.some((w) => w.sea) ? X1 : X1 + 300;
@@ -1929,6 +1930,6 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
     update(dt, camera) { updateWaterTime(performance.now() / 1000); if (panorama && camera) { panorama.visible = camera.position.y < 120;   // 高い所から見下ろす時(地図・遠くへ引いた時)は山並みを出さない
       panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
-    setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); },
+    setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); lampCtl?.setNight(on); },   // 湘南: 街灯も夜だけ点ける
   };
 }
