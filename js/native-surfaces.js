@@ -77,12 +77,15 @@ export async function loadNativeSurfaces(url, group) {
 // ・大きなまだら(色の濃淡)  ・横に伸びた筆の筋  ・空の映り込み(浅い角度ほど明るい)
 // ・南の空の太陽のきらめきを筆の筋に沿って途切れ途切れに
 const WATER_TIME = { value: 0 };
+const SEA_DAY = { value: 1 };
+export function setSeaNight(on) { SEA_DAY.value = on ? 0.12 : 1; }
 export const SEA_DROP = 2;   // 砂浜・海・川は道路より 2m 下(tools/shonan/build_surfaces.py の DROP と同じ)
 function makeWaterMaterial() {
   // Lambert には cameraPosition が渡されないので、光沢なしの Phong を使う
   const m = new THREE.MeshPhongMaterial({ name: 'shonan-sea', vertexColors: true, side: THREE.DoubleSide, specular: 0x000000, shininess: 1 });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uWaterTime = WATER_TIME;
+    shader.uniforms.uSeaDay = SEA_DAY;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vSeaPos;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvSeaPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -90,6 +93,7 @@ function makeWaterMaterial() {
       .replace('#include <common>', `#include <common>
 varying vec3 vSeaPos;
 uniform float uWaterTime;
+uniform float uSeaDay;   // 昼 1、夜は暗く(遠くの海・水平線が光らないように)
 float seaHash(vec2 p) { p = mod(p, 1024.0); return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float seaNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -116,10 +120,10 @@ diffuseColor.rgb *= 1.0 + (swell * 0.08 + swell2 * 0.04) * (1.0 - smoothstep(250
       .replace('#include <fog_fragment>', `{
   // 手前は緑がかった浅い色、沖へ行くほど深い青(空の霞と見分けがつくように)。地平線ぎわだけ空が映って少し明るむ
   float far = smoothstep(80.0, 2500.0, seaDist);
-  vec3 deep = vec3(0.17, 0.36, 0.5) * mix(0.9, 1.12, stroke);
+  vec3 deep = vec3(0.17, 0.36, 0.5) * mix(0.9, 1.12, stroke) * uSeaDay;
   gl_FragColor.rgb = mix(gl_FragColor.rgb, deep, far * 0.85);
   float rim = smoothstep(3500.0, 9000.0, seaDist);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.55, 0.7, 0.8), rim * 0.6);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.55, 0.7, 0.8) * uSeaDay, rim * 0.6);
   // 南の低い太陽の光の道: 太陽の方角に幅のある筋。横長の筆の跡で途切れさせる
   float sunAz = atan(0.1, 1.0);
   float dAz = abs(mod(seaAz - sunAz + 3.14159, 6.28318) - 3.14159);
@@ -128,11 +132,11 @@ diffuseColor.rgb *= 1.0 + (swell * 0.08 + swell2 * 0.04) * (1.0 - smoothstep(250
   // 近くは光らせない(遠くから眺めた海)。光の強さはゆっくり脈打つ
   path *= smoothstep(250.0, 900.0, seaDist) * (0.7 + 0.3 * sin(seaT * 0.35 + uv.y * 0.4));
   float brush = smoothstep(0.4, 0.75, seaNoise(vec2(uv.x * 0.9, uv.y * 2.6) + vec2(seaT * 0.05, blot * 3.0)));
-  gl_FragColor.rgb += (1.0 - smoothstep(150.0, 500.0, cameraPosition.y)) * vec3(1.0, 0.94, 0.8) * path * (0.1 + brush * 0.8) * (0.3 + 0.7 * far);
+  gl_FragColor.rgb += uSeaDay * (1.0 - smoothstep(150.0, 500.0, cameraPosition.y)) * vec3(1.0, 0.94, 0.8) * path * (0.1 + brush * 0.8) * (0.3 + 0.7 * far);
 }
 #include <fog_fragment>`);
   };
-  m.customProgramCacheKey = () => 'shonan-sea-8';
+  m.customProgramCacheKey = () => 'shonan-sea-9';
   return m;
 }
 export function updateWaterTime(t) { WATER_TIME.value = t; }
@@ -160,13 +164,13 @@ export async function loadFoam(url, group) {
   g.setAttribute('aE', new THREE.Float32BufferAttribute(ee, 1));
   g.setIndex(idx); g.computeBoundingSphere();
   const m = new THREE.ShaderMaterial({
-    uniforms: { uWaterTime: WATER_TIME, uW: { value: W } },
+    uniforms: { uWaterTime: WATER_TIME, uW: { value: W }, uBright: { value: 1 } },
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     vertexShader: `attribute float aD; attribute float aU; attribute float aE; varying float vD; varying float vU; varying float vE; varying vec3 vP;
       void main() { vD = aD; vU = aU; vE = aE; vP = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vP, 1.0); }`,
     fragmentShader: `precision highp float;
-      uniform float uWaterTime; uniform float uW; varying float vD; varying float vU; varying float vE; varying vec3 vP;
+      uniform float uWaterTime; uniform float uW; uniform float uBright; varying float vD; varying float vU; varying float vE; varying vec3 vP;
       float h(vec2 p) { p = mod(p, 1024.0); return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
@@ -186,11 +190,12 @@ export async function loadFoam(url, group) {
         a *= smoothstep(0.0, 12.0, vE);
         a *= 1.0 - smoothstep(150.0, 700.0, length(cameraPosition - vP)) * 0.6;
         if (a < 0.01) discard;
-        gl_FragColor = vec4(0.95, 0.97, 0.97, a);
+        gl_FragColor = vec4(vec3(0.95, 0.97, 0.97) * uBright, a);   // 夜は暗く(光らない)
       }`,
   });
   const mesh = new THREE.Mesh(g, m);
   mesh.name = 'shonan-foam'; mesh.frustumCulled = false; mesh.renderOrder = 1;
+  mesh.userData.setNight = (on) => { m.uniforms.uBright.value = on ? 0.16 : 1; };
   mesh.userData.noLift = true;
   group.add(mesh);
   return mesh;

@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime } from './native-surfaces.js?v=20261028-lamp-3';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261028-mtn-3';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -921,17 +921,31 @@ function makeMountainPanorama() {
   // 方位と高さは実際の位置から(稲村ヶ崎〜大磯から見て): 伊豆 225〜250°、箱根 250〜270°、富士山 276°、丹沢 290〜322°
   const K = 1.3;   // 少し大きめに見せる
   const k = (pts) => pts.map(([a, e]) => [a, e * K]);
-  // 伊豆・箱根(奥)
-  ridge(k([[A0, 0.2], ...wiggle(222, 248, 0.9, 0.35), ...wiggle(248, 256, 1.3, 0.3), [258, 1.55], [261, 1.45], [264, 1.7], [267, 1.4], [270, 1.0], [272, 0.7]]), 'rgba(150,164,160,0.42)');
-  // 丹沢(奥・大きな山並み)
-  ridge(k([[280, 0.5], [286, 1.1], ...wiggle(290, 300, 1.8, 0.35), [302, 2.25], [305, 2.05], [308, 2.3], [311, 2.1], ...wiggle(313, 322, 1.6, 0.4), [326, 1.0], [334, 0.6], [345, 0.4], [A1, 0.3]]), 'rgba(146,160,156,0.45)');
-  // 富士山
-  ridge(k([[262, 0.6], [268, 1.2], [272, 2.1], [274.8, 2.75], [275.6, 2.9], [276.6, 2.85], [279, 2.1], [284, 1.1], [290, 0.6]]), 'rgba(140,155,152,0.5)');
-  // 手前の低い丘(大磯丘陵・湘南の内陸)
-  ridge(k([[A0, 0.15], ...wiggle(225, 285, 0.4, 0.2, 0.8), ...wiggle(285, 352, 0.7, 0.35, 0.6), [A1, 0.25]]), 'rgba(128,145,138,0.45)');
-  // 地平線のかすみ
-  const grd = g.createLinearGradient(0, Y(1.2), 0, H); grd.addColorStop(0, 'rgba(214,226,236,0)'); grd.addColorStop(1, 'rgba(214,226,236,0.75)');
-  g.fillStyle = grd; g.fillRect(0, Y(1.2), W, H - Y(1.2));
+  const shapes = [
+    // 伊豆・箱根(奥)
+    [k([[A0, 0.2], ...wiggle(222, 248, 0.9, 0.35), ...wiggle(248, 256, 1.3, 0.3), [258, 1.55], [261, 1.45], [264, 1.7], [267, 1.4], [270, 1.0], [272, 0.7]]), 'rgba(150,164,160,0.42)'],
+    // 丹沢(奥・大きな山並み)
+    [k([[280, 0.5], [286, 1.1], ...wiggle(290, 300, 1.8, 0.35), [302, 2.25], [305, 2.05], [308, 2.3], [311, 2.1], ...wiggle(313, 322, 1.6, 0.4), [326, 1.0], [334, 0.6], [345, 0.4], [A1, 0.3]]), 'rgba(146,160,156,0.45)'],
+    // 富士山
+    [k([[262, 0.6], [268, 1.2], [272, 2.1], [274.8, 2.75], [275.6, 2.9], [276.6, 2.85], [279, 2.1], [284, 1.1], [290, 0.6]]), 'rgba(140,155,152,0.5)'],
+    // 手前の低い丘(大磯丘陵・湘南の内陸)
+    [k([[A0, 0.15], ...wiggle(225, 285, 0.4, 0.2, 0.8), ...wiggle(285, 352, 0.7, 0.35, 0.6), [A1, 0.25]]), 'rgba(128,145,138,0.45)'],
+  ];
+  // 左右の端はぼかして消す(ぶつ切りにしない)。地平線の白い霞の帯は描かない
+  const fade = (gc) => {
+    gc.globalCompositeOperation = 'destination-in';
+    const gr = gc.createLinearGradient(0, 0, W, 0);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.12, 'rgba(0,0,0,1)'); gr.addColorStop(0.88, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    gc.fillStyle = gr; gc.fillRect(0, 0, W, H); gc.globalCompositeOperation = 'source-over';
+  };
+  for (const [pts, color] of shapes) ridge(pts, color);
+  fade(g);
+  // 夜: 暗いグレー一色(光らない)
+  const cn = document.createElement('canvas'); cn.width = W; cn.height = H;
+  const gn = cn.getContext('2d');
+  for (const [pts] of shapes) { gn.beginPath(); gn.moveTo(X(pts[0][0]), H); for (const [a, e] of pts) gn.lineTo(X(a), Y(e)); gn.lineTo(X(pts[pts.length - 1][0]), H); gn.closePath(); gn.fillStyle = '#2a2d31'; gn.fill(); }
+  fade(gn);
+  const texNight = new THREE.CanvasTexture(cn); texNight.colorSpace = THREE.SRGBColorSpace;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   // 円柱の一部(カメラが中心)
   const P = [], U = [], n = 64, y0 = -Math.tan(0.2 * Math.PI / 180) * R, y1 = Math.tan(TOP * Math.PI / 180) * R;
@@ -946,6 +960,7 @@ function makeMountainPanorama() {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true, fog: false, side: THREE.DoubleSide }));
   m.renderOrder = -1.9; m.frustumCulled = false; m.name = 'mountains'; m.userData.noLift = true;
+  m.userData.setNight = (on) => { m.material.map = on ? texNight : tex; m.material.needsUpdate = true; };
   return m;
 }
 
@@ -1833,7 +1848,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const city = new THREE.Group(); city.name = 'osm-city';
   (surfaceUrl ? root : root.parent || root).add(city);
-  let blocked = () => false, night = false, cityBounds = null, lampCtl = null;
+  let blocked = () => false, night = false, cityBounds = null, lampCtl = null, foamMesh = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const trFetch = terrainUrl ? fetch(terrainUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
@@ -1853,7 +1868,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));   // 文字を先に描かせる
     const [X0, Z0, X1, Z1] = data.bounds;
     const native = surfaceUrl ? await loadNativeSurfaces(surfaceUrl, city) : null;
-    if (surfaceUrl) await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
+    if (surfaceUrl) foamMesh = await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
+    foamMesh?.userData.setNight(night);
     const wallData = surfaceUrl ? await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null) : null;
     if (surfaceUrl) lampCtl = await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => { console.warn('街灯', e); return null; });
     lampCtl?.setNight(night);   // 読み込む前に夜になっていた時
@@ -1914,7 +1930,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
       T('terrain', () => { liftToTerrain(city); if (!native) terrainMesh = buildTerrainMesh(city); });
     }
     if (terrainMesh && onTerrain) onTerrain(terrainMesh);
-    if (data.water.some((w) => w.sea)) { panorama = makeMountainPanorama(); city.add(panorama); }   // 湘南: 遠くの山並み
+    if (data.water.some((w) => w.sea)) { panorama = makeMountainPanorama(); city.add(panorama); panorama.userData.setNight(night); }   // 湘南: 遠くの山並み
     times.total = Math.round(performance.now() - t0);
     document.body.dataset.osmLoadMs = JSON.stringify(times);
     console.info('[osm-city] load ms', times);
@@ -1931,6 +1947,6 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     onTerrain(fn) { onTerrain = fn; if (terrainMesh) fn(terrainMesh); },   // 江の島の地形(走る面)ができたら呼ぶ
     update(dt, camera) { updateWaterTime(performance.now() / 1000); if (panorama && camera) { panorama.visible = camera.position.y < 120;   // 高い所から見下ろす時(地図・遠くへ引いた時)は山並みを出さない
       panorama.position.set(camera.position.x, 0, camera.position.z); panorama.updateMatrixWorld(); } },
-    setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); lampCtl?.setNight(on); },   // 湘南: 街灯も夜だけ点ける
+    setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); lampCtl?.setNight(on); panorama?.userData.setNight(on); foamMesh?.userData.setNight(on); setSeaNight(on); },   // 湘南: 街灯も夜だけ点ける
   };
 }
