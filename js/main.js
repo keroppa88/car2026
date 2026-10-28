@@ -2315,6 +2315,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;';
     coordEl.textContent = 'x -, z -';
     document.body.appendChild(coordEl);
+    setInterval(() => { coordEl.style.display = bonnetView === 0 ? 'block' : 'none'; }, 200);   // 客観視点の時だけ出す
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
     let pending = null;
     window.addEventListener('pointermove', (e) => {   // 画面の上に重なった表示の上でも拾う
