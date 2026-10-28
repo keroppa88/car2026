@@ -429,7 +429,7 @@ function buildRoads(data, g, surfaceSink = null) {
 //   - 同じ道の近く(40m 以内)に、もう横断歩道がない
 function placeCrosswalks(data, shared, J, white) {
   const road = (x, z) => shared(x, z, -1);
-  const placed = [];
+  const placed = [], cws = [];
   const cands = [];
   const brEnds = []; for (const r of data.roads) if (r.bridge && r.pts.length > 1) brEnds.push(r.pts[0], r.pts.at(-1));
   data.roads.forEach((r) => {
@@ -470,9 +470,23 @@ function placeCrosswalks(data, shared, J, white) {
     if (brEnds.some(([x, z]) => Math.hypot(x - cx, z - cz) < 35)) continue;   // 橋のたもとには置かない
     if ((data.noCrosswalks || []).some(([x, z]) => Math.hypot(x - cx, z - cz) < 25)) continue;   // 指示で横断歩道を置かない所
     placed.push([cx, cz, ang]);
-    for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white);
+    // 横断歩道の外側(縁の 2.5m 先から 20m まで)が別の車道か(=中央分離帯の側か)
+    const median = [1, -1].map((sd) => { const e0 = sd > 0 ? e1 : -e2; for (let d = 2.5; d < 20; d += 1) if (at(e0 + sd * d, 0)) return true; return false; });
+    cws.push({ cx, cz, ang, tx, tz, nx, nz, W, median, draw: () => { for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white); } });
     break;
   }
+  // 歩道から反対側の歩道までつながる横断歩道だけ残す: 中央分離帯の側には、向こうの車道にも横断歩道が並んでいること
+  let keep = cws.slice(), changed = true;
+  const partner = (c, sd) => keep.some((q) => q !== c && Math.abs(Math.sin(q.ang - c.ang)) < 0.3
+    && Math.abs((q.cx - c.cx) * c.tx + (q.cz - c.cz) * c.tz) < 5 && ((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) * sd > 0
+    && Math.abs((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) < c.W / 2 + q.W / 2 + 20);
+  while (changed) {
+    changed = false;
+    const next = keep.filter((c) => [1, -1].every((sd, k) => !c.median[k] || partner(c, sd)));
+    if (next.length !== keep.length) { keep = next; changed = true; }
+  }
+  for (const c of keep) c.draw();
+  data._crosswalks = keep.map(({ cx, cz, ang, tx, tz, nx, nz, W }) => ({ cx, cz, ang, tx, tz, nx, nz, W }));
 }
 
 // ---- 高速道路の下を道路がくぐる所: 道路の両側だけに橋脚(厚み 2m × くぐる長さ) ----
@@ -1547,10 +1561,23 @@ function buildHedges(data, g, native) {
   for (const [x, z, ang, len, wid] of data.medians || []) {
     const L = len - 1.0, W = Math.min(1.2, Math.max(0.5, wid - 0.6)); if (L < 1) continue;   // 幅は一定(1.2m)で緑地帯の真ん中。狭い所だけ細く
     const y0 = native?.at(x, z)?.y ?? 0, y1 = y0 + H;
-    const tx = Math.sin(ang), tz = Math.cos(ang), n = Math.max(1, Math.round(L / 2.5)), seg = L / n;
+    const tx = Math.sin(ang), tz = Math.cos(ang);
     const R = seeded(Math.round(x * 13 + z * 7) + seed++);
-    for (let k = 0; k < n; k++) {
-      const off = -L / 2 + seg * (k + 0.5), cx = x + tx * off, cz = z + tz * off;
+    // 横断歩道(幅 4m)が横切る所は、その幅だけ植え込みを切る
+    const cuts = [];
+    for (const c of data._crosswalks || []) {
+      if (Math.abs(tx * c.tx + tz * c.tz) < 0.85) continue;   // 向きの違う道路の横断歩道は関係ない
+      const dn = (x - c.cx) * c.nx + (z - c.cz) * c.nz; if (Math.abs(dn) > c.W / 2 + 25) continue;
+      const along = (c.cx - x) * tx + (c.cz - z) * tz; cuts.push([along - 2.1, along + 2.1]);
+    }
+    const pieces = [];
+    let a0 = -L / 2;
+    for (const [c0, c1] of cuts.sort((p, q) => p[0] - q[0])) { if (c0 > a0) pieces.push([a0, Math.min(c0, L / 2)]); a0 = Math.max(a0, c1); }
+    if (a0 < L / 2) pieces.push([a0, L / 2]);
+    const boxes = [];
+    for (const [p0, p1] of pieces) { const len2 = p1 - p0; if (len2 < 0.4) continue; const m = Math.max(1, Math.round(len2 / 2.5)); for (let k = 0; k < m; k++) boxes.push([p0 + len2 * (k + 0.5) / m, len2 / m]); }
+    for (const [off, seg] of boxes) {
+      const cx = x + tx * off, cz = z + tz * off;
       const col = HEDGE_GREENS[Math.floor(R() * HEDGE_GREENS.length)];
       const hx = tx * seg / 2, hz = tz * seg / 2, nx = tz * W / 2, nz = -tx * W / 2;
       const c = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([a, b]) => [cx + hx * a + nx * b, cz + hz * a + nz * b]);
@@ -1950,9 +1977,9 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     }
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
     // 湘南: 街路樹はなし。中央分離帯の緑地は低い植え込み
-    if (native) T('buildHedges', () => buildHedges(data, city, native));
     else T('buildTrees', () => buildTrees(data, city, 1, false));
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
+    if (native) T('buildHedges', () => buildHedges(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
