@@ -1427,11 +1427,11 @@ function billboard(mat) {
   };
   return mat;
 }
-// ---- 中央分離帯の低い植え込み(湘南): 緑地の上に膝丈(0.5m)の箱。端は交差点に出ないよう 0.5m ずつ縮める ----
+// ---- 中央分離帯の低い植え込み(湘南): 緑地の上に高さ 0.75m の箱。端は交差点に出ないよう 0.5m ずつ縮める ----
 // 色は濃い緑が基本。約 2.5m ごとに区切り、濃い緑の数種類から選んで並べる。
 const HEDGE_GREENS = [0x2c5426, 0x35612d, 0x274a22, 0x3d6b34, 0x2f5a30].map((h) => new THREE.Color(h));
 function buildHedges(data, g, native) {
-  const o = { p: [], n: [], c: [] }, H = 0.5;   // 膝丈
+  const o = { p: [], n: [], c: [] }, H = 0.75;   // 膝丈の1.5倍
   let seed = 0;
   for (const [x, z, ang, len, wid] of data.medians || []) {
     const L = len - 1.0, W = Math.max(0.6, wid - 0.8); if (L < 1) continue;
