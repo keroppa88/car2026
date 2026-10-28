@@ -270,6 +270,7 @@ function makeCoverage(data) {
 }
 
 function buildRoads(data, g, surfaceSink = null) {
+  const shonanLines = (data.water || []).some((w) => w.sea);   // 湘南: 中央分離帯に接する線は白
   const shared = makeCoverage(data);
   const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] }, median = { p: [], n: [] };
   // 交差点の点と、その半径(集まる道の半幅の最大)
@@ -347,7 +348,7 @@ function buildRoads(data, g, surfaceSink = null) {
       if (r.oneway) {
         for (let k = 1; k < r.lanes; k++) ribbon(offset(body, half - k * LANE), 0.12, 0.08, white, [5, 5]);
         ribbon(offset(body, half - 0.25), 0.15, 0.08, white);              // 左の外側線
-        ribbon(offset(body, -(half - 0.25)), 0.15, 0.08, r.lanes >= 2 ? yellow : white);   // 右(中央分離側)
+        ribbon(offset(body, -(half - 0.25)), 0.15, 0.08, r.lanes >= 2 && !shonanLines ? yellow : white);   // 右(中央分離側)。湘南は白
       } else if (r.lanes >= 2) {
         const per = Math.floor(r.lanes / 2);
         ribbon(body, 0.15, 0.08, per >= 2 ? yellow : white, per >= 2 ? null : [5, 5]);
