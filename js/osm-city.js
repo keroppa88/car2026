@@ -1908,7 +1908,7 @@ export function snapshotCitySurfaceLayers(data) {
   for (const L of data.lots || []) {
     const cx = L.o.reduce((a, p) => a + p[0], 0) / L.o.length;
     const cz = L.o.reduce((a, p) => a + p[1], 0) / L.o.length;
-    lots[Math.floor(seeded(Math.round(cx * 7 + cz * 3))() * lots.length)].push(L);
+    lots[L.c != null ? L.c : Math.floor(seeded(Math.round(cx * 7 + cz * 3))() * lots.length)].push(L);   // c: くっついた敷地は同じ色(unify_lot_colors.py)
   }
   lots.forEach((ls, i) => rings('lot-' + i, ls, LOT_COLORS[i]));
   rings('parks', data.parks || [], GRASS);

@@ -68,6 +68,7 @@ from shapely.ops import unary_union
 NOFILL = unary_union([LineString([(6062, 251), (6189, 321), (6408, 267)]).buffer(30),
     LineString([(-5090, -677), (-4996, -697), (-4940, -686), (-4869, -708), (-4777, -766)]).buffer(30),
     Point(8248, 483).buffer(25), Point(6450, 240).buffer(25), Point(1565, -1105).buffer(40)] + [Point(x, z).buffer(15) for x, z in [(-4869, -708), (-4777, -766)]])
+BR = unary_union([LineString(r['pts']) for r in R if r.get('bridge')])
 add = []
 for i, r in enumerate(R):
     if not r.get('oneway') or r.get('bridge') or r['kind'] not in ('trunk', 'primary', 'secondary', 'tertiary') or (r.get('lanes') or 1) < 2: continue
@@ -88,6 +89,7 @@ for i, r in enumerate(R):
                 gapl = LineString([(p.x + nx2 * e1, p.y + nz2 * e1), (p.x + nx2 * a3, p.y + nz2 * a3)])
                 if any(bl[q].intersects(gapl) for q in tb.query(gapl)): break   # 間に建物がある: 別々の道
                 if NOFILL.contains(Point(p.x, p.y)): break
+                if BR.distance(Point(p.x, p.y)) < 12: break   # 橋の上・たもとには緑地を置かない
                 if 0.5 < w < 20 and (mt is None or not any(Point(c).distance(Point(d['medians'][q][0], d['medians'][q][1])) < 1.6 for q in mt.query(Point(c).buffer(1.6)))):
                     add.append([round(c[0], 2), round(c[1], 2), round(math.atan2(dx, dz), 4), 2.05, round(w, 2), 1])
             break
