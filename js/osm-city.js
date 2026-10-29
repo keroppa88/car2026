@@ -1976,8 +1976,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
       document.body.dataset.shonanSurfaceStats = JSON.stringify(native.stats);
     }
     if (!(data.woods && data.woods.length)) T('buildForests', () => buildForests(data, city));   // 湘南は林を木の絵で
-    // 湘南: 街路樹はなし。中央分離帯の緑地は低い植え込み
-    else T('buildTrees', () => buildTrees(data, city, 1, false));
+    // 湘南: 街路樹はなし(中央分離帯の緑地は低い植え込み。道路の後で作る)。TOKYO は街路樹
+    if (!native) T('buildTrees', () => buildTrees(data, city, 1, false));
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
     if (native) T('buildHedges', () => buildHedges(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
