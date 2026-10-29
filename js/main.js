@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261030-fence-3';
+import { decorateOsmCity } from './osm-city.js?v=20261030-eno-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261030-b12-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261030-eno-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -11223,7 +11223,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);
-        if (COURSE_KEY === 'shonan') updateShonanTraffic(dt);
+        if (COURSE_KEY === 'shonan') { updateShonanTraffic(dt); tokyoEkiCity?.updateEnoden?.(dt, player.pos.x, player.pos.z); }
         updateMission();
       }
       if (DEBUG_MAP && player.group) {

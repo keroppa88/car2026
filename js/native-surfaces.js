@@ -326,3 +326,114 @@ export async function loadLamps(url, group, native) {
   // 明るさのピークは街並みマップ(0.7)の2割減
   return { setNight(on) { headMat.emissiveIntensity = on ? 2 : 0; poolMat.opacity = on ? 0.56 : 0; pools.visible = on; } };
 }
+
+// ---- 江ノ電(単線): 道路より 2m 高い砂利の路盤、レール、架線柱と架線、2両の電車 ----
+// data.pts: [[x, z, h], ...] 2m ごと(h: 道路からの高さ。踏切は 0)。tools/shonan/make_enoden.py
+export function buildEnoden(data, group, native) {
+  const P = data?.pts; if (!P || P.length < 2) return null;
+  const n = P.length, ground = (x, z) => native?.at(x, z)?.y ?? 0;
+  const S = [0]; for (let i = 1; i < n; i++) S.push(S[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const base = P.map(([x, z]) => Math.max(0, ground(x, z)));
+  const top = P.map((q, i) => base[i] + q[2]);
+  const dir = (i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+  const HALF = 2.0;
+  const bedTop = [], side = [], rails = [];
+  const push = (arr, ...v) => { for (const x of v) arr.push(x); };
+  for (let i = 0; i + 1 < n; i++) {
+    const [ax, az] = P[i], [bx, bz] = P[i + 1], [tx, tz] = dir(i), [ux, uz] = dir(i + 1);
+    const an = [tz, -tx], bn = [uz, -ux], ya = top[i], yb = top[i + 1];
+    const A = (o) => [ax + an[0] * o, az + an[1] * o], B = (o) => [bx + bn[0] * o, bz + bn[1] * o];
+    const [a1, a2, b1, b2] = [A(HALF), A(-HALF), B(HALF), B(-HALF)];
+    push(bedTop, a1[0], ya + 0.02, a1[1], b1[0], yb + 0.02, b1[1], b2[0], yb + 0.02, b2[1], a1[0], ya + 0.02, a1[1], b2[0], yb + 0.02, b2[1], a2[0], ya + 0.02, a2[1]);
+    for (const [p, q, nn] of [[a1, b1, an], [b2, a2, [-an[0], -an[1]]]]) {   // 側面(コンクリート)
+      const y0 = Math.min(base[i], base[i + 1]) - 0.1;
+      push(side, p[0], y0, p[1], q[0], y0, q[1], q[0], q === b1 ? yb : ya, q[1], p[0], y0, p[1], q[0], q === b1 ? yb : ya, q[1], p[0], p === a1 ? ya : yb, p[1]);
+    }
+    for (const g of [0.55, -0.55]) {   // レール(狭軌 1.067m)
+      const r0 = A(g), r1 = B(g), w = 0.07;
+      push(rails, r0[0] - an[0] * w, ya + 0.17, r0[1] - an[1] * w, r1[0] - bn[0] * w, yb + 0.17, r1[1] - bn[1] * w, r1[0] + bn[0] * w, yb + 0.17, r1[1] + bn[1] * w,
+        r0[0] - an[0] * w, ya + 0.17, r0[1] - an[1] * w, r1[0] + bn[0] * w, yb + 0.17, r1[1] + bn[1] * w, r0[0] + an[0] * w, ya + 0.17, r0[1] + an[1] * w);
+    }
+  }
+  const mesh = (pos, color, name) => {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })); m.name = name; m.userData.noLift = true; m.frustumCulled = false; group.add(m); return m;
+  };
+  mesh(bedTop, 0x7d6a55, 'enoden-bed'); mesh(side, 0x9a9b98, 'enoden-wall'); mesh(rails, 0x8f9397, 'enoden-rails');
+  // 架線柱(30m ごと、線路の山側)と架線(高さ 5.3m)
+  const poles = [], wire = [];
+  let last = null;
+  for (let s = 10; s < S[n - 1]; s += 30) {
+    let i = 0; while (i < n - 2 && S[i + 1] < s) i++;
+    const t = (s - S[i]) / ((S[i + 1] - S[i]) || 1), x = P[i][0] + (P[i + 1][0] - P[i][0]) * t, z = P[i][1] + (P[i + 1][1] - P[i][1]) * t, y = top[i] + (top[i + 1] - top[i]) * t;
+    const [tx, tz] = dir(i), nx = tz, nz = -tx, sd = -1;   // 進む向き(西→東)の右 = 北(山側)
+    const px = x + nx * sd * 2.3, pz = z + nz * sd * 2.3;
+    const box = (cx, cy, cz, sx, sy, sz, ang) => { const g = new THREE.BoxGeometry(sx, sy, sz); g.rotateY(ang); g.translate(cx, cy, cz); poles.push(g); };
+    const ang = Math.atan2(tx, tz);
+    box(px, y + 3.2, pz, 0.25, 6.4, 0.25, ang);
+    box((px + x) / 2, y + 6.0, (pz + z) / 2, 0.08, 0.08, 2.4, ang + Math.PI / 2);
+    const wp = new THREE.Vector3(x, y + 5.3, z);
+    if (last) wire.push(last, wp);
+    last = wp;
+  }
+  if (poles.length) {
+    const merged = new THREE.BufferGeometry(); const arr = []; for (const g of poles) { const p = g.toNonIndexed().getAttribute('position').array; for (const v of p) arr.push(v); }
+    merged.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); merged.computeVertexNormals();
+    const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color: 0x8a8d90 })); m.name = 'enoden-poles'; m.userData.noLift = true; m.frustumCulled = false; group.add(m);
+  }
+  if (wire.length) { const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire), new THREE.LineBasicMaterial({ color: 0x2a2a2a })); l.name = 'enoden-wire'; l.frustumCulled = false; group.add(l); }
+  // ---- 電車: 2両。上下は薄い緑、真ん中はクリーム色、窓は濃いグレー ----
+  const makeCar = () => {
+    const g = new THREE.Group(), L = 12.5, Wd = 2.6, H = 3.5;
+    const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
+    const add = (sx, sy, sz, y, c, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(c)); m.position.set(0, y, z); g.add(m); };
+    add(Wd, 1.2, L, 0.95, 0x7fb37a);            // 下(薄い緑)
+    add(Wd + 0.02, 1.3, L, 2.2, 0xefe4c2);      // 真ん中(クリーム)
+    add(Wd, 0.6, L, 3.15, 0x7fb37a);            // 上(薄い緑)
+    add(Wd - 0.3, 0.25, L - 0.6, 3.55, 0x9ea3a6);   // 屋根の機器
+    for (const sd of [-1, 1]) for (let k = 0; k < 5; k++) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.85, 1.6), mat(0x3a3f44)); w.position.set(sd * (Wd / 2 + 0.01), 2.25, -L / 2 + 1.6 + k * 2.3); g.add(w); }
+    for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(Wd - 0.5, 0.9, 0.04), mat(0x3a3f44)); w.position.set(0, 2.3, sd * (L / 2 + 0.01)); g.add(w); }   // 前後の窓
+    g.traverse((o) => { o.userData.noLift = true; });
+    return g;
+  };
+  const cars = [makeCar(), makeCar()];
+  for (const c of cars) { c.visible = false; group.add(c); }
+  const at = (s) => {
+    s = Math.max(0, Math.min(S[n - 1], s)); let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
+    const t = (s - S[lo]) / ((S[hi] - S[lo]) || 1);
+    return { x: P[lo][0] + (P[hi][0] - P[lo][0]) * t, z: P[lo][1] + (P[hi][1] - P[lo][1]) * t, y: top[lo] + (top[hi] - top[lo]) * t + 0.2, h: Math.atan2(P[hi][0] - P[lo][0], P[hi][1] - P[lo][1]) };
+  };
+  // 車が線路から 120m 以内に来たら、離れた所(手前か先 350m)に電車を出して時速 40km で走らせる。離れたら消す
+  const V = 40 / 3.6, GAP = 13.0;
+  let train = null, ps = 0;
+  const project = (x, z) => { let best = Infinity, bs = 0; for (let i = 0; i + 1 < n; i += 2) { const d = (P[i][0] - x) ** 2 + (P[i][1] - z) ** 2; if (d < best) { best = d; bs = S[i]; } } return [bs, Math.sqrt(best)]; };
+  const update = (dt, px, pz) => {
+    const [s0, dd] = project(px, pz); ps = s0;
+    if (!train && dd < 120) {
+      const ahead = Math.random() < 0.5;
+      const s = Math.max(0, Math.min(S[n - 1], s0 + (ahead ? 350 : -350)));
+      train = { s, dir: ahead ? -1 : 1 };
+      if ((train.dir > 0 && s > S[n - 1] - 30) || (train.dir < 0 && s < 30)) train.dir *= -1;
+    }
+    if (!train) return;
+    train.s += train.dir * V * dt;
+    if (dd > 600 || train.s < 0 || train.s > S[n - 1] || Math.abs(train.s - ps) > 700) { train = null; for (const c of cars) c.visible = false; return; }
+    cars.forEach((c, k) => {
+      const q = at(train.s - train.dir * k * GAP), q2 = at(train.s - train.dir * k * GAP + 3);
+      c.position.set(q.x, q.y, q.z); c.rotation.set(0, Math.atan2(q2.x - q.x, q2.z - q.z), 0); c.visible = true;
+    });
+  };
+  // 当たり判定: 路盤の上(高さ 0.5m 以上)は車が入れない
+  const grid = new Map(), C = 10;
+  for (let i = 0; i < n; i++) { if (P[i][2] < 0.5) continue; const k = Math.floor(P[i][0] / C) + ',' + Math.floor(P[i][1] / C); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); }
+  const blocked = (x, z, r = 0.3) => {
+    for (let gx = -1; gx <= 1; gx++) for (let gz = -1; gz <= 1; gz++) for (const i of grid.get((Math.floor(x / C) + gx) + ',' + (Math.floor(z / C) + gz)) || []) {
+      if (i + 1 >= n) continue;
+      const [ax, az] = P[i], [bx, bz] = P[i + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if ((ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2 < (HALF + r) ** 2) return true;
+    }
+    return false;
+  };
+  return { update, blocked };
+}

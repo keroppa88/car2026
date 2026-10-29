@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261028-pool-1';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, buildEnoden, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261030-eno-1';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1966,7 +1966,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
   const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const city = new THREE.Group(); city.name = 'osm-city';
   (surfaceUrl ? root : root.parent || root).add(city);
-  let blocked = () => false, night = false, cityBounds = null, lampCtl = null, foamMesh = null;
+  let blocked = () => false, night = false, cityBounds = null, lampCtl = null, foamMesh = null, enoden = null;
   const lmFetch = landmarkUrl ? fetch(landmarkUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const brFetch = bridgeUrl ? fetch(bridgeUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
   const trFetch = terrainUrl ? fetch(terrainUrl).then((r) => r.json()).catch(() => null) : Promise.resolve(null);
@@ -1989,6 +1989,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (surfaceUrl) foamMesh = await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
     foamMesh?.userData.setNight(night);
     const wallData = surfaceUrl ? await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null) : null;
+    if (native && data.enoden) enoden = buildEnoden(data.enoden, city, native);   // 江ノ電
     if (surfaceUrl) lampCtl = await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => { console.warn('街灯', e); return null; });
     lampCtl?.setNight(night);   // 読み込む前に夜になっていた時
     if (!native) {
@@ -2056,7 +2057,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
   }).catch((e) => { console.warn('[osm-city]', e); step('読み込みに失敗しました'); if (surfaceUrl) throw e; });
   return {
     ready,
-    isBlocked: (x, z, R) => blocked(x, z, R),
+    isBlocked: (x, z, R) => blocked(x, z, R) || !!(enoden && enoden.blocked(x, z, R)),
+    updateEnoden: (dt, x, z) => enoden?.update(dt, x, z),
     // 湘南: 段差の判定の基準にする高さ(ぶつかる前に居た所の地面)
     setBlockFrom: (x, z) => blocked.setFrom?.(x, z),
     surfaceKind: (x, z) => (blocked.onRoad && blocked.onRoad(x, z) ? 1 : blocked.isSand && blocked.isSand(x, z) ? 2 : 0),
