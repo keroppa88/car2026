@@ -633,9 +633,9 @@ export const MAP_CONFIGS = {
     // 木・柵・街灯などの見た目の部品は当たり判定にしない(建物・水は osm-city の判定で止まる)
     ignoreMapWallCollisions: true,
     file: null,
-    surfaceData: 'map/shonan-surfaces.json?v=20261029-b7-1',
+    surfaceData: 'map/shonan-surfaces.json?v=20261029-b8-2',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261029-b7-1',
+    cityData: 'map/shonan-city.json?v=20261029-b8-2',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
@@ -649,11 +649,11 @@ export const MAP_CONFIGS = {
     starts: [
       { key: 'inamuragasaki', label: '稲村ヶ崎', x: 9860.65, z: 822.78, heading: -1.762 },
       { key: 'shonanohashi', label: '湘南大橋', x: -3713.13, z: -1067.66, heading: -1.232 },
-      { key: 'oiso', label: '大磯', x: -9019.21, z: -75.47, heading: 1.107 },
+      { key: 'oiso', label: '大磯', x: -9751.81, z: 459.1, heading: 1.798 },   // 西湘バイパスの西の端
     ],
     // Y の自動運転: 行き先(大磯/稲村ヶ崎)まで国道134号を左側の車線で走る
     autoDriveMode: 'shonanRoute',
-    routeData: 'map/shonan-routes.json?v=20261029-b7-1',
+    routeData: 'map/shonan-routes.json?v=20261029-b8-2',
     // 江の島だけ高低差(PLATEAU の地形 dem から)
     terrainData: 'map/shonan-terrain.json?v=20261026-3',
     spawnReferenceX: 9860.65,
