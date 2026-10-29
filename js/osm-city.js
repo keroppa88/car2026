@@ -431,9 +431,9 @@ function placeCrosswalks(data, shared, J, white) {
   const road = (x, z) => shared(x, z, -1);
   const placed = [], cws = [];
   const cands = [];
-  const brEnds = []; for (const r of data.roads) if (r.bridge && r.pts.length > 1) brEnds.push(r.pts[0], r.pts.at(-1));
+  const brEnds = []; for (const r of data.roads) if ((r.bridge || r.longBridge) && r.pts.length > 1) brEnds.push(r.pts[0], r.pts.at(-1));
   data.roads.forEach((r) => {
-    if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;
+    if (r.bridge || r.longBridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;   // 橋の上には置かない
     const p = r.pts, s = cumLen(p), L = s.at(-1); if (L < 30) return;
     const js = r.junctions.map((i) => s[i]).sort((a, b) => a - b);
     for (const i of r.junctions) {

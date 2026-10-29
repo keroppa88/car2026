@@ -70,7 +70,7 @@ wires = [[i, i + 1] for i in range(len(poles) - 1)
 bridges = [r for r in d['roads'] if r.get('bridge') and LineString(r['pts']).length >= 80]
 for r in d['roads']:   # 道路にまとめた中の長い橋の区間(江の島への橋)
     if r.get('longBridge'):
-        i, j = r['longBridge']; bridges.append({**r, 'pts': r['pts'][i:j + 1], 'oneway': False})
+        i, j = r['longBridge']; bridges.append({**r, 'pts': r['pts'][i:j + 1]})
 blamps, used = [], set()
 for i, r in enumerate(bridges):
     if i in used: continue
