@@ -429,15 +429,41 @@ export function buildEnoden(data, group, native, onRoad = null) {
   }
   // ---- 電車: 2両。上下は薄い緑、真ん中はクリーム色、窓は濃いグレー ----
   const makeCar = () => {
-    const g = new THREE.Group(), L = 12.5, Wd = 2.6, H = 3.5;
+    // 角の丸い車体(横から見た形を押し出す)。下からグレーの裾・緑・クリーム(窓の帯)・緑(屋根)
+    const g = new THREE.Group(), L = 12.5, Wd = 2.5, Y0 = 1.0, Y1 = 3.9, RT = 0.75, RB = 0.25;
+    const sh = new THREE.Shape();
+    sh.moveTo(-L / 2 + RB, Y0); sh.lineTo(L / 2 - RB, Y0); sh.quadraticCurveTo(L / 2, Y0, L / 2, Y0 + RB);
+    sh.lineTo(L / 2, Y1 - RT); sh.quadraticCurveTo(L / 2, Y1, L / 2 - RT * 1.6, Y1); sh.lineTo(-L / 2 + RT * 1.6, Y1);
+    sh.quadraticCurveTo(-L / 2, Y1, -L / 2, Y1 - RT); sh.lineTo(-L / 2, Y0 + RB); sh.quadraticCurveTo(-L / 2, Y0, -L / 2 + RB, Y0);
+    const body = new THREE.ExtrudeGeometry(sh, { depth: Wd - 0.3, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.12, bevelSegments: 3, curveSegments: 8 });
+    body.translate(0, 0, -(Wd - 0.3) / 2); body.rotateY(Math.PI / 2);   // 長さを z、幅を x に
+    body.computeVertexNormals();
+    // 色は高さで帯に塗り分ける(下からグレーの裾・緑・クリーム・緑)
+    const bm = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    bm.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vLY;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvLY = position.y;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vLY;').replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 bandC = vLY < 1.25 ? vec3(0.55) : vLY < 1.95 ? vec3(0.11, 0.42, 0.004) : vLY < 3.05 ? vec3(0.86, 0.76, 0.43) : vec3(0.11, 0.42, 0.004);
+        diffuseColor.rgb = bandC;`);
+    };
+    bm.customProgramCacheKey = () => 'enoden-band-1';
+    g.add(new THREE.Mesh(body, bm));
     const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
-    const add = (sx, sy, sz, y, c, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(c)); m.position.set(0, y, z); g.add(m); };
-    add(Wd, 1.2, L, 0.95, 0x7fb37a);            // 下(薄い緑)
-    add(Wd + 0.02, 1.3, L, 2.2, 0xefe4c2);      // 真ん中(クリーム)
-    add(Wd, 0.6, L, 3.15, 0x7fb37a);            // 上(薄い緑)
-    add(Wd - 0.3, 0.25, L - 0.6, 3.55, 0x9ea3a6);   // 屋根の機器
-    for (const sd of [-1, 1]) for (let k = 0; k < 5; k++) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.85, 1.6), mat(0x3a3f44)); w.position.set(sd * (Wd / 2 + 0.01), 2.25, -L / 2 + 1.6 + k * 2.3); g.add(w); }
-    for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(Wd - 0.5, 0.9, 0.04), mat(0x3a3f44)); w.position.set(0, 2.3, sd * (L / 2 + 0.01)); g.add(w); }   // 前後の窓
+    const box = (sx, sy, sz, x, y, z, c) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(c)); m.position.set(x, y, z); g.add(m); };
+    const X = Wd / 2 + 0.03;
+    for (const sd of [-1, 1]) {
+      for (let k = 0; k < 8; k++) box(0.04, 0.72, 0.95, sd * X, 2.5, -L / 2 + 2.2 + k * 1.2, 0x111111);   // 横の窓
+      box(0.04, 1.6, 0.75, sd * X, 2.1, L / 2 - 0.75, 0x111111);                                        // 前の扉
+    }
+    const F = L / 2 + 0.16;   // 前(+z)の顔: 窓3つ・行先(青)・ライト(黄)
+    box(1.2, 1.0, 0.04, 0, 2.5, F, 0x111111); box(0.32, 1.0, 0.04, -0.95, 2.5, F - 0.05, 0x111111); box(0.32, 1.0, 0.04, 0.95, 2.5, F - 0.05, 0x111111);
+    box(0.65, 0.2, 0.04, 0, 1.78, F, 0x1aa4e8);
+    for (const sd of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.05, 12), new THREE.MeshLambertMaterial({ color: 0xf2c200, emissive: 0x332600 })); l.rotation.x = Math.PI / 2; l.position.set(sd * 0.85, 1.6, F); g.add(l); }
+    box(1.3, 0.22, 3.0, 0, Y1 + 0.2, -2.6, 0xc8c8c8); box(1.5, 0.22, 4.6, 0, Y1 + 0.2, 1.8, 0xc8c8c8);   // 屋根の機器
+    box(Wd - 0.4, 0.5, L - 1.0, 0, 0.75, 0, 0x7d7d7d);   // 床下
+    for (const zc of [-L / 2 + 2.2, L / 2 - 2.2]) for (const dz of [-0.9, 0.9]) for (const sd of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.18, 16), mat(0x111111)); w.rotation.z = Math.PI / 2; w.position.set(sd * 0.6, 0.42, zc + dz); g.add(w);
+    }
     g.traverse((o) => { o.userData.noLift = true; });
     return g;
   };
@@ -466,7 +492,7 @@ export function buildEnoden(data, group, native, onRoad = null) {
     if (dd > 600 || train.s < 0 || train.s > S[n - 1] || Math.abs(train.s - ps) > 700) { train = null; for (const c of cars) c.visible = false; return; }
     cars.forEach((c, k) => {
       const q = at(train.s - train.dir * k * GAP), q2 = at(train.s - train.dir * k * GAP + 3);
-      c.position.set(q.x, q.y, q.z); c.rotation.set(0, Math.atan2(q2.x - q.x, q2.z - q.z), 0); c.visible = true;
+      c.position.set(q.x, q.y, q.z); c.rotation.set(0, Math.atan2(q2.x - q.x, q2.z - q.z) + (train.dir > 0 ? 0 : Math.PI) + (k === 1 ? Math.PI : 0), 0); c.visible = true;   // 顔は外側(先頭は進む向き、2両目は後ろ向き)
     });
   };
   // 当たり判定: 路盤の上(高さ 20cm 以上。踏切以外)は車が入れない

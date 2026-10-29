@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, buildEnoden, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261030-eno-6';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, buildEnoden, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261030-train-2';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
