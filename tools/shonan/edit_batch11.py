@@ -22,4 +22,19 @@ gap = z.difference(cov)
 parts = [p for p in getattr(gap, 'geoms', [gap]) if p.geom_type == 'Polygon' and (p.buffer(1).contains(Point(-3315, -931)) or p.buffer(1).contains(Point(-3273, -899)))]
 g = unary_union(parts)
 M.put(g.buffer(0.3), 'parks', keep_water=True, clear=False); print('グレーを緑地に', round(g.area), 'm²')
+# 国道の外側に沿うグレーの細い道(-3351,-937〜-3163,-804)も消して緑地に
+sv = [r for r in d['roads'] if r['kind'] == 'service' and near(r['pts'][0], (-3351, -937), 1.5) and near(r['pts'][-1], (-3163, -804), 1.5)]
+for r in sv:
+    d['roads'].remove(r)
+    keep = unary_union([LineString(q['pts']).buffer(W(q) / 2 + 4.5) for q in d['roads'] if LineString(q['pts']).distance(LineString(r['pts'])) < 30])
+    M.put(LineString(r['pts']).buffer(W(r) / 2 + 4.5, cap_style=2).difference(keep), 'parks', keep_water=True, clear=False)
+print('外側の細い道を緑地に', len(sv))
+# 江の島の対岸 6055,275 の海のすき間 → コンクリート / 5945,861 の建物を消す
+zz = Point(6055, 275).buffer(35)
+sea = M.water(sea_only=True).intersection(zz.buffer(20))
+thin = sea.difference(sea.buffer(-14, join_style=2).buffer(14, join_style=2)).intersection(zz)
+thin = unary_union([p for p in getattr(thin, 'geoms', [thin]) if p.geom_type == 'Polygon' and p.distance(Point(6055, 275)) < 25])
+M.put(thin.buffer(0.3), 'piers', clear=False); print('海のすき間をコンクリートに', round(thin.area))
+from shapely.geometry import Polygon
+b0 = len(d['buildings']); d['buildings'] = [b for b in d['buildings'] if not Polygon(b['p']).buffer(2).contains(Point(5945, 861))]; print('建物', b0 - len(d['buildings']))
 FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))

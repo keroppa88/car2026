@@ -89,9 +89,13 @@ for i, r in enumerate(bridges):
             B = partner[1]; q = B.interpolate(B.project(p))
             mx, mz = (p.x + q.x) / 2, (p.y + q.y) / 2
             ang = math.atan2(q.x - p.x, q.y - p.y); arm = max(1.5, min(3.5, p.distance(q) / 2 - 1.0))
-        else:
+        else:   # 1本の道路(上下線いっしょ): 真ん中には立てず、両側の歩道ぎわに交互に
             a = A.interpolate(max(0, 15 + k * 30 - 2)); b = A.interpolate(min(A.length, 15 + k * 30 + 2))
-            mx, mz = p.x, p.y; ang = math.atan2(-(b.y - a.y), b.x - a.x); arm = 2.5   # 道路と直角
+            tx, tz = b.x - a.x, b.y - a.y; l = math.hypot(tx, tz) or 1; nx, nz = tz / l, -tx / l
+            sd = 1 if k % 2 == 0 else -1; off = (r.get('lanes', 2) * 3.25) / 2 + 0.6
+            x, z = p.x + nx * sd * off, p.y + nz * sd * off
+            lamps.append([round(x, 2), round(z, 2), round(math.atan2(-nx * sd, -nz * sd), 3)])   # 腕は道路の方へ
+            continue
         blamps.append([round(mx, 2), round(mz, 2), round(ang, 3), round(arm, 2)])
 # 指示でつなぐ電線(交差点で途切れている所): 両端に近い電柱をつなぐ。近くに無ければ電柱を立てる
 EXTRA = [((-3740, -1076), (-3681, -1097))]

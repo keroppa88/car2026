@@ -633,9 +633,9 @@ export const MAP_CONFIGS = {
     // 木・柵・街灯などの見た目の部品は当たり判定にしない(建物・水は osm-city の判定で止まる)
     ignoreMapWallCollisions: true,
     file: null,
-    surfaceData: 'map/shonan-surfaces.json?v=20261029-b11-1',
+    surfaceData: 'map/shonan-surfaces.json?v=20261030-b12-1',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261029-b11-1',
+    cityData: 'map/shonan-city.json?v=20261030-b12-1',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
@@ -653,7 +653,7 @@ export const MAP_CONFIGS = {
     ],
     // Y の自動運転: 行き先(大磯/稲村ヶ崎)まで国道134号を左側の車線で走る
     autoDriveMode: 'shonanRoute',
-    routeData: 'map/shonan-routes.json?v=20261029-b11-1',
+    routeData: 'map/shonan-routes.json?v=20261030-b12-1',
     // 江の島だけ高低差(PLATEAU の地形 dem から)
     terrainData: 'map/shonan-terrain.json?v=20261026-3',
     spawnReferenceX: 9860.65,
