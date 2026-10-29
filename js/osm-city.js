@@ -321,6 +321,7 @@ function edgeLines(data, white) {
 }
 function buildRoads(data, g, surfaceSink = null) {
   const shonanLines = (data.water || []).some((w) => w.sea);   // 湘南: 中央分離帯に接する線は白
+  const ENDS = new Map(); for (const r of data.roads) for (const q of r.pts) { const k = q.join(','); ENDS.set(k, (ENDS.get(k) || 0) + 1); }
   const shared = makeCoverage(data);
   const asphalt = [], white = [], yellow = [], placedCw = [], deck = [], walk = [], curb = [], parapet = { p: [], n: [] }, median = { p: [], n: [] };
   // 交差点の点と、その半径(集まる道の半幅の最大)
@@ -368,9 +369,11 @@ function buildRoads(data, g, surfaceSink = null) {
       const sw = data.sidewalk ?? 4.5;
       ribbon(p, w + sw * 2, 0.012, walk);                                    // 歩道(アスファルト色)
       for (let i = 1; i + 1 < p.length; i++) disc(p[i][0], p[i][1], half + sw, 0.012, walk);
+      if (shonanLines) for (const q of [p[0], p.at(-1)]) disc(q[0], q[1], half + sw, 0.012, walk);   // 端・交差点でも歩道を途切れさせない
     }
     ribbon(p, w, r.bridge ? 0.06 : 0.04, asphalt);
     for (let i = 1; i + 1 < p.length; i++) disc(p[i][0], p[i][1], half, r.bridge ? 0.06 : 0.04, asphalt);   // 折れ目のすき間を埋める
+    if (shonanLines && !r.bridge) for (const q of [p[0], p.at(-1)]) if ((ENDS.get(q.join(',')) || 0) === 2) disc(q[0], q[1], half, 0.04, asphalt);   // 2本の継ぎ目(カーブ)も車道を途切れさせない
     // 線を引く区間: 交差点の点のまわり(半径 + 1.5m)を除く
     const s = cumLen(p), L = s.at(-1), holes = [];
     for (const i of r.junctions) { const R = (J.get(p[i].join(',')) || half) + 1.5; holes.push([s[i] - R, s[i] + R]); }
@@ -433,7 +436,7 @@ function placeCrosswalks(data, shared, J, white) {
   const cands = [];
   const brEnds = []; for (const r of data.roads) if ((r.bridge || r.longBridge) && r.pts.length > 1) brEnds.push(r.pts[0], r.pts.at(-1));
   data.roads.forEach((r) => {
-    if (r.bridge || r.longBridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;   // 橋の上には置かない
+    if (r.bridge || r.longBridge || r.noCrosswalk || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4) || /_link$/.test(r.kind)) return;   // 橋の上には置かない
     const p = r.pts, s = cumLen(p), L = s.at(-1); if (L < 30) return;
     const js = r.junctions.map((i) => s[i]).sort((a, b) => a - b);
     for (const i of r.junctions) {
@@ -471,21 +474,29 @@ function placeCrosswalks(data, shared, J, white) {
     if ((data.noCrosswalks || []).some(([x, z]) => Math.hypot(x - cx, z - cz) < 25)) continue;   // 指示で横断歩道を置かない所
     placed.push([cx, cz, ang]);
     // 横断歩道の外側(縁の 2.5m 先から 20m まで)が別の車道か(=中央分離帯の側か)
-    const median = [1, -1].map((sd) => { const e0 = sd > 0 ? e1 : -e2; for (let d = 2.5; d < 20; d += 1) if (at(e0 + sd * d, 0)) return true; return false; });
-    cws.push({ cx, cz, ang, tx, tz, nx, nz, W, median, draw: () => { for (const o of stripes) rect(ax + nx * o, az + nz * o, ang, 4, 0.45, 0.085, white); } });
+    const median = [1, -1].map((sd) => { const e0 = sd > 0 ? e1 : -e2; for (let d = 2.5; d < 40; d += 1) if (at(e0 + sd * d, 0)) return true; return false; });
+    cws.push({ cx, cz, ang, tx, tz, nx, nz, W, median, sh: 0, draw: (sh) => { for (const o of stripes) rect(ax + nx * o + tx * sh, az + nz * o + tz * sh, ang, 4, 0.45, 0.085, white); } });
     break;
   }
   // 歩道から反対側の歩道までつながる横断歩道だけ残す: 中央分離帯の側には、向こうの車道にも横断歩道が並んでいること
   let keep = cws.slice(), changed = true;
   const partner = (c, sd) => keep.some((q) => q !== c && Math.abs(Math.sin(q.ang - c.ang)) < 0.3
-    && Math.abs((q.cx - c.cx) * c.tx + (q.cz - c.cz) * c.tz) < 5 && ((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) * sd > 0
-    && Math.abs((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) < c.W / 2 + q.W / 2 + 20);
+    && Math.abs((q.cx - c.cx) * c.tx + (q.cz - c.cz) * c.tz) < 6 && ((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) * sd > 0
+    && Math.abs((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) < c.W / 2 + q.W / 2 + 40);
   while (changed) {
     changed = false;
     const next = keep.filter((c) => [1, -1].every((sd, k) => !c.median[k] || partner(c, sd)));
     if (next.length !== keep.length) { keep = next; changed = true; }
   }
-  for (const c of keep) c.draw();
+  // 中央分離帯をはさむ2本は、同じ線の上にそろえる(向こう側の横断歩道へまっすぐつながるように)
+  for (const c of keep) {
+    const ps = keep.filter((q) => q !== c && Math.abs(Math.sin(q.ang - c.ang)) < 0.3 && Math.abs((q.cx - c.cx) * c.tx + (q.cz - c.cz) * c.tz) < 6
+      && Math.abs((q.cx - c.cx) * c.nx + (q.cz - c.cz) * c.nz) < c.W / 2 + q.W / 2 + 40);
+    if (!ps.length) continue;
+    const avg = ps.reduce((a, q) => a + (q.cx - c.cx) * c.tx + (q.cz - c.cz) * c.tz, 0) / (ps.length + 1);
+    c.sh = avg;
+  }
+  for (const c of keep) { c.draw(c.sh); c.cx += c.tx * c.sh; c.cz += c.tz * c.sh; }
   data._crosswalks = keep.map(({ cx, cz, ang, tx, tz, nx, nz, W }) => ({ cx, cz, ang, tx, tz, nx, nz, W }));
 }
 
@@ -1907,10 +1918,12 @@ export function snapshotCitySurfaceLayers(data) {
   rings('parking', data.parking || [], ASPHALT, 'road');
   const gs = [], md = [];
   for (const [x, z, ang, len, wid] of data.strips || []) rect(x, z, ang, len, wid, 0, gs);
-  for (const [x, z, ang, len, wid] of data.medians || []) rect(x, z, ang, len, wid, 0, md);
   const roadLayers = new Map();
   const scratch = new THREE.Group();
   buildRoads(data, scratch, (p, color, name) => roadLayers.set(name, { p, color }));
+  // 中央分離帯: 横断歩道と横断歩道の間(横断歩道の幅 4m + 少し)は緑地にしない(歩道にする)
+  const onCw = (x, z, ln) => (data._crosswalks || []).some((c) => Math.abs((x - c.cx) * c.tx + (z - c.cz) * c.tz) < 2.3 + ln / 2 && Math.abs((x - c.cx) * c.nx + (z - c.cz) * c.nz) < c.W / 2 + 40);
+  for (const [x, z, ang, len, wid] of data.medians || []) rect(x, z, ang, len, wid, 0, onCw(x, z, len) ? gs : md);
   scratch.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
   // 元の高さの順を明示。水面以外の色は同じ地表を分けて割り当てる。
   for (const name of ['sidewalk', 'deck']) { const q = roadLayers.get(name); triangles(name, q.p, q.color, 'road'); }
