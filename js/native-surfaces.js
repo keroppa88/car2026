@@ -460,6 +460,13 @@ export function buildEnoden(data, group, native, onRoad = null) {
     box(0.65, 0.2, 0.04, 0, 1.78, F, 0x1aa4e8);
     for (const sd of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.05, 12), new THREE.MeshLambertMaterial({ color: 0xf2c200, emissive: 0x332600 })); l.rotation.x = Math.PI / 2; l.position.set(sd * 0.85, 1.6, F); g.add(l); }
     box(1.3, 0.22, 3.0, 0, Y1 + 0.2, -2.6, 0xc8c8c8); box(1.5, 0.22, 4.6, 0, Y1 + 0.2, 1.8, 0xc8c8c8);   // 屋根の機器
+    // パンタグラフ: ひし形の枠(前後 2組)と、架線に触れる横の板。高さは架線(路盤から 5.3m)まで
+    const bar = (a, b, x, w = 0.05) => { const dy = b[1] - a[1], dz = b[0] - a[0], l = Math.hypot(dy, dz); const m = new THREE.Mesh(new THREE.BoxGeometry(w, w, l), mat(0x2b2b2b)); m.position.set(x, (a[1] + b[1]) / 2, 1.8 + (a[0] + b[0]) / 2); m.rotation.x = -Math.atan2(dy, dz); g.add(m); };
+    const PB = Y1 + 0.32, PT = 5.05, PM = (PB + PT) / 2;
+    for (const x of [-0.42, 0.42]) { const v = [[0, PB], [-0.75, PM], [0, PT], [0.75, PM]]; for (let k = 0; k < 4; k++) bar(v[k], v[(k + 1) % 4], x); }
+    box(1.0, 0.08, 1.7, 0, PB - 0.02, 1.8, 0x2b2b2b);                         // 台
+    box(1.8, 0.07, 0.12, 0, PT + 0.03, 1.8, 0x2b2b2b);                        // 横の板(すり板)
+    for (const zz of [-0.06, 0.06]) box(0.9, 0.04, 0.04, 0, PT, 1.8 + zz, 0x2b2b2b);
     box(Wd - 0.4, 0.5, L - 1.0, 0, 0.75, 0, 0x7d7d7d);   // 床下
     for (const zc of [-L / 2 + 2.2, L / 2 - 2.2]) for (const dz of [-0.9, 0.9]) for (const sd of [-1, 1]) {
       const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.18, 16), mat(0x111111)); w.rotation.z = Math.PI / 2; w.position.set(sd * 0.6, 0.42, zc + dz); g.add(w);
