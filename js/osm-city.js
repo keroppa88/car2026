@@ -1560,8 +1560,8 @@ const HEDGE_GREENS = [0x2c5426, 0x35612d, 0x274a22, 0x3d6b34, 0x2f5a30].map((h) 
 function buildHedges(data, g, native) {
   const o = { p: [], n: [], c: [] }, H = 0.75;   // 膝丈の1.5倍
   let seed = 0;
-  for (const [x, z, ang, len, wid] of data.medians || []) {
-    const L = len - 1.0, W = Math.min(1.2, Math.max(0.5, wid - 0.6)); if (L < 1) continue;   // 幅は一定(1.2m)で緑地帯の真ん中。狭い所だけ細く
+  for (const [x, z, ang, len, wid, cont] of data.medians || []) {
+    const L = cont ? len : len - 1.0, W = Math.min(1.2, Math.max(0.5, wid - 0.6)); if (L < (cont ? 0.3 : 1)) continue;   // cont: となりと続く短い区切り(端を縮めない)   // 幅は一定(1.2m)で緑地帯の真ん中。狭い所だけ細く
     const y0 = native?.at(x, z)?.y ?? 0, y1 = y0 + H;
     const tx = Math.sin(ang), tz = Math.cos(ang);
     const R = seeded(Math.round(x * 13 + z * 7) + seed++);
