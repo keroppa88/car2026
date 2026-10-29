@@ -1390,6 +1390,7 @@ function buildSeaFences(walls, g, native, carriage) {
 }
 function buildFences(data, g, onRoad, yo = 0, k = 1) {   // yo: 柵の足元の高さ(湘南は歩道が 20cm 高い)、k: 高さの倍率
   const post = { p: [], n: [] }, bar = { p: [], n: [] };
+  const CNT = new Map(); for (const r of data.roads) for (const q of r.pts) { const k = q.join(','); CNT.set(k, (CNT.get(k) || 0) + 1); }
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
     const k = r.pts[i].join(','); J.set(k, Math.max(J.get(k) || 0, roadWidth(r) / 2));
@@ -1397,13 +1398,13 @@ function buildFences(data, g, onRoad, yo = 0, k = 1) {   // yo: 柵の足元の�
   for (const r of data.roads) {
     if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4)) continue;
     const half = roadWidth(r) / 2, p = r.pts, s = cumLen(p), L = s.at(-1), holes = [];
-    for (const i of r.junctions) { const R = (J.get(p[i].join(',')) || half) + 6; holes.push([s[i] - R, s[i] + R]); }   // 交差点と横断歩道の所はあける
+    for (const i of r.junctions) { if (yo && (CNT.get(p[i].join(',')) || 0) === 2) continue; const R = (J.get(p[i].join(',')) || half) + 6; holes.push([s[i] - R, s[i] + R]); }   // 交差点と横断歩道の所はあける(湘南: 2本がつながるだけの継ぎ目はあけない)
     holes.sort((a, b) => a[0] - b[0]);
     const spans = []; let x = 0;
     for (const [a, b] of holes) { if (a > x) spans.push([x, a]); x = Math.max(x, b); }
     if (L > x) spans.push([x, L]);
     for (const [a, b] of spans) {
-      if (b - a < 6) continue;
+      if (b - a < (yo ? 1 : 6)) continue;
       const body = cut(p, s, a, b); if (body.length < 2) continue;
       for (const sd of [-1, 1]) {
         const e = offset(body, sd * (half + 0.45));
@@ -1413,7 +1414,7 @@ function buildFences(data, g, onRoad, yo = 0, k = 1) {   // yo: 柵の足元の�
           const tx = (x1 - x0) / len, tz = (z1 - z0) / len, nx = tz * sd, nz = -tx * sd, ang = Math.atan2(tx, tz);   // 外向き(offset と同じ向き)
           // 外側が別の車道(中央分離帯)なら柵は作らない
           const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-          if ([1.6, 3, 5, 8, 11, 14].some((d) => onRoad(mx + nx * d, mz + nz * d))) { acc += len; continue; }   // 中央分離帯(向こうも車道)には柵なし
+          if ((yo && r.oneway ? [1.6, 3, 5, 8, 11, 14, 18, 22, 26, 30, 35, 40] : [1.6, 3, 5, 8, 11, 14]).some((d) => onRoad(mx + nx * d, mz + nz * d))) { acc += len; continue; }   // 中央分離帯(向こうも車道)には柵なし
           boxInto(bar, mx, yo + 0.95 * k, mz, 0.06, 0.08, len, ang);
           boxInto(bar, mx, yo + 0.45 * k, mz, 0.04, 0.05, len, ang);
           for (let d = (3 - acc % 3) % 3; d < len; d += 3) boxInto(post, x0 + tx * d, yo + 0.5 * k, z0 + tz * d, 0.07, 1.0 * k, 0.07, ang);
