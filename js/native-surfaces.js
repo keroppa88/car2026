@@ -363,7 +363,22 @@ export function buildEnoden(data, group, native) {
   // 架線柱(30m ごと、線路の山側)と架線(高さ 5.3m)
   const poles = [], wire = [];
   let last = null;
-  for (let s = 10; s < S[n - 1]; s += 30) {
+  // 柱の位置: 前の柱から最大 30m。カーブでは、柱どうしを結ぶ架線が線路の真ん中から 0.25m 以上ずれない所までで止める
+  const ptAt = (s) => { let i = 0; while (i < n - 2 && S[i + 1] < s) i++; const t = (s - S[i]) / ((S[i + 1] - S[i]) || 1); return [P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t]; };
+  const stops = [];
+  for (let s = 2; s < S[n - 1]; ) {
+    stops.push(s);
+    const a = ptAt(s); let next = s + 4;
+    for (let L = 30; L >= 4; L -= 2) {
+      const e = s + L; if (e >= S[n - 1]) { next = S[n - 1] + 1; break; }
+      const b = ptAt(e), dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+      let ok = true;
+      for (let m = s + 2; m < e && ok; m += 2) { const q = ptAt(m); if (Math.abs((q[0] - a[0]) * dz - (q[1] - a[1]) * dx) / l > 0.25) ok = false; }
+      if (ok) { next = e; break; }
+    }
+    s = next;
+  }
+  for (const s of stops) {
     let i = 0; while (i < n - 2 && S[i + 1] < s) i++;
     const t = (s - S[i]) / ((S[i + 1] - S[i]) || 1), x = P[i][0] + (P[i + 1][0] - P[i][0]) * t, z = P[i][1] + (P[i + 1][1] - P[i][1]) * t, y = top[i] + (top[i + 1] - top[i]) * t;
     const [tx, tz] = dir(i), nx = tz, nz = -tx, sd = -1;   // 進む向き(西→東)の右 = 北(山側)
