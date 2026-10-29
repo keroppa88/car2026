@@ -327,9 +327,9 @@ export async function loadLamps(url, group, native) {
   return { setNight(on) { headMat.emissiveIntensity = on ? 2 : 0; poolMat.opacity = on ? 0.56 : 0; pools.visible = on; } };
 }
 
-// ---- 江ノ電(単線): 道路より 2m 高い砂利の路盤、レール、架線柱と架線、2両の電車 ----
+// ---- 江ノ電(単線): 道路より 30cm 高い砂利の路盤、レール、架線柱と架線、2両の電車 ----
 // data.pts: [[x, z, h], ...] 2m ごと(h: 道路からの高さ。踏切は 0)。tools/shonan/make_enoden.py
-export function buildEnoden(data, group, native) {
+export function buildEnoden(data, group, native, onRoad = null) {
   const P = data?.pts; if (!P || P.length < 2) return null;
   const n = P.length, ground = (x, z) => native?.at(x, z)?.y ?? 0;
   const S = [0]; for (let i = 1; i < n; i++) S.push(S[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
@@ -397,6 +397,36 @@ export function buildEnoden(data, group, native) {
     const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color: 0x8a8d90 })); m.name = 'enoden-poles'; m.userData.noLift = true; m.frustumCulled = false; group.add(m);
   }
   if (wire.length) { const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire), new THREE.LineBasicMaterial({ color: 0x2a2a2a })); l.name = 'enoden-wire'; l.frustumCulled = false; group.add(l); }
+  // 歩道・道路と線路のあいだの低い柵(コンクリートの柱 2.4m ごと、横木 2本、高さ 0.85m)。踏切はあける
+  if (onRoad) {
+    const fp = [], fb = [];
+    const fbox = (arr, cx, cy, cz, sx, sy, sz, ang) => { const g = new THREE.BoxGeometry(sx, sy, sz); g.rotateY(ang); g.translate(cx, cy, cz); const a = g.toNonIndexed().getAttribute('position').array; for (const v of a) arr.push(v); };
+    for (const sd of [1, -1]) {
+      let run = [];
+      const flush = () => {
+        if (run.length >= 2) {
+          for (let k = 0; k + 1 < run.length; k++) {
+            const [x0, y0, z0] = run[k], [x1, y1, z1] = run[k + 1], L = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0), y = Math.min(y0, y1);
+            for (const hh of [0.45, 0.78]) fbox(fb, (x0 + x1) / 2, y + hh, (z0 + z1) / 2, 0.12, 0.1, L, ang);
+            fbox(fp, x0, y + 0.42, z0, 0.16, 0.85, 0.16, ang);
+          }
+          const [x, y, z] = run.at(-1); fbox(fp, x, y + 0.42, z, 0.16, 0.85, 0.16, 0);
+        }
+        run = [];
+      };
+      for (let s = 0; s < S[n - 1]; s += 2.4) {
+        let i = 0; while (i < n - 2 && S[i + 1] < s) i++;
+        const t = (s - S[i]) / ((S[i + 1] - S[i]) || 1), x = P[i][0] + (P[i + 1][0] - P[i][0]) * t, z = P[i][1] + (P[i + 1][1] - P[i][1]) * t;
+        const [tx, tz] = dir(i), nx = tz * sd, nz = -tx * sd;
+        const fx = x + nx * (HALF - 0.1), fz = z + nz * (HALF - 0.1);
+        const road = P[i][2] >= 0.25 && [0.6, 1.2, 2.0].some((o) => onRoad(x + nx * (HALF + o), z + nz * (HALF + o)));
+        if (road) run.push([fx, top[i] + (top[i + 1] - top[i]) * t, fz]); else flush();
+      }
+      flush();
+    }
+    const mk = (arr, name) => { if (!arr.length) return; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xb8b5ad })); m.name = name; m.userData.noLift = true; m.frustumCulled = false; group.add(m); };
+    mk(fp, 'enoden-fence-posts'); mk(fb, 'enoden-fence-bars');
+  }
   // ---- 電車: 2両。上下は薄い緑、真ん中はクリーム色、窓は濃いグレー ----
   const makeCar = () => {
     const g = new THREE.Group(), L = 12.5, Wd = 2.6, H = 3.5;
@@ -439,9 +469,9 @@ export function buildEnoden(data, group, native) {
       c.position.set(q.x, q.y, q.z); c.rotation.set(0, Math.atan2(q2.x - q.x, q2.z - q.z), 0); c.visible = true;
     });
   };
-  // 当たり判定: 路盤の上(高さ 0.5m 以上)は車が入れない
+  // 当たり判定: 路盤の上(高さ 20cm 以上。踏切以外)は車が入れない
   const grid = new Map(), C = 10;
-  for (let i = 0; i < n; i++) { if (P[i][2] < 0.5) continue; const k = Math.floor(P[i][0] / C) + ',' + Math.floor(P[i][1] / C); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); }
+  for (let i = 0; i < n; i++) { if (P[i][2] < 0.2) continue; const k = Math.floor(P[i][0] / C) + ',' + Math.floor(P[i][1] / C); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); }
   const blocked = (x, z, r = 0.3) => {
     for (let gx = -1; gx <= 1; gx++) for (let gz = -1; gz <= 1; gz++) for (const i of grid.get((Math.floor(x / C) + gx) + ',' + (Math.floor(z / C) + gz)) || []) {
       if (i + 1 >= n) continue;

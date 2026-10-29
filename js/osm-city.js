@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, buildEnoden, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261030-eno-4';
+import { loadNativeSurfaces, loadFoam, loadWalls, loadLamps, buildEnoden, updateWaterTime, setSeaNight } from './native-surfaces.js?v=20261030-eno-6';
 
 // 日本橋ステージ: OpenStreetMap のデータ(map/nihonbashi-city.json、tools/osm_to_city.py で作る)から街を組み立てる。
 //  - 道路: OSM の道の中心線に、車線数 × 3.25m の幅で路面を敷く。上下線が別の道(一方通行の片側)はそのまま並ぶ。
@@ -1994,7 +1994,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (surfaceUrl) foamMesh = await loadFoam(surfaceUrl.replace('shonan-surfaces.json', 'shonan-foam.json'), city).catch(() => null);
     foamMesh?.userData.setNight(night);
     const wallData = surfaceUrl ? await loadWalls(surfaceUrl.replace('shonan-surfaces.json', 'shonan-walls.json'), city).catch(() => null) : null;
-    if (native && data.enoden) enoden = buildEnoden(data.enoden, city, native);   // 江ノ電
+    if (native && data.enoden) enoden = buildEnoden(data.enoden, city, native, (x, z) => native.at(x, z)?.kind === 1);   // 江ノ電(歩道・道路の脇には低い柵)
     if (surfaceUrl) lampCtl = await loadLamps(surfaceUrl.replace('shonan-surfaces.json', 'shonan-lamps.json'), city, native).catch((e) => { console.warn('街灯', e); return null; });
     lampCtl?.setNight(night);   // 読み込む前に夜になっていた時
     if (!native) {

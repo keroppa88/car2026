@@ -1,6 +1,6 @@
 """湘南: 江ノ電(単線)の線路を作る。OSM の江ノ島電鉄の線路をつないだ1本の線(地図の範囲内)。
 ・道路のすぐ脇(すき間 6m 未満)を通る所は、道路に隣接するよう寄せる。道路と重なる所はそのまま
-・線路(砂利の路盤)は道路より 2m 高い。道路の車道を横切る所(踏切)は道路の高さで、前後 15m は坂
+・線路(砂利の路盤)は道路より 30cm 高い。道路と交わる所(踏切)は道路の高さのまま
 ・路盤(幅 4m)にかかる建物は消す。林・緑地は路盤の所だけ外す
 出力: city.json の enoden = {pts: [[x,z,h],...]}(2m ごと)
 python3 tools/shonan/make_enoden.py → build_surfaces.py
@@ -116,9 +116,9 @@ for i in range(1, len(sm)): dist.append(dist[-1] + math.dist(sm[i - 1], sm[i]))
 cs = [dist[i] for i, c in enumerate(cross) if c]
 import bisect
 def h(s):
-    if not cs: return 2.0
+    if not cs: return 0.3
     i = bisect.bisect_left(cs, s); dmin = min(abs(s - cs[j]) for j in (i - 1, i) if 0 <= j < len(cs))
-    return round(min(2.0, dmin / 15 * 2.0), 2)
+    return round(min(0.3, dmin / 3 * 0.3), 2)   # 線路は道路より 30cm 高い。踏切は道路の高さのまま(前後 3m でならす)
 out = [[round(q[0], 2), round(q[1], 2), h(dist[i])] for i, q in enumerate(sm)]
 d['enoden'] = {'pts': out}
 bed = LineString([q[:2] for q in out]).buffer(HALF + 0.3, cap_style=2)
