@@ -1440,7 +1440,9 @@ function buildWoods(data, g, onRoad, blocked) {
           const s1 = Math.min(L, s0 + 24), h = 11 + R() * 5;
           const x0 = ax + tx * s0 + nx * depth, z0 = az + tz * s0 + nz * depth, x1 = ax + tx * s1 + nx * depth, z1 = az + tz * s1 + nz * depth;
           const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-          if (!pointIn(o, mx, mz) || onRoad(mx, mz) || onRoad(x0, z0) || onRoad(x1, z1)) continue;
+          if (!pointIn(o, mx, mz)) continue;
+          let hit = false; for (let t = 0; t <= 1.0001 && !hit; t += 1 / 6) hit = onRoad(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t) || !pointIn(o, x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);   // 道路・歩道や林の外にかかる絵は立てない
+          if (hit) continue;
           if (blocked.hitsBuilding && blocked.hitsBuilding(mx, mz, 1)) continue;
           const u0 = R() * 4, u1 = u0 + (s1 - s0) / 24;
           P.push(x0, 0, z0, x1, 0, z1, x1, h, z1, x0, 0, z0, x1, h, z1, x0, h, z0);
