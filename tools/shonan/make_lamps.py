@@ -108,6 +108,15 @@ for a, b in EXTRA:
             ang = math.atan2(b[1] - a[1], -(b[0] - a[0]))   # 腕木は電線と直角
             poles.append([x, z, round(ang, 3), -1]); ends.append(len(poles) - 1)
     wires.append(ends)
+# 江ノ電の線路の上(路盤 + 1.5m)には街灯・電柱を立てない。線路をまたぐ電線もなし
+if d.get('enoden'):
+    rail = LineString([q[:2] for q in d['enoden']['pts']]).buffer(3.5)
+    lamps = [l for l in lamps if not rail.contains(Point(l[0], l[1]))]
+    blamps = [l for l in blamps if not rail.contains(Point(l[0], l[1]))]
+    keep = [i for i, p in enumerate(poles) if not rail.contains(Point(p[0], p[1]))]
+    remap = {old_i: new_i for new_i, old_i in enumerate(keep)}
+    wires = [[remap[a], remap[b]] for a, b in wires if a in remap and b in remap and not LineString([poles[a][:2], poles[b][:2]]).intersects(rail)]
+    poles = [poles[i] for i in keep]
 (ROOT / 'map/shonan-lamps.json').write_text(json.dumps({'lamps': lamps, 'poles': [p[:3] for p in poles], 'wires': wires, 'bridgeLamps': blamps}, separators=(',', ':')))
 print('橋の街灯', len(blamps), '本(長い橋', len(bridges), '本)')
 print('街灯', len(lamps), '電柱', len(poles), '電線の区間', len(wires), 'ルート', round(route.length), 'm')

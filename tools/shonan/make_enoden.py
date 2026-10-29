@@ -66,30 +66,51 @@ outer = [LineString(r['pts']).buffer(W(r) / 2 + (0 if r.get('bridge') else SW), 
 carr = [LineString(r['pts']).buffer(W(r) / 2, cap_style=2, join_style=2) for r in R]
 to, tc = STRtree(outer), STRtree(carr)
 HALF = 2.0   # 路盤の半幅
+lines_ = [LineString(r['pts']) for r in R]
+def road_dir(j, p):
+    L = lines_[j]; s0 = L.project(p); a = L.interpolate(max(0, s0 - 2)); b = L.interpolate(min(L.length, s0 + 2))
+    l = math.hypot(b.x - a.x, b.y - a.y) or 1; return (b.x - a.x) / l, (b.y - a.y) / l
 n = int(line.length // 2) + 1
-pts = []
+base_pts, cross, offs = [], [], []
 for k in range(n):
     s = min(line.length, k * 2.0); p = line.interpolate(s)
     a = line.interpolate(max(0, s - 3)); b = line.interpolate(min(line.length, s + 3))
-    tx, tz = b.x - a.x, b.y - a.y; l = math.hypot(tx, tz) or 1; nx, nz = tz / l, -tx / l
-    shift = 0.0
-    if not any(carr[j].contains(p) for j in tc.query(p)):
-        # 左右それぞれ、路盤の縁から道路(歩道の外側)までのすき間
+    tx, tz = b.x - a.x, b.y - a.y; l = math.hypot(tx, tz) or 1; tx, tz = tx / l, tz / l; nx, nz = tz, -tx
+    base_pts.append((p, nx, nz))
+    near = [j for j in to.query(p.buffer(HALF)) if outer[j].distance(p) < HALF]
+    crossing = [j for j in near if abs(sum(u * v for u, v in zip(road_dir(j, p), (tx, tz)))) < 0.7]   # 45度より直角に近い = 踏切
+    parallel = [j for j in near if j not in crossing]
+    cross.append(any(carr[j].buffer(1.0).contains(p) for j in crossing))
+    off = 0.0
+    if parallel and not cross[-1]:
+        # 並行な道路(歩道まで)と重ならない、いちばん近い位置へずらす
+        cands = []
         for sd in (1, -1):
-            for dd in [x * 0.25 for x in range(0, 33)]:
-                q = Point(p.x + nx * sd * (HALF + dd), p.y + nz * sd * (HALF + dd))
-                if any(outer[j].contains(q) for j in to.query(q)):
-                    if 0.25 < dd < 6 and abs(shift) < 1e-9: shift = sd * (dd - 0.1)
-                    break
-    pts.append([p.x + nx * shift, p.y + nz * shift])
-# 寄せ量をなめらかに(急に曲がらないよう 7 点の平均)
-sm = []
-for i in range(len(pts)):
-    xs = pts[max(0, i - 3): i + 4]
-    sm.append([sum(q[0] for q in xs) / len(xs), sum(q[1] for q in xs) / len(xs)])
-sm[0], sm[-1] = pts[0], pts[-1]
-# 高さ: 車道の上は 0(踏切)、ほかは 2m。坂は 15m で 2m
-cross = [any(carr[j].buffer(1.0).contains(Point(q)) for j in tc.query(Point(q))) for q in sm]
+            for dd in [x * 0.5 for x in range(1, 61)]:
+                q = Point(p.x + nx * sd * dd, p.y + nz * sd * dd)
+                if not any(outer[j].distance(q) < HALF + 0.1 for j in to.query(q.buffer(HALF + 0.1)) if j not in crossing): cands.append(sd * dd); break
+        if cands: off = min(cands, key=abs)
+    offs.append(off)
+# ずらし量をなめらかに(急に曲がらないよう)。重なりが残らないよう、まわりの大きい方を使ってからならす
+def smooth(o):
+    m = [max(o[max(0, i - 10): i + 11], key=abs) if any(o[max(0, i - 10): i + 11]) else 0 for i in range(n)]
+    return [sum(m[max(0, i - 9): i + 10]) / len(m[max(0, i - 9): i + 10]) for i in range(n)]
+def overlaps(i, o):
+    p, nx, nz = base_pts[i]; q = Point(p.x + nx * o, p.y + nz * o)
+    return not cross[i] and any(outer[j].distance(q) < HALF and abs(sum(u * v for u, v in zip(road_dir(j, q), (-nz, nx)))) >= 0.7 for j in to.query(q.buffer(HALF)))
+sm_off = smooth(offs)
+for it in range(4):   # ならしたせいで重なりが残った所は、もう一度ずらし直す
+    bad = 0
+    for i in range(n):
+        if not overlaps(i, sm_off[i]): continue
+        bad += 1; p, nx, nz = base_pts[i]; sd = 1 if sm_off[i] >= 0 else -1
+        for dd in [x * 0.5 for x in range(1, 41)]:
+            o = sm_off[i] + sd * dd
+            if not overlaps(i, o): offs[i] = o if abs(o) > abs(offs[i]) else offs[i]; break
+    if not bad: break
+    sm_off = smooth(offs)
+sm = [[p.x + nx * o, p.y + nz * o] for (p, nx, nz), o in zip(base_pts, sm_off)]
+print('並行で重なる所をずらした', sum(1 for o in offs if o), '点  踏切', sum(cross), '点')
 dist = [0.0]
 for i in range(1, len(sm)): dist.append(dist[-1] + math.dist(sm[i - 1], sm[i]))
 cs = [dist[i] for i, c in enumerate(cross) if c]
@@ -103,6 +124,9 @@ d['enoden'] = {'pts': out}
 bed = LineString([q[:2] for q in out]).buffer(HALF + 0.3, cap_style=2)
 b0 = len(d['buildings']); d['buildings'] = [b for b in d['buildings'] if not Polygon(b['p']).buffer(0).intersects(bed)]
 M.cut(bed, ['woods', 'parks'])
+wide = LineString([q[:2] for q in out]).buffer(HALF + 1.5, cap_style=2)
+for k in ('medians', 'strips'): d[k] = [m for m in d[k] if not wide.contains(Point(m[0], m[1]))]
+d['buildings'] = [b for b in d['buildings'] if not Polygon(b['p']).buffer(0).intersects(wide)]
 d['trees'] = [t for t in d.get('trees', []) if not bed.contains(Point(t[0], t[1]))]
 print('点', len(out), ' 踏切', sum(1 for q in out if q[2] == 0), '点  消した建物', b0 - len(d['buildings']))
 FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))

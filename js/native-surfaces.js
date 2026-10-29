@@ -435,5 +435,16 @@ export function buildEnoden(data, group, native) {
     }
     return false;
   };
-  return { update, blocked };
+  // 線路の上(高さに関係なく)か: 柵・植え込みなどを置かない判定
+  const allGrid = new Map();
+  for (let i = 0; i < n; i++) { const k = Math.floor(P[i][0] / C) + ',' + Math.floor(P[i][1] / C); if (!allGrid.has(k)) allGrid.set(k, []); allGrid.get(k).push(i); }
+  const onRail = (x, z, r = 0.5) => {
+    for (let gx = -1; gx <= 1; gx++) for (let gz = -1; gz <= 1; gz++) for (const i of allGrid.get((Math.floor(x / C) + gx) + ',' + (Math.floor(z / C) + gz)) || []) {
+      if (i + 1 >= n) continue;
+      const [ax, az] = P[i], [bx, bz] = P[i + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if ((ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2 < (HALF + r) ** 2) return true;
+    }
+    return false;
+  };
+  return { update, blocked, onRail };
 }
