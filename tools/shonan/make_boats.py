@@ -26,7 +26,7 @@ boats = []
 def hull(x, z, tx, tz, L, W):   # 船の形(長方形)
     return Polygon([(x + tx * L / 2 + tz * W / 2, z + tz * L / 2 - tx * W / 2), (x + tx * L / 2 - tz * W / 2, z + tz * L / 2 + tx * W / 2),
                     (x - tx * L / 2 - tz * W / 2, z - tz * L / 2 + tx * W / 2), (x - tx * L / 2 + tz * W / 2, z - tz * L / 2 - tx * W / 2)])
-PORTS = [('大磯港', -8895, 447, 260), ('平塚漁港', -4600, -500, 260), ('須賀港', -4531, -1049, 150)]
+PORTS = []   # 漁船は指示で取りやめ(大磯港 -8895,447 / 平塚漁港 -4600,-500 / 須賀港 -4531,-1049)
 for name, px, pz, rad in PORTS:
     zone = Point(px, pz).buffer(rad)
     sea = water.intersection(zone); inner = sea.buffer(-0.4)
