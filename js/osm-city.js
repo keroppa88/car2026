@@ -1070,9 +1070,60 @@ const SMALL_COLORS = [0xb59a68, 0xa8925f, 0x8f9194, 0x9a9c9e, 0xc9c9c4, 0xd6d4ce
 const SHONAN_SMALL_COLORS = [0xd3d4d0, 0xf1f0eb, 0xcdb89c];
 // TOKYO の小さな建物: 白・薄いグレー・茶色
 const TOKYO_SMALL_COLORS = [0xf1f0eb, 0xc9cac7, 0xa07f60];
+// 低い建物の窓(絵は使わずシェーダーで描く)。壁を 4m 前後の区画に分け、
+// 1階: 地面からの大きなガラス(ショーウインドウ・入口。区画ごとに中の仕切りや扉の横枠を変える)、2階より上: 階ごとに大きな窓
+function shopWindowMat() {
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 wl; varying vec2 vWU; varying vec2 vWL;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWU = uv; vWL = wl;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWU; varying vec2 vWL;\nfloat wh(float n) { return fract(sin(n * 91.7 + vWL.x * 13.1) * 43758.5); }')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float L = vWL.x, H = vWL.y, u = vWU.x, y = vWU.y;
+          if (L > 2.2) {
+            // 1 面の 1 列に 1 つか 2 つまで。大きめ
+            // 1階建て: 入口 1 + 窓 1(短い壁はどちらか 1 つ)。2階以上: 1階は入口 1 つ、上の階は窓 2 つ(短い壁は 1 つ)
+            bool one = H < 5.5;
+            vec3 glass = mix(vec3(0.16, 0.21, 0.25), vec3(0.42, 0.50, 0.56), smoothstep(0.0, 1.0, mod(y, 3.0) / 3.0));
+            vec3 frame = vec3(0.30, 0.31, 0.32);
+            if (y < 2.6) {
+              float nb = one && L >= 6.0 ? 2.0 : 1.0, bw = L / nb, k = floor(u / bw), x = u - k * bw, cx = abs(x - bw * 0.5);
+              bool door = nb > 1.5 ? (k == floor(wh(1.0) * 2.0)) : (!one || wh(2.0) < 0.5);
+              float hw = door ? min(1.0, bw * 0.5 - 0.4) : min(1.6, bw * 0.5 - 0.4);   // 入口 幅 2m、窓(ショーウインドウ) 幅 3.2m
+              float top = door ? 2.4 : 2.3;
+              if (cx < hw && y < top) {
+                vec3 c = glass;
+                if (y > top - 0.1 || cx > hw - 0.08) c = frame;                       // 外枠
+                else if (door && cx < 0.04) c = frame;                                 // 両開きの合わせ目
+                else if (door && y > 2.0 && y < 2.07) c = frame;                       // 入口の上の横枠
+                else if (!door && y < 0.15) c = frame;                                 // ショーウインドウの下枠(地面に接する)
+                diffuseColor.rgb = c;
+              }
+            }
+            // 1階と2階の間の帯(看板のような少し濃い色)
+            else if (y > 2.9 && y < 3.3 && !one) diffuseColor.rgb *= 0.85;
+            // 2階より上: 階ごと(3m)に窓 2 つ(短い壁は 1 つ)。屋上の近くは窓にしない
+            if (y > 3.0 && !one) {
+              float nb = L >= 6.0 ? 2.0 : 1.0, bw = L / nb, k = floor(u / bw), x = u - k * bw, cx = abs(x - bw * 0.5);
+              float b0 = 3.0 + floor((y - 3.0) / 3.0) * 3.0, y0 = b0 + 0.8, y1 = b0 + 2.4, hw = min(1.2, bw * 0.5 - 0.5);
+              if (y1 < H - 0.4 && y > y0 && y < y1 && cx < hw) {
+                vec3 c = glass * 0.95;
+                if (y > y1 - 0.07 || y < y0 + 0.07 || cx > hw - 0.07 || cx < 0.035) c = frame;
+                diffuseColor.rgb = c;
+              }
+            }
+          }
+        }`);
+  };
+  return mat;
+}
 function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
   const walls = STYLES.map(() => ({ p: [], u: [], c: [], n: [], f: [], r: [] }));
   const plain = { p: [], u: [], c: [], n: [], f: [], r: [] };   // 小さい構築物: 窓なしのグレー一色
+  const shop = { p: [], u: [], c: [], n: [], f: [], r: [], w: [] };   // 湘南: 海側・幹線道路沿いの窓なしだった建物。大きな窓、1階は地面までのガラス(入口・ショーウインドウ)
   const roofShapes = [];
   data.buildings.forEach((b, i) => {
     const R = seeded(i * 131 + 17);
@@ -1095,7 +1146,8 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
     if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
     const plainSmall = b.plain || (!!opts.smallColors && !lk && !b.grey && area < 400 && h <= 13);   // plain: 指定の窓なしの建物
     if (plainSmall) wallHex = b.plain ? 0xf1f0eb : opts.smallColors[Math.floor(R() * opts.smallColors.length)];
-    const col = new THREE.Color(wallHex), S = STYLES[style], W = plainSmall ? plain : walls[style];
+    const isShop = plainSmall && !b.plain && b.white && !!opts.smallColors;   // 窓なしだった海側・幹線道路沿いの建物(1階〜3階以上)
+    const col = new THREE.Color(wallHex), S = STYLES[style], W = isShop ? shop : plainSmall ? plain : walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
@@ -1111,7 +1163,8 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
         for (const [ya, yb, bc, sf] of bands) {
           const va = ya / S.tileH, vb = yb / S.tileH;
           W.p.push(x0, ya + gy, z0, x1, ya + gy, z1, x1, yb + gy, z1, x0, ya + gy, z0, x1, yb + gy, z1, x0, yb + gy, z0);
-          W.u.push(u0, va, u1, va, u1, vb, u0, va, u1, vb, u0, vb);
+          if (W === shop) { W.u.push(0, ya, len, ya, len, yb, 0, ya, len, yb, 0, yb); for (let q = 0; q < 6; q++) W.w.push(len, h); }   // 窓の絵: u = 壁に沿った m、v = 地面からの m
+          else W.u.push(u0, va, u1, va, u1, vb, u0, va, u1, vb, u0, vb);
           for (let q = 0; q < 6; q++) { W.c.push(bc.r, bc.g, bc.b); W.n.push(nx, 0, nz); W.f.push(sf); W.r.push(litR); }
         }
         s += len;
@@ -1132,6 +1185,7 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
   };
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i])); });
   if (plain.p.length) g.add(mk(plain, roofMat));
+  if (shop.p.length) { const m = mk(shop, shopWindowMat()); m.geometry.setAttribute('wl', new THREE.Float32BufferAttribute(shop.w, 2)); m.name = 'shop-buildings'; g.add(m); }
   // 屋上: 形ごとに作って1つにまとめる
   const P = [], C = [];
   for (const r of roofShapes) {
