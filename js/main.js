@@ -9059,7 +9059,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     document.body.dataset.shonanTraffic = String(shonanTraffic.cars.filter((c) => c.group.visible).length);
   }
-  const DESTS = [['east', '稲村ヶ崎'], ['west', '大磯']];
+  // 並び順: 稲村ヶ崎・湘南大橋・大磯のスタート地点のうち、稲村ヶ崎がいちばん近い時は 大磯 → 稲村ヶ崎、それ以外(湘南大橋など真ん中・大磯の近く)は 稲村ヶ崎 → 大磯
+  let DESTS = [['east', '稲村ヶ崎'], ['west', '大磯']];
+  function orderDests() {
+    const st = MAP_CONFIG.starts || [];
+    const d2 = (k) => { const q = st.find((s) => s.key === k); return q ? (q.x - player.pos.x) ** 2 + (q.z - player.pos.z) ** 2 : Infinity; };
+    const nearInamura = d2('inamuragasaki') < Math.min(d2('shonanohashi'), d2('oiso'));
+    DESTS = nearInamura ? [['west', '大磯'], ['east', '稲村ヶ崎']] : [['east', '稲村ヶ崎'], ['west', '大磯']];
+  }
   let destSel = 0;
   function paintDest() {
     destMenuEl.innerHTML = '<div style="margin-bottom:10px">自動運転目的地</div>'
@@ -9075,7 +9082,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       destMenuEl.addEventListener('click', (e) => { const d = e.target.closest('[data-d]')?.dataset.d; if (d) chooseDest(d); });
       document.body.appendChild(destMenuEl);
     }
-    destSel = 0; paintDest();
+    orderDests(); destSel = 0; paintDest();
     destMenuEl.style.display = 'block'; destMenuOpen = true;
   }
   function closeDestMenu() { if (destMenuEl) destMenuEl.style.display = 'none'; destMenuOpen = false; }
