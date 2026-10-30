@@ -654,6 +654,15 @@ function slab(rings, y0, depth, out) {
     g.dispose();
   }
 }
+// 線路の砂利の絵(茶色の小石)。1枚 = 6m 四方
+function makeGravelTexture() {
+  const W = 256, c = document.createElement('canvas'); c.width = W; c.height = W;
+  const g = c.getContext('2d'), R = seeded(5151);
+  g.fillStyle = '#7e6a58'; g.fillRect(0, 0, W, W);
+  for (let i = 0; i < 9000; i++) { const l = 30 + R() * 22; g.fillStyle = `hsl(${22 + R() * 14},${16 + R() * 14}%,${l}%)`; g.fillRect(R() * W, R() * W, 1 + R() * 2.5, 1 + R() * 2); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
 // れんがの壁の絵(1枚 = 横 4m × 縦 2m)
 function makeBrickTexture() {
   const W = 256, H = 128, c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -734,7 +743,7 @@ function makeWaterMask(data, margin) {
 function buildRailways(data, g, onRoad) {
   // 川・濠の上とそのまわり 8m には柱・壁を立てない。高架のまわりだけ 2m 角の升目に水を塗っておく(速さのため)
   const overWater = makeWaterMask(data, 8);
-  const deck = { p: [], n: [] }, rail = [], conc = { p: [], n: [] };
+  const deck = { p: [], n: [] }, rail = [], ballast = [], conc = { p: [], n: [] };
   const grey = { p: [], n: [] }, yr = data.yaesu, lid = { p: [], n: [] }, lidTop = { p: [], n: [] };   // lid: 下面(茶)、lidTop: 上面(グレー)。模様なしの一枚板
   const onYaesu = (x, z) => {
     if (!yr) return false;
@@ -758,7 +767,7 @@ function buildRailways(data, g, onRoad) {
       continue;
     }
     if (v.concrete) {   // 空中に浮いたコンクリートの高架: 上面・下面・厚み 1.6m の縁だけ
-      for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1], tp[k + 2]); conc.n.push(0, 1, 0); }
+      { const t0 = lidTop.p.length; for (let k = 0; k < tp.length; k += 3) { lidTop.p.push(tp[k], tp[k + 1], tp[k + 2]); lidTop.n.push(0, 1, 0); } const sub = lidTop.p.splice(t0); upward(sub); lidTop.p.push(...sub); }   // 上面は砂利(線路)
       for (let k = 0; k < tp.length; k += 3) { conc.p.push(tp[k], tp[k + 1] - 1.6, tp[k + 2]); conc.n.push(0, -1, 0); }
       for (const ring of v.rings) for (let i = 0; i < ring.length; i++) {
         const [ax, az, ah] = ring[i], [bx, bz, bh] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
@@ -849,7 +858,8 @@ function buildRailways(data, g, onRoad) {
       const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue;
       const H = rl.hs ? (rl.hs[i] + rl.hs[i + 1]) / 2 : rl.h;
       const ang = Math.atan2(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L;
-      for (const sd of [-0.75, 0.75]) rect((x0 + x1) / 2 + tz * sd, (z0 + z1) / 2 - tx * sd, ang, L, 0.14, H + 0.04, rail);
+      rect((x0 + x1) / 2, (z0 + z1) / 2, ang, L + 0.05, 2.6, H + 0.03, ballast);   // 枕木の帯(少し濃い砂利)
+      for (const sd of [-0.75, 0.75]) rect((x0 + x1) / 2 + tz * sd, (z0 + z1) / 2 - tx * sd, ang, L + 0.05, 0.14, H + 0.07, rail);
     }
   }
   const pf = { p: [], n: [] };
@@ -862,7 +872,13 @@ function buildRailways(data, g, onRoad) {
   m1.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(deck.u, 2));
   m1.name = 'rail-viaduct'; g.add(m1);
   if (lid.p.length) { const ml = solidMesh(lid, new THREE.MeshLambertMaterial({ color: 0x7a4232, side: THREE.DoubleSide })); ml.name = 'rail-viaduct-lid'; g.add(ml); }
-  if (lidTop.p.length) { const mt = solidMesh(lidTop, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mt.name = 'rail-viaduct-top'; g.add(mt); }   // 線路の上面はグレー
+  if (lidTop.p.length) {   // 線路の上面は茶色の砂利(絵は地図の座標で 6m 四方を繰り返す)
+    const mt = solidMesh(lidTop, new THREE.MeshLambertMaterial({ map: makeGravelTexture(), side: THREE.DoubleSide }));
+    const uv = []; for (let k = 0; k < lidTop.p.length; k += 3) uv.push(lidTop.p[k] / 6, lidTop.p[k + 2] / 6);
+    mt.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); mt.name = 'rail-viaduct-top'; g.add(mt);
+  }
+  if (ballast.length) { const mb = flatMesh(ballast, 0x5d4f45); mb.name = 'rail-ballast'; g.add(mb); }
+  if (rail.length) { const mr = flatMesh(rail, 0x9c9a96); mr.name = 'rail-steel'; g.add(mr); }
   if (grey.p.length) g.add(solidMesh(grey, new THREE.MeshLambertMaterial({ color: 0xc9cbcc, side: THREE.DoubleSide })));
   if (yr) {   // 八重洲口の白い斜めの屋根(グランルーフ)と、斜めの柱
     const [ax, az] = yr.a, [bx, bz] = yr.b, [nx, nz] = yr.n, H = yr.h, roof = { p: [], n: [] }, mast = { p: [], n: [] };
@@ -894,7 +910,15 @@ function buildRailways(data, g, onRoad) {
   if (conc.p.length) { const mc = solidMesh(conc, new THREE.MeshLambertMaterial({ color: CONCRETE, side: THREE.DoubleSide })); mc.name = 'rail-viaduct-concrete'; g.add(mc); }
   const m2 = solidMesh(pf, new THREE.MeshLambertMaterial({ color: 0xbdbcb6 })); g.add(m2);
   const m3 = solidMesh(roof, new THREE.MeshLambertMaterial({ color: 0xd6d8d9, side: THREE.DoubleSide })); m3.name = 'platform-roof'; g.add(m3);
-  // レールは描かない(上空からしか見えないので)
+  // 東京駅のホームの屋根(白・薄い水色・グレー)と有楽町駅の白い屋根(tools/tokyo_station_roofs.py)。細い柱で支える
+  const byCol = new Map(), post = { p: [], n: [] };
+  for (const r of data.stationRoofs || []) {
+    if (!byCol.has(r.c)) byCol.set(r.c, { p: [], n: [] });
+    slab([{ o: r.o, h: [] }], r.y, 0.5, byCol.get(r.c));
+    for (const [x, z] of r.posts || []) boxInto(post, x, (r.y + (r.y - 5.5)) / 2, z, 0.35, 5.5, 0.35, 0);
+  }
+  for (const [c, o] of byCol) { const m = solidMesh(o, new THREE.MeshLambertMaterial({ color: new THREE.Color(c) })); m.name = 'station-roof'; g.add(m); }
+  if (post.p.length) g.add(solidMesh(post, new THREE.MeshLambertMaterial({ color: 0xd8d8d4 })));
 }
 
 // ---- 首都高・KK線(PLATEAU の橋梁モデルの形)。見た目だけで、下はくぐれる ----
