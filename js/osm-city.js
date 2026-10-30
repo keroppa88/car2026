@@ -1842,15 +1842,17 @@ function buildBoats(data, g, native) {
       add(grp, tri([0, 1.5, L * 0.08, 0, 0.5 + mh * 0.97, L * 0.08, 0, 1.5, L * 0.08 - L * 0.4]), mats.sail, 0.03, 0, 0);          // 主帆
       add(grp, tri([0, 1.0, L * 0.47, 0, 0.5 + mh * 0.85, L * 0.08 + 0.1, 0, 1.2, L * 0.1 + 0.2]), mats.sail, -0.03, 0, 0);        // 前の帆
     } else {
+      // 小型漁船: 全部白。操舵室は船尾寄り、前は長い甲板、船首は少し高い。窓だけ暗い色
       const W = L * 0.3;
-      add(grp, hullGeo(L, W, 1.1, L * 0.35), mats.white, 0, -0.5, 0);
-      add(grp, hullGeo(L * 1.002, W * 1.01, 0.18, L * 0.35), mats.blue, 0, 0.42, 0);                                      // 舷の青い帯
-      add(grp, hullGeo(L * 0.96, W * 0.92, 0.06, L * 0.33), mats.deck, 0, 0.6, 0);                                          // 甲板
-      add(grp, new THREE.BoxGeometry(W * 0.62, 1.5, L * 0.22), mats.white, 0, 1.4, -L * 0.02);                               // 操舵室
-      add(grp, new THREE.BoxGeometry(W * 0.64, 0.45, L * 0.18), mats.glass, 0, 1.75, -L * 0.02);                             // 窓
-      add(grp, new THREE.BoxGeometry(W * 0.7, 0.08, L * 0.25), mats.red, 0, 2.18, -L * 0.02);                                // 屋根
-      add(grp, new THREE.CylinderGeometry(0.05, 0.06, 3.2, 5), mats.pole, 0, 3.6, -L * 0.02);                               // マスト
-      add(grp, new THREE.CylinderGeometry(0.04, 0.04, 1.6, 5), mats.pole, 0, 4.6, -L * 0.02).rotation.z = Math.PI / 2;
+      add(grp, hullGeo(L, W, 1.15, L * 0.38), mats.white, 0, -0.5, 0);
+      add(grp, hullGeo(L * 0.5, W * 0.98, 0.35, L * 0.19), mats.white, 0, 0.6, L * 0.25);                                  // 船首の高い所
+      add(grp, hullGeo(L * 0.95, W * 0.9, 0.05, L * 0.36), mats.deck, 0, 0.62, 0);                                         // 甲板
+      add(grp, new THREE.BoxGeometry(W * 0.66, 1.55, L * 0.26), mats.white, 0, 1.4, -L * 0.2);                             // 操舵室
+      add(grp, new THREE.BoxGeometry(W * 0.68, 0.42, L * 0.2), mats.glass, 0, 1.78, -L * 0.2);                             // 窓
+      add(grp, new THREE.BoxGeometry(W * 0.74, 0.1, L * 0.3), mats.white, 0, 2.2, -L * 0.2);                               // 屋根
+      add(grp, new THREE.CylinderGeometry(0.05, 0.06, 3.0, 5), mats.white, 0, 3.6, -L * 0.2);                              // マスト
+      add(grp, new THREE.CylinderGeometry(0.04, 0.04, 1.4, 5), mats.white, 0, 4.4, -L * 0.2).rotation.z = Math.PI / 2;
+      add(grp, new THREE.CylinderGeometry(0.04, 0.05, 2.2, 5), mats.white, 0, 1.6, L * 0.32);                              // 前の柱
     }
     grp.position.set(b.x, wl, b.z); grp.rotation.y = b.a;
     grp.updateMatrixWorld(true); grp.traverse((m) => { if (m.isMesh) { m.matrixAutoUpdate = false; m.updateMatrix(); m.userData.noLift = true; } });
