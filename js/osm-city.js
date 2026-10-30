@@ -1638,43 +1638,72 @@ function buildHedges(data, g, native, railCheck = null) {
   const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   m.matrixAutoUpdate = false; m.name = 'median-hedges'; m.userData.noLift = true; g.add(m);
 }
-// 線路わきの草むら(h=1: 雑草など 高さ 1m)・茂み(h=2: 雑木林のような 高さ 2m)。線に沿って箱を並べ、高さ・幅・色を少しずつ変える
-const GRASS_GREENS = [0x6f8a3a, 0x7d9442, 0x8a9a4a, 0x5f7c34, 0x93a052].map((c) => new THREE.Color(c));
-const THICKET_GREENS = [0x2f4a22, 0x3a5528, 0x29421e, 0x44602e, 0x34502a].map((c) => new THREE.Color(c));
+// 線路わきの草むら(h=1: 雑草など 高さ 1m)・茂み(h=2: 藪・雑木林 高さ 2m)。どちらも縦の板にギザギザのシルエットの絵
+// 茂みは板 1 枚、草むらは 30cm 離して 2 枚重ね
+function bushTexture(tall) {
+  const W = 1024, H = tall ? 256 : 128, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), R = seeded(tall ? 77 : 33);
+  const cols = tall ? ['#24391a', '#2e4620', '#355126', '#2a4019', '#3f5c2b', '#1e3115'] : ['#5f7a30', '#6f8a3a', '#7d9442', '#8a9a4a', '#56702b', '#93a052'];
+  const wrap = (f) => { for (const o of [-W, 0, W]) f(o); };   // 横につなぎ目なく繰り返す
+  if (tall) {
+    // 葉の塊を重ねて、上の縁がでこぼこな藪の形に
+    for (let i = 0; i < 260; i++) {
+      const cx = R() * W, top = H * (0.05 + 0.35 * Math.abs(Math.sin(cx / W * Math.PI * 6 + R() * 0.6)) * (0.6 + R() * 0.4)), r = 14 + R() * 30;
+      const cy = top + r + R() * (H - top - r), col = cols[Math.floor(R() * cols.length)];
+      wrap((o) => { x.fillStyle = col; x.beginPath(); for (let k = 0; k < 14; k++) { const t = k / 14 * Math.PI * 2, rr = r * (0.7 + R() * 0.5); x.lineTo(o + cx + Math.cos(t) * rr, cy + Math.sin(t) * rr * 0.9); } x.fill(); });
+    }
+    x.fillStyle = cols[5]; x.fillRect(0, H * 0.75, W, H * 0.25);   // 根元は詰まった暗い色
+    // 縁のギザギザ(細い葉先)
+    for (let i = 0; i < 900; i++) {
+      const px = R() * W, d = x.getImageData(Math.floor(px), 0, 1, H).data; let y = 0; while (y < H && d[y * 4 + 3] < 128) y++;
+      if (y >= H) continue; const l = 4 + R() * 12, col = cols[Math.floor(R() * cols.length)];
+      wrap((o) => { x.strokeStyle = col; x.lineWidth = 2 + R() * 2; x.beginPath(); x.moveTo(o + px, y + 3); x.lineTo(o + px + (R() - 0.5) * 10, y - l); x.stroke(); });
+    }
+  } else {
+    // 雑草: 細い三角の葉を無数に、高さをばらばらに
+    x.fillStyle = cols[4]; x.fillRect(0, H * 0.7, W, H * 0.3);   // 根元は詰まっている
+    for (let i = 0; i < 1400; i++) {
+      const px = R() * W, h = H * (0.3 + 0.7 * Math.pow(R(), 0.7)), w = 5 + R() * 8, lean = (R() - 0.5) * 18, col = cols[Math.floor(R() * cols.length)];
+      wrap((o) => { x.fillStyle = col; x.beginPath(); x.moveTo(o + px - w / 2, H); x.lineTo(o + px + w / 2, H); x.lineTo(o + px + lean, H - h); x.fill(); });
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  if (!tall) { t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; }   // 細い葉が遠くで黒ずまないように
+  return t;
+}
 function buildBushes(data, g, native, railCheck = null) {
-  const o = { p: [], n: [], c: [] };
-  for (const b of data.bushes || []) {
-    const tall = b.h >= 2, H = tall ? 2 : 1, W = tall ? 1.6 : 1.2, cols = tall ? THICKET_GREENS : GRASS_GREENS;
-    const R = seeded(Math.round(b.pts[0][0] * 13 + b.pts[0][1] * 7));
-    for (let i = 0; i + 1 < b.pts.length; i++) {
-      const [ax, az] = b.pts[i], [bx, bz] = b.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 0.1) continue;
-      const tx = (bx - ax) / L, tz = (bz - az) / L, ang = Math.atan2(tx, tz), m = Math.max(1, Math.round(L / 1.5)), seg = L / m;
-      for (let k = 0; k < m; k++) {
-        const side = (R() - 0.5) * 0.4, cx = ax + tx * seg * (k + 0.5) - tz * side, cz = az + tz * seg * (k + 0.5) + tx * side;
-        if (railCheck && railCheck(cx, cz, W / 2 + 0.3)) continue;   // 線路の上には置かない
-        const y0 = native?.at(cx, cz)?.y ?? 0, y1 = y0 + H * (0.8 + R() * 0.4), w = W * (0.85 + R() * 0.3), l = seg * 1.15;
-        const col = cols[Math.floor(R() * cols.length)];
-        const hx = tx * l / 2, hz = tz * l / 2, nx = tz * w / 2, nz = -tx * w / 2;
-        const c = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([p, q]) => [cx + hx * p + nx * q, cz + hz * p + nz * q]);
-        const top = []; rect(cx, cz, ang, l, w, y1, top); upward(top);
-        for (let q = 0; q < top.length; q += 3) { o.p.push(top[q], top[q + 1], top[q + 2]); o.n.push(0, 1, 0); o.c.push(col.r, col.g, col.b); }
-        for (let e = 0; e < 4; e++) {
-          const [px, pz] = c[e], [qx, qz] = c[(e + 1) % 4], d = Math.hypot(qx - px, qz - pz);
-          let ex = (qz - pz) / d, ez = -(qx - px) / d;
-          if (ex * (px - cx) + ez * (pz - cz) < 0) { ex = -ex; ez = -ez; }
-          o.p.push(px, y0, pz, qx, y0, qz, qx, y1, qz, px, y0, pz, qx, y1, qz, px, y1, pz);
-          for (let q = 0; q < 6; q++) { o.n.push(ex, 0, ez); o.c.push(col.r * 0.85, col.g * 0.85, col.b * 0.85); }
+  for (const tall of [true, false]) {
+    const H = tall ? 2 : 1, TILE = tall ? 8 : 4, layers = tall ? [0] : [-0.15, 0.15];   // 絵 1 枚 = 横 8m / 4m
+    const p = [], n = [], uv = [], idx = [];
+    for (const b of data.bushes || []) {
+      if ((b.h >= 2) !== tall) continue;
+      const R = seeded(Math.round(b.pts[0][0] * 13 + b.pts[0][1] * 7)), hh = H * (0.9 + R() * 0.2);
+      for (const off of layers) {
+        let u = R() * TILE, prev = null;
+        for (let i = 0; i + 1 < b.pts.length; i++) {
+          const [ax, az] = b.pts[i], [bx, bz] = b.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 0.1) continue;
+          const tx = (bx - ax) / L, tz = (bz - az) / L, m = Math.max(1, Math.ceil(L / 1)), ox = -tz * off, oz = tx * off;
+          for (let k = 0; k <= m; k++) {
+            const cx = ax + tx * L * k / m + ox, cz = az + tz * L * k / m + oz, y0 = (native?.at(cx, cz)?.y ?? 0) - 0.05;
+            const ok = !(railCheck && railCheck(cx, cz, 0.3));   // 線路の上には置かない
+            if (prev && prev.ok && ok && !(k === 0)) {
+              const v = p.length / 3; idx.push(v - 2, v - 1, v, v - 1, v + 1, v, v - 2, v, v - 1, v - 1, v, v + 1);   // 表裏とも表向き(裏で暗くならない)
+            }
+            if (k > 0 || !prev) { p.push(cx, y0, cz, cx, y0 + hh + 0.05, cz); n.push(0, 1, 0, 0, 1, 0); uv.push(u / TILE, 0, u / TILE, 1); prev = { ok }; }
+            if (k < m) u += L / m;
+          }
         }
       }
     }
+    if (!idx.length) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: bushTexture(tall), alphaTest: 0.5 }));
+    m.matrixAutoUpdate = false; m.name = tall ? 'rail-thicket' : 'rail-grass'; m.userData.noLift = true; g.add(m);
   }
-  if (!o.p.length) return;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-  m.matrixAutoUpdate = false; m.name = 'rail-bushes'; m.userData.noLift = true; g.add(m);
 }
 function buildTrees(data, g, big = 1, nativeSurfaces = false) {
   const T = data.trees || []; if (!T.length) return;
