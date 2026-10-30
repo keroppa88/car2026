@@ -1560,9 +1560,12 @@ function buildWoods(data, g, onRoad, blocked, railOn = null) {
           if (hit) continue;
           if (blocked.hitsBuilding && blocked.hitsBuilding(mx, mz, 1)) continue;
           const u0 = R() * 4, u1 = u0 + (s1 - s0) / 24;
+          // 表と裏の両方を表向きの三角形で(両面の材質だと裏は法線が下向きになり、真っ黒に近く見えるため)
           P.push(x0, 0, z0, x1, 0, z1, x1, h, z1, x0, 0, z0, x1, h, z1, x0, h, z0);
           U.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
-          for (let q = 0; q < 6; q++) N.push(0, 1, 0);
+          P.push(x0, 0, z0, x1, h, z1, x1, 0, z1, x0, 0, z0, x0, h, z0, x1, h, z1);
+          U.push(u0, 0, u1, 1, u1, 0, u0, 0, u0, 1, u1, 1);
+          for (let q = 0; q < 12; q++) N.push(0, 1, 0);
           panels++;
         }
       }
@@ -1572,7 +1575,7 @@ function buildWoods(data, g, onRoad, blocked, railOn = null) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: makeForestStrip(7), alphaTest: 0.5, side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: makeForestStrip(7), alphaTest: 0.5 }));
   m.matrixAutoUpdate = false; m.name = 'woods'; g.add(m);
   // 中にも街路樹と同じ木の絵を並べる(上から見ても林に見えるように)
   const pts = [];
