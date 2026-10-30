@@ -1147,13 +1147,15 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
     if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
     if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
     const plainSmall = b.plain || (!!opts.smallColors && !lk && !b.grey && area < 400 && h <= 13);   // plain: 指定の窓なしの建物
-    if (plainSmall) wallHex = b.plain ? 0xf1f0eb : opts.smallColors[Math.floor(R() * opts.smallColors.length)];
-    const isShop = plainSmall && !b.plain && b.white && !!opts.smallColors;   // 窓なしだった海側・幹線道路沿いの建物(1階〜3階以上)
+    if (plainSmall) wallHex = b.plain || b.conbini ? 0xf1f0eb : opts.smallColors[Math.floor(R() * opts.smallColors.length)];
+    const isShop = plainSmall && !b.plain && (b.white || b.conbini) && !!opts.smallColors;   // 窓なしだった海側・幹線道路沿いの建物(1階〜3階以上)
     const col = new THREE.Color(wallHex), S = STYLES[style], W = isShop ? shop : plainSmall ? plain : walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
       ? [[0, lk.base ? lk.baseH : 0, new THREE.Color(lk.base ?? 0), 0], [lk.base ? lk.baseH : 0, lk.top ? h - lk.topH : h, col, 0], [lk.top ? h - lk.topH : h, h, new THREE.Color(lk.top ?? 0), 0]].filter((x) => x[1] > x[0])
       : [[0, h, col, 1]];
+    // コンビニ(ファミリーマート風): 白い壁、上に緑・白・青の帯。1階はガラスの出入口
+    if (b.conbini) { const W0 = new THREE.Color(0xf4f4f2); bands.length = 0; bands.push([0, h - 1.0, W0, 1], [h - 1.0, h - 0.55, new THREE.Color(0x0a9a4a), 0], [h - 0.55, h - 0.45, W0, 0], [h - 0.45, h - 0.2, new THREE.Color(0x1d63c4), 0], [h - 0.2, h, W0, 0]); }
     const litR = 1 + Math.floor(R() * 900) + 0.1 + R() * 0.1;   // 夜の窓: 整数部は種、小数部は点いている割合(1〜2割)
     const ccw = a > 0;      // x-z 平面での向き
     // 窓のある小さい建物: 夜に明かりがつくのは 1 面だけ(窓のある長さ 2.2m 超の外壁から 1 つ)
