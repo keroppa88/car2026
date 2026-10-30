@@ -1638,6 +1638,44 @@ function buildHedges(data, g, native, railCheck = null) {
   const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   m.matrixAutoUpdate = false; m.name = 'median-hedges'; m.userData.noLift = true; g.add(m);
 }
+// 線路わきの草むら(h=1: 雑草など 高さ 1m)・茂み(h=2: 雑木林のような 高さ 2m)。線に沿って箱を並べ、高さ・幅・色を少しずつ変える
+const GRASS_GREENS = [0x6f8a3a, 0x7d9442, 0x8a9a4a, 0x5f7c34, 0x93a052].map((c) => new THREE.Color(c));
+const THICKET_GREENS = [0x2f4a22, 0x3a5528, 0x29421e, 0x44602e, 0x34502a].map((c) => new THREE.Color(c));
+function buildBushes(data, g, native, railCheck = null) {
+  const o = { p: [], n: [], c: [] };
+  for (const b of data.bushes || []) {
+    const tall = b.h >= 2, H = tall ? 2 : 1, W = tall ? 1.6 : 1.2, cols = tall ? THICKET_GREENS : GRASS_GREENS;
+    const R = seeded(Math.round(b.pts[0][0] * 13 + b.pts[0][1] * 7));
+    for (let i = 0; i + 1 < b.pts.length; i++) {
+      const [ax, az] = b.pts[i], [bx, bz] = b.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 0.1) continue;
+      const tx = (bx - ax) / L, tz = (bz - az) / L, ang = Math.atan2(tx, tz), m = Math.max(1, Math.round(L / 1.5)), seg = L / m;
+      for (let k = 0; k < m; k++) {
+        const side = (R() - 0.5) * 0.4, cx = ax + tx * seg * (k + 0.5) - tz * side, cz = az + tz * seg * (k + 0.5) + tx * side;
+        if (railCheck && railCheck(cx, cz, W / 2 + 0.3)) continue;   // 線路の上には置かない
+        const y0 = native?.at(cx, cz)?.y ?? 0, y1 = y0 + H * (0.8 + R() * 0.4), w = W * (0.85 + R() * 0.3), l = seg * 1.15;
+        const col = cols[Math.floor(R() * cols.length)];
+        const hx = tx * l / 2, hz = tz * l / 2, nx = tz * w / 2, nz = -tx * w / 2;
+        const c = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([p, q]) => [cx + hx * p + nx * q, cz + hz * p + nz * q]);
+        const top = []; rect(cx, cz, ang, l, w, y1, top); upward(top);
+        for (let q = 0; q < top.length; q += 3) { o.p.push(top[q], top[q + 1], top[q + 2]); o.n.push(0, 1, 0); o.c.push(col.r, col.g, col.b); }
+        for (let e = 0; e < 4; e++) {
+          const [px, pz] = c[e], [qx, qz] = c[(e + 1) % 4], d = Math.hypot(qx - px, qz - pz);
+          let ex = (qz - pz) / d, ez = -(qx - px) / d;
+          if (ex * (px - cx) + ez * (pz - cz) < 0) { ex = -ex; ez = -ez; }
+          o.p.push(px, y0, pz, qx, y0, qz, qx, y1, qz, px, y0, pz, qx, y1, qz, px, y1, pz);
+          for (let q = 0; q < 6; q++) { o.n.push(ex, 0, ez); o.c.push(col.r * 0.85, col.g * 0.85, col.b * 0.85); }
+        }
+      }
+    }
+  }
+  if (!o.p.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  m.matrixAutoUpdate = false; m.name = 'rail-bushes'; m.userData.noLift = true; g.add(m);
+}
 function buildTrees(data, g, big = 1, nativeSurfaces = false) {
   const T = data.trees || []; if (!T.length) return;
   const mat = billboard(new THREE.MeshLambertMaterial({ map: makeTreeAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }));
@@ -2022,7 +2060,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     // 湘南: 街路樹はなし(中央分離帯の緑地は低い植え込み。道路の後で作る)。TOKYO は街路樹
     if (!native) T('buildTrees', () => buildTrees(data, city, 1, false));
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
-    if (native) T('buildHedges', () => buildHedges(data, city, native, enoden?.onRail));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
+    if (native) T('buildHedges', () => buildHedges(data, city, native, enoden?.onRail));
+    if (native && data.bushes) T('buildBushes', () => buildBushes(data, city, native, enoden?.onRail));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
