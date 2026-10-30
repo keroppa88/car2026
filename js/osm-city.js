@@ -1812,6 +1812,51 @@ function buildRailCrossings(data, g, native) {
     }
   }
 }
+// 船(tools/shonan/make_boats.py)。k='fish': 小型漁船(白い船体、青い帯、操舵室、マスト)、k='yacht': 白いヨット(マストと白い帆2枚)
+// 向き a は船首の向き。水面の高さに浮かべる
+function buildBoats(data, g, native) {
+  const mats = {
+    white: new THREE.MeshLambertMaterial({ color: 0xf2f2ee }), blue: new THREE.MeshLambertMaterial({ color: 0x2a5d9a }),
+    red: new THREE.MeshLambertMaterial({ color: 0x9c3a2e }), deck: new THREE.MeshLambertMaterial({ color: 0xb9b2a0 }),
+    glass: new THREE.MeshLambertMaterial({ color: 0x2b3640 }), pole: new THREE.MeshLambertMaterial({ color: 0xd8d8d4 }),
+    sail: new THREE.MeshLambertMaterial({ color: 0xfbfbf8, side: THREE.DoubleSide }),
+  };
+  // 船体: 上から見て船首がとがった形を押し出す(長さ L、幅 W、高さ H)。局所 z が船首
+  const hullGeo = (L, W, H, bow) => {
+    const s = new THREE.Shape(); const h = L / 2;
+    s.moveTo(-W / 2, -h); s.lineTo(W / 2, -h); s.lineTo(W / 2, h - bow); s.quadraticCurveTo(W / 2, h - bow * 0.2, 0, h); s.quadraticCurveTo(-W / 2, h - bow * 0.2, -W / 2, h - bow); s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth: H, bevelEnabled: false }); geo.rotateX(Math.PI / 2); geo.translate(0, H, 0);   // 形の y → 局所 -z になるので向きを直す
+    return geo;
+  };
+  const add = (grp, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); grp.add(m); return m; };
+  for (const b of data.boats || []) {
+    const grp = new THREE.Group(), L = b.L, wl = (native?.at(b.x, b.z)?.y ?? -2) + 0.02;
+    if (b.k === 'yacht') {
+      const W = L * 0.32;
+      add(grp, hullGeo(L, W, 0.9, L * 0.45), mats.white, 0, -0.35, 0);
+      add(grp, new THREE.BoxGeometry(W * 0.55, 0.45, L * 0.3), mats.white, 0, 0.75, -L * 0.08);
+      add(grp, new THREE.BoxGeometry(W * 0.56, 0.12, L * 0.31), mats.glass, 0, 0.8, -L * 0.08);
+      const mh = L * 1.35; add(grp, new THREE.CylinderGeometry(0.07, 0.09, mh, 6), mats.pole, 0, 0.5 + mh / 2, L * 0.08);
+      add(grp, new THREE.CylinderGeometry(0.05, 0.05, L * 0.42, 5), mats.pole, 0, 1.4, L * 0.08 - L * 0.21).rotation.x = Math.PI / 2;   // ブーム
+      const tri = (p) => { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); geo.computeVertexNormals(); return geo; };
+      add(grp, tri([0, 1.5, L * 0.08, 0, 0.5 + mh * 0.97, L * 0.08, 0, 1.5, L * 0.08 - L * 0.4]), mats.sail, 0.03, 0, 0);          // 主帆
+      add(grp, tri([0, 1.0, L * 0.47, 0, 0.5 + mh * 0.85, L * 0.08 + 0.1, 0, 1.2, L * 0.1 + 0.2]), mats.sail, -0.03, 0, 0);        // 前の帆
+    } else {
+      const W = L * 0.3;
+      add(grp, hullGeo(L, W, 1.1, L * 0.35), mats.white, 0, -0.5, 0);
+      add(grp, hullGeo(L * 1.002, W * 1.01, 0.18, L * 0.35), mats.blue, 0, 0.42, 0);                                      // 舷の青い帯
+      add(grp, hullGeo(L * 0.96, W * 0.92, 0.06, L * 0.33), mats.deck, 0, 0.6, 0);                                          // 甲板
+      add(grp, new THREE.BoxGeometry(W * 0.62, 1.5, L * 0.22), mats.white, 0, 1.4, -L * 0.02);                               // 操舵室
+      add(grp, new THREE.BoxGeometry(W * 0.64, 0.45, L * 0.18), mats.glass, 0, 1.75, -L * 0.02);                             // 窓
+      add(grp, new THREE.BoxGeometry(W * 0.7, 0.08, L * 0.25), mats.red, 0, 2.18, -L * 0.02);                                // 屋根
+      add(grp, new THREE.CylinderGeometry(0.05, 0.06, 3.2, 5), mats.pole, 0, 3.6, -L * 0.02);                               // マスト
+      add(grp, new THREE.CylinderGeometry(0.04, 0.04, 1.6, 5), mats.pole, 0, 4.6, -L * 0.02).rotation.z = Math.PI / 2;
+    }
+    grp.position.set(b.x, wl, b.z); grp.rotation.y = b.a;
+    grp.updateMatrixWorld(true); grp.traverse((m) => { if (m.isMesh) { m.matrixAutoUpdate = false; m.updateMatrix(); m.userData.noLift = true; } });
+    grp.matrixAutoUpdate = false; grp.updateMatrix(); grp.name = 'boat-' + b.k; g.add(grp);
+  }
+}
 function buildBushes(data, g, native, railCheck = null) {
   for (const tall of [true, false]) {
     const H = tall ? 2 : 1, TILE = tall ? 8 : 4, layers = tall ? [0] : [-0.15, 0.15];   // 絵 1 枚 = 横 8m / 4m
@@ -2233,7 +2278,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
     if (native) T('buildHedges', () => buildHedges(data, city, native, enoden?.onRail));
     if (native && data.bushes) T('buildBushes', () => buildBushes(data, city, native, enoden?.onRail));
-    if (native && data.railCrossings) T('buildRailCrossings', () => buildRailCrossings(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
+    if (native && data.railCrossings) T('buildRailCrossings', () => buildRailCrossings(data, city, native));
+    if (native && data.boats) T('buildBoats', () => buildBoats(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
