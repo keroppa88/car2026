@@ -2135,11 +2135,11 @@ export function snapshotCitySurfaceLayers(data) {
   }
   lots.forEach((ls, i) => rings('lot-' + i, ls, LOT_COLORS[i]));
   rings('parks', data.parks || [], GRASS);
-  rings('lawns', data.lawns || [], 0x82ab55);   // 少し色の違う平らな緑地(芝生広場など)
   rings('beaches', data.beaches || [], SAND, 'sand');
   rings('rocks', data.rocks || [], 0x9a9b98);
   rings('piers', data.piers || [], 0x9a9b98);
   rings('parking', data.parking || [], ASPHALT, 'road');
+  rings('lawns', data.lawns || [], 0x82ab55);   // 少し色の違う平らな緑地(芝生広場など)。指定で塗るので岸壁・敷地より上
   const gs = [], md = [];
   for (const [x, z, ang, len, wid] of data.strips || []) rect(x, z, ang, len, wid, 0, gs);
   const roadLayers = new Map();
