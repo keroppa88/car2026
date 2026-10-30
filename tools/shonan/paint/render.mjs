@@ -1,5 +1,6 @@
 // 指定したカメラで湘南を描いて保存する。ピクセルの一覧を渡すと、その点の3D座標(地面などとの交点)も返す。
 // node tools/shonan/paint/render.mjs job.json  (job: {W,H,cams:[{pos,target,out,pick?,pickOut?}]})
+// 3D座標: 高さ 150m より上の当たり(空・遠景の山の板)は飛ばす
 import fs from 'node:fs';
 import { startServer, openCourse } from '../../../test/lib/harness.mjs';
 const job = JSON.parse(fs.readFileSync(process.argv[2]));
@@ -16,7 +17,7 @@ for (const c of job.cams) {
     const px = JSON.parse(fs.readFileSync(c.pick));
     const res = await page.evaluate((px) => { const d = window.__mapDebug, T = d.THREE, rc = new T.Raycaster(), W = innerWidth, H = innerHeight;
       const objs = []; d.scene.traverse((o) => { if (o.isMesh && o.visible && !o.isInstancedMesh) objs.push(o); });
-      return px.map(([x, y]) => { rc.setFromCamera(new T.Vector2(x / W * 2 - 1, -(y / H * 2 - 1)), d.camera); const h = rc.intersectObjects(objs, false)[0]; return h ? [...h.point.toArray(), h.object.name, h.object.material?.color?.getHexString?.()] : null; }); }, px);
+      return px.map(([x, y]) => { rc.setFromCamera(new T.Vector2(x / W * 2 - 1, -(y / H * 2 - 1)), d.camera); const h = rc.intersectObjects(objs, false).find((q) => q.point.y < 150); return h ? [...h.point.toArray(), h.object.name, h.object.material?.color?.getHexString?.()] : null; }); }, px);
     fs.writeFileSync(c.pickOut, JSON.stringify(res));
   }
 }

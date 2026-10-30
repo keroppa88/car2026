@@ -1093,8 +1093,8 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
     let wallHex = small ? SMALL_COLORS[Math.floor(R() * SMALL_COLORS.length)] : (lk?.wall ?? base);
     if (b.white && !lk && R() < 0.65) wallHex = WHITE_COLORS[Math.floor(R() * WHITE_COLORS.length)];   // 湘南: 海沿い・幹線道路沿い・江の島は白多め
     if (b.grey) wallHex = 0xb9bcbf;   // 指定のグレーのビル
-    const plainSmall = !!opts.smallColors && !lk && !b.grey && area < 400 && h <= 13;
-    if (plainSmall) wallHex = opts.smallColors[Math.floor(R() * opts.smallColors.length)];
+    const plainSmall = b.plain || (!!opts.smallColors && !lk && !b.grey && area < 400 && h <= 13);   // plain: 指定の窓なしの建物
+    if (plainSmall) wallHex = b.plain ? 0xf1f0eb : opts.smallColors[Math.floor(R() * opts.smallColors.length)];
     const col = new THREE.Color(wallHex), S = STYLES[style], W = plainSmall ? plain : walls[style];
     // 高さで色を分ける帯: [下, 上, 色, 1階の出入口を描くか]
     const bands = lk
@@ -2049,6 +2049,7 @@ export function snapshotCitySurfaceLayers(data) {
   }
   lots.forEach((ls, i) => rings('lot-' + i, ls, LOT_COLORS[i]));
   rings('parks', data.parks || [], GRASS);
+  rings('lawns', data.lawns || [], 0x82ab55);   // 少し色の違う平らな緑地(芝生広場など)
   rings('beaches', data.beaches || [], SAND, 'sand');
   rings('rocks', data.rocks || [], 0x9a9b98);
   rings('piers', data.piers || [], 0x9a9b98);
