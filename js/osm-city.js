@@ -1453,7 +1453,12 @@ function buildSeaFences(walls, g, native, carriage, onRail = null) {
 }
 function buildFences(data, g, onRoad, yo = 0, k = 1, opts_onRail = null) {   // yo: 柵の足元の高さ(湘南は歩道が 20cm 高い)、k: 高さの倍率
   const post = { p: [], n: [] }, bar = { p: [], n: [] };
-  const CNT = new Map(); for (const r of data.roads) for (const q of r.pts) { const k = q.join(','); CNT.set(k, (CNT.get(k) || 0) + 1); }
+  const CNT = new Map(), AT = new Map();
+  for (const r of data.roads) r.pts.forEach((q, i) => { const k = q.join(','); CNT.set(k, (CNT.get(k) || 0) + 1); if (!AT.has(k)) AT.set(k, []); AT.get(k).push([r, i]); });
+  // 向き(その点の前後の線分)
+  const dirAt = (r, i) => { const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+  // 2本がつながるだけの点: まっすぐ続く継ぎ目なら true(柵をあけない)。脇道が T 字に入る所は false(あける)
+  const isSeam = (r, i) => { const L = AT.get(r.pts[i].join(',')) || []; if (L.length !== 2) return false; const [o, j] = L[0][0] === r ? L[1] : L[0], [ax, az] = dirAt(r, i), [bx, bz] = dirAt(o, j); return Math.abs(ax * bx + az * bz) > 0.8; };
   const J = new Map();
   for (const r of data.roads) for (const i of r.junctions) {
     const k = r.pts[i].join(','); J.set(k, Math.max(J.get(k) || 0, roadWidth(r) / 2));
@@ -1461,7 +1466,21 @@ function buildFences(data, g, onRoad, yo = 0, k = 1, opts_onRail = null) {   // 
   for (const r of data.roads) {
     if (r.bridge || !(r.oneway ? r.lanes >= 2 : r.lanes >= 4)) continue;
     const half = roadWidth(r) / 2, p = r.pts, s = cumLen(p), L = s.at(-1), holes = [];
-    for (const i of r.junctions) { if (yo && (CNT.get(p[i].join(',')) || 0) === 2) continue; const R = (J.get(p[i].join(',')) || half) + 6; holes.push([s[i] - R, s[i] + R]); }   // 交差点と横断歩道の所はあける(湘南: 2本がつながるだけの継ぎ目はあけない)
+    for (const i of r.junctions) { if (yo && isSeam(r, i)) continue; const R = (J.get(p[i].join(',')) || half) + 6; holes.push([s[i] - R, s[i] + R]); }   // 交差点と横断歩道の所はあける(湘南: 2本がまっすぐ続くだけの継ぎ目はあけない)
+    // 脇道の端が頂点でなく線分の途中に乗っている所もあける
+    for (const q of data.roads) {
+      if (q === r) continue;
+      for (const j of [0, q.pts.length - 1]) {
+        const [ex, ez] = q.pts[j]; if (CNT.get(q.pts[j].join(',')) > 1 && (AT.get(q.pts[j].join(',')) || []).some(([o]) => o === r)) continue;
+        for (let m = 0; m + 1 < p.length; m++) {
+          const [ax, az] = p[m], [bx, bz] = p[m + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz; if (!l2) continue;
+          const t = Math.max(0, Math.min(1, ((ex - ax) * dx + (ez - az) * dz) / l2)), px = ax + dx * t - ex, pz = az + dz * t - ez;
+          if (px * px + pz * pz > (half + 1.5) ** 2) continue;
+          const [qx, qz] = dirAt(q, j), l = Math.sqrt(l2); if (Math.abs((qx * dx + qz * dz) / l) > 0.8) continue;   // 並んで続く道は別
+          const sp = s[m] + t * l, R = roadWidth(q) / 2 + 6; holes.push([sp - R, sp + R]); break;
+        }
+      }
+    }
     holes.sort((a, b) => a[0] - b[0]);
     const spans = []; let x = 0;
     for (const [a, b] of holes) { if (a > x) spans.push([x, a]); x = Math.max(x, b); }
