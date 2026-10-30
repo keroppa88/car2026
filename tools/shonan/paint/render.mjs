@@ -9,6 +9,7 @@ const { browser, page } = await openCourse(s, { course: process.env.COURSE || 's
 await page.setViewportSize({ width: job.W, height: job.H });
 await page.waitForTimeout(4000);
 await page.evaluate(() => { for (const el of document.body.children) if (el.tagName !== 'CANVAS' && !el.querySelector?.('canvas')) el.style.display = 'none'; document.querySelectorAll('body *').forEach((e) => { if (e.tagName !== 'CANVAS' && !e.querySelector('canvas') && getComputedStyle(e).position === 'fixed') e.style.display = 'none'; }); });
+if (job.night) { await page.keyboard.press('n'); await page.waitForTimeout(1500); }   // job.night: 夜にして描く
 for (const c of job.cams) {
   await page.evaluate(({ pos, target, fov, up }) => { const d = window.__mapDebug; d.freeze(); d.camera.fov = fov || 60; d.camera.aspect = innerWidth / innerHeight; d.camera.position.set(...pos); d.camera.up.set(...(up || [0, 1, 0])); d.camera.lookAt(...target); d.camera.far = 12000; d.camera.updateProjectionMatrix(); d.camera.updateMatrixWorld(); }, c);
   await page.waitForTimeout(1500);

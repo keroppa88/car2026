@@ -1073,13 +1073,13 @@ const TOKYO_SMALL_COLORS = [0xf1f0eb, 0xc9cac7, 0xa07f60];
 // 低い建物の窓(絵は使わずシェーダーで描く)。壁を 4m 前後の区画に分け、
 // 1階: 地面からの大きなガラス(ショーウインドウ・入口。区画ごとに中の仕切りや扉の横枠を変える)、2階より上: 階ごとに大きな窓
 function shopWindowMat() {
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0xffffff, emissiveIntensity: 0 });   // 夜は emissiveIntensity を上げる(窓の明かり)
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 wl; varying vec2 vWU; varying vec2 vWL;')
+      .replace('#include <common>', '#include <common>\nattribute vec3 wl; varying vec2 vWU; varying vec3 vWL;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWU = uv; vWL = wl;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vWU; varying vec2 vWL;\nfloat wh(float n) { return fract(sin(n * 91.7 + vWL.x * 13.1) * 43758.5); }')
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWU; varying vec3 vWL;\nfloat glassLit = 0.0;\nfloat wh(float n) { return fract(sin(n * 91.7 + vWL.x * 13.1) * 43758.5); }')
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float L = vWL.x, H = vWL.y, u = vWU.x, y = vWU.y;
@@ -1100,6 +1100,7 @@ function shopWindowMat() {
                 else if (door && cx < 0.04) c = frame;                                 // 両開きの合わせ目
                 else if (door && y > 2.0 && y < 2.07) c = frame;                       // 入口の上の横枠
                 else if (!door && y < 0.15) c = frame;                                 // ショーウインドウの下枠(地面に接する)
+                else glassLit = 1.0;
                 diffuseColor.rgb = c;
               }
             }
@@ -1111,12 +1112,13 @@ function shopWindowMat() {
               float b0 = 3.0 + floor((y - 3.0) / 3.0) * 3.0, y0 = b0 + 0.8, y1 = b0 + 2.4, hw = min(1.2, bw * 0.5 - 0.5);
               if (y1 < H - 0.4 && y > y0 && y < y1 && cx < hw) {
                 vec3 c = glass * 0.95;
-                if (y > y1 - 0.07 || y < y0 + 0.07 || cx > hw - 0.07 || cx < 0.035) c = frame;
+                if (y > y1 - 0.07 || y < y0 + 0.07 || cx > hw - 0.07 || cx < 0.035) c = frame; else glassLit = 1.0;
                 diffuseColor.rgb = c;
               }
             }
           }
-        }`);
+        }`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vec3(1.0, 0.86, 0.62) * glassLit * vWL.z;');   // 明かりは 1 面のガラスだけ
   };
   return mat;
 }
@@ -1154,6 +1156,9 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
       : [[0, h, col, 1]];
     const litR = 1 + Math.floor(R() * 900) + 0.1 + R() * 0.1;   // 夜の窓: 整数部は種、小数部は点いている割合(1〜2割)
     const ccw = a > 0;      // x-z 平面での向き
+    // 窓のある小さい建物: 夜に明かりがつくのは 1 面だけ(窓のある長さ 2.2m 超の外壁から 1 つ)
+    let litEdge = -1;
+    if (isShop) { const long = pts.map((p, k) => k).filter((k) => { const [x0, z0] = pts[k], [x1, z1] = pts[(k + 1) % pts.length]; return Math.hypot(x1 - x0, z1 - z0) > 2.2; }); if (long.length) litEdge = long[Math.floor(seeded(i * 7 + 3)() * long.length)]; }
     const wall = (ring) => {
       let s = 0;
       for (let k = 0; k < ring.length; k++) {
@@ -1162,8 +1167,11 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
         const u0 = s / S.tileW, u1 = (s + len) / S.tileW;
         for (const [ya, yb, bc, sf] of bands) {
           const va = ya / S.tileH, vb = yb / S.tileH;
-          W.p.push(x0, ya + gy, z0, x1, ya + gy, z1, x1, yb + gy, z1, x0, ya + gy, z0, x1, yb + gy, z1, x0, yb + gy, z0);
-          if (W === shop) { W.u.push(0, ya, len, ya, len, yb, 0, ya, len, yb, 0, yb); for (let q = 0; q < 6; q++) W.w.push(len, h); }   // 窓の絵: u = 壁に沿った m、v = 地面からの m
+          if (W === shop && ccw) {   // 片面の材質: 三角形の表を外へ向ける(逆回りの建物は頂点の順を入れ替える)
+            W.p.push(x0, ya + gy, z0, x1, yb + gy, z1, x1, ya + gy, z1, x0, ya + gy, z0, x0, yb + gy, z0, x1, yb + gy, z1);
+            W.u.push(0, ya, len, yb, len, ya, 0, ya, 0, yb, len, yb);
+          } else W.p.push(x0, ya + gy, z0, x1, ya + gy, z1, x1, yb + gy, z1, x0, ya + gy, z0, x1, yb + gy, z1, x0, yb + gy, z0);
+          if (W === shop) { if (!ccw) W.u.push(0, ya, len, ya, len, yb, 0, ya, len, yb, 0, yb); const on = ring === pts && k === litEdge ? 1 : 0; for (let q = 0; q < 6; q++) W.w.push(len, h, on); }   // 窓の絵: u = 壁に沿った m、v = 地面からの m
           else W.u.push(u0, va, u1, va, u1, vb, u0, va, u1, vb, u0, vb);
           for (let q = 0; q < 6; q++) { W.c.push(bc.r, bc.g, bc.b); W.n.push(nx, 0, nz); W.f.push(sf); W.r.push(litR); }
         }
@@ -1185,7 +1193,7 @@ function buildBuildings(data, g, wallMats, roofMat, opts = {}) {
   };
   walls.forEach((w, i) => { if (w.p.length) g.add(mk(w, wallMats[i])); });
   if (plain.p.length) g.add(mk(plain, roofMat));
-  if (shop.p.length) { const m = mk(shop, shopWindowMat()); m.geometry.setAttribute('wl', new THREE.Float32BufferAttribute(shop.w, 2)); m.name = 'shop-buildings'; g.add(m); }
+  if (shop.p.length) { const m = mk(shop, opts.shopMat || shopWindowMat()); m.geometry.setAttribute('wl', new THREE.Float32BufferAttribute(shop.w, 3)); m.name = 'shop-buildings'; g.add(m); }
   // 屋上: 形ごとに作って1つにまとめる
   const P = [], C = [];
   for (const r of roofShapes) {
@@ -2195,7 +2203,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
-    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS, groundAt: native ? (x, z) => Math.min(0, native.at(x, z)?.y ?? 0) : null }));
+    const shopMat = shopWindowMat(); glow.push(shopMat);
+    T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { shopMat, smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS, groundAt: native ? (x, z) => Math.min(0, native.at(x, z)?.y ?? 0) : null }));
     if (lm) {
       T('buildLandmarks', () => buildLandmarks(lm, city, wallMats, roofMat));
       // 当たり判定は足元の形で
