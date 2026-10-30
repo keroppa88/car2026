@@ -1,6 +1,6 @@
 """湘南: 指示の絵で船の形を塗った所(赤 または 白)に小型漁船を置く → city.json boats (k='fish')。
 絵: paint/top/boatsNN_paint.png、絵→描画の画素 boatsNN_H.npy、描画の画素→地図 boatsNN_Hw.npy。
-船の向きは塗った形の長い方向、船尾は岸壁(陸)に近い方の端。長さは塗った形の長さ(7〜12m)。
+船の向きは塗った形の長い方向、船尾は岸壁(陸)に近い方の端で、船尾を岸壁につける。長さは塗った形の長さ(7〜12m)。
 python3 tools/shonan/add_fishing_boats.py 69 62 16 46 88
 """
 import sys, json, math
@@ -33,6 +33,13 @@ for name in sys.argv[1:]:
         e1, e2 = c + ax * t.max(), c + ax * t.min()
         stern, bow = (e1, e2) if land.distance(Point(*e1)) < land.distance(Point(*e2)) else (e2, e1)
         tx, tz = bow - stern; l = math.hypot(tx, tz); tx, tz = tx / l, tz / l
+        # 船尾を岸壁につける: 船尾の向きへ岸壁まで進め、船尾が岸壁から 0.3m の所に来るように船を動かす
+        from shapely.geometry import LineString
+        ray = LineString([(c[0], c[1]), (c[0] - tx * 80, c[1] - tz * 80)])
+        hit = ray.intersection(land.boundary)
+        if not hit.is_empty:
+            dq = min(Point(c[0], c[1]).distance(g) for g in getattr(hit, 'geoms', [hit]))
+            c = c + np.array([-tx, -tz]) * (dq - L / 2 - 0.3)
         boats.append({'x': round(float(c[0]), 2), 'z': round(float(c[1]), 2), 'a': round(math.atan2(tx, tz), 3), 'L': round(L, 1), 'k': 'fish', 'src': name}); k += 1
     print(name, '漁船', k)
 d['boats'] = boats
