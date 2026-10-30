@@ -494,7 +494,17 @@ function placeCrosswalks(data, shared, J, white) {
     placed.push([cx, cz, ang]);
     // 横断歩道の外側(縁の 2.5m 先から 20m まで)が別の車道か(=中央分離帯の側か)
     const median = [1, -1].map((sd) => { const e0 = sd > 0 ? e1 : -e2; for (let d = 2.5; d < 40; d += 1) if (at(e0 + sd * d, 0)) return true; return false; });
-    cws.push({ cx, cz, ang, tx, tz, nx, nz, W, median, sh: 0, draw: (sh) => { for (const o of stripes) rect(ax + nx * o + tx * sh, az + nz * o + tz * sh, ang, 4, 0.45, 0.085, white); } });
+    // 白線は車道の端から端まで等間隔に並べる(端に白線 1 本ぶんのすき間を残さない)
+    // (中央分離帯などの車道でない所は空ける。車道の一続きごとに、その端から端まで)
+    const even = [], runs = []; let r0 = null;
+    for (let o = -e2 - 0.6; o <= e1 + 0.6; o += 0.1) { const on = at(o, 0); if (on && r0 === null) r0 = o; if (!on && r0 !== null) { runs.push([r0, o - 0.1]); r0 = null; } }
+    if (r0 !== null) runs.push([r0, e1 + 0.6]);
+    for (const [a, b] of runs) {
+      if (b - a < 1.5) continue;
+      const n = Math.max(2, Math.round((b - a - 0.5) / 0.9) + 1), pitch = (b - a - 0.5) / (n - 1);
+      for (let k = 0; k < n; k++) even.push(a + 0.25 + pitch * k);
+    }
+    cws.push({ cx, cz, ang, tx, tz, nx, nz, W, median, sh: 0, draw: (sh) => { for (const o of even) rect(ax + nx * o + tx * sh, az + nz * o + tz * sh, ang, 4, 0.45, 0.085, white); } });
     break;
   }
   // 歩道から反対側の歩道までつながる横断歩道だけ残す: 中央分離帯の側には、向こうの車道にも横断歩道が並んでいること
