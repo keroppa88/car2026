@@ -1671,6 +1671,51 @@ function bushTexture(tall) {
   if (!tall) { t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; }   // 細い葉が遠くで黒ずまないように
   return t;
 }
+// 踏切の警報機と遮断機(開いたまま)。道路の両側、それぞれ手前から来る車の左に 1 基ずつ。
+// 黄黒しまの柱、×印、赤い灯 2 つ(表裏)、方向の表示、遮断機の箱、上げたままの遮断かん
+function stripeTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+function buildRailCrossings(data, g, native) {
+  const Y = '#f2c21b', K = '#1b1b1b';
+  const bands = stripeTex(4, 64, (x, w, h) => { x.fillStyle = Y; x.fillRect(0, 0, w, h); x.fillStyle = K; x.fillRect(0, 0, w, h / 2); });   // 横じま(1 回 = 0.5m)
+  const diag = stripeTex(64, 64, (x, w, h) => { x.fillStyle = Y; x.fillRect(0, 0, w, h); x.fillStyle = K; for (let k = -2; k < 3; k++) { x.beginPath(); x.moveTo(k * 32, h); x.lineTo(k * 32 + 16, h); x.lineTo(k * 32 + 16 + h, 0); x.lineTo(k * 32 + h, 0); x.fill(); } });
+  const arrows = stripeTex(128, 64, (x, w, h) => { x.fillStyle = '#151515'; x.fillRect(0, 0, w, h); x.fillStyle = '#b3241c'; const ar = (y, d) => { x.beginPath(); x.moveTo(64 - 34 * d, y); x.lineTo(64 + 14 * d, y - 9); x.lineTo(64 + 14 * d, y - 4); x.lineTo(64 + 34 * d, y - 4); x.lineTo(64 + 34 * d, y + 4); x.lineTo(64 + 14 * d, y + 4); x.lineTo(64 + 14 * d, y + 9); x.fill(); }; ar(20, 1); ar(44, -1); });
+  const M = {
+    pole: new THREE.MeshLambertMaterial({ map: bands }), diag: new THREE.MeshLambertMaterial({ map: diag }),
+    black: new THREE.MeshLambertMaterial({ color: 0x1a1a1a }), red: new THREE.MeshLambertMaterial({ color: 0x8e1a14, emissive: 0x2a0503 }),
+    arrows: new THREE.MeshLambertMaterial({ map: arrows }), base: new THREE.MeshLambertMaterial({ color: 0x9a9a96 }), yellow: new THREE.MeshLambertMaterial({ color: 0xf2c21b }),
+  };
+  const add = (grp, geo, mat, x, y, z, rz = 0, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(0, ry, rz); grp.add(m); return m; };
+  const uvScale = (geo, su, sv) => { const a = geo.attributes.uv; for (let i = 0; i < a.count; i++) a.setXY(i, a.getX(i) * su, a.getY(i) * sv); return geo; };
+  for (const cr of data.railCrossings || []) {
+    const [cx, cz] = cr.c, [hx0, hz0] = cr.h;
+    for (const sgn of [1, -1]) {
+      const hx = hx0 * sgn, hz = hz0 * sgn, lx = hz, lz = -hx;   // h: 車の進む向き、l: その左
+      const px = cx - hx * 3.2 + lx * (cr.hw + 0.8), pz = cz - hz * 3.2 + lz * (cr.hw + 0.8), y0 = native?.at(px, pz)?.y ?? 0;
+      const grp = new THREE.Group();
+      // 局所: x = 道路の中へ向く(車から見て右)、z = 来る車の方を向く、y = 上
+      grp.matrix.makeBasis(new THREE.Vector3(-lx, 0, -lz), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-hx, 0, -hz)).setPosition(px, y0, pz);
+      grp.matrixAutoUpdate = false;
+      add(grp, new THREE.BoxGeometry(0.5, 0.25, 0.5), M.base, 0, 0.12, 0);                              // 土台
+      add(grp, uvScale(new THREE.CylinderGeometry(0.07, 0.07, 4.6, 10), 1, 9.2), M.pole, 0, 2.3, 0);      // 柱(黄黒の横じま)
+      add(grp, new THREE.BoxGeometry(0.5, 0.06, 0.06), M.black, 0.12, 4.5, 0);                            // てっぺんの腕
+      for (const a of [Math.PI / 4, -Math.PI / 4]) add(grp, uvScale(new THREE.BoxGeometry(1.3, 0.22, 0.04), 1.3 / 0.22 / 2, 1), M.diag, 0, 3.85, 0.1, a);   // ×印
+      add(grp, new THREE.BoxGeometry(1.0, 0.07, 0.07), M.black, 0, 3.1, 0);                              // 灯の腕
+      for (const side of [1, -1]) for (const lx2 of [-0.38, 0.38]) {                                    // 赤い灯(表と裏)
+        add(grp, new THREE.CylinderGeometry(0.2, 0.2, 0.04, 20), M.black, lx2, 3.1, 0.08 * side).rotation.x = Math.PI / 2;
+        add(grp, new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16), M.red, lx2, 3.1, 0.11 * side).rotation.x = Math.PI / 2;
+        const hood = add(grp, new THREE.CylinderGeometry(0.15, 0.15, 0.16, 16, 1, true, -Math.PI / 2, Math.PI), M.black, lx2, 3.1, 0.19 * side); hood.rotation.x = Math.PI / 2;   // ひさし
+      }
+      add(grp, new THREE.BoxGeometry(0.62, 0.32, 0.08), M.arrows, 0, 2.45, 0.1);                          // 方向の表示(黒地に赤い矢印)
+      add(grp, uvScale(new THREE.BoxGeometry(0.45, 0.9, 0.4), 1.5, 3), M.diag, 0.2, 1.05, 0);              // 遮断機の箱(黄黒の斜めじま)
+      // 遮断かん: 上げたまま(ほぼ真上、少し道路側へ傾ける)。黄黒しま、長さ 3.6m
+      const arm = add(grp, uvScale(new THREE.BoxGeometry(0.09, 3.6, 0.07), 1, 7.2), M.pole, 0, 0, 0);
+      arm.position.set(0.5 + Math.sin(0.12) * 1.8, 1.2 + Math.cos(0.12) * 1.8, 0.24); arm.rotation.z = -0.12;
+      add(grp, new THREE.BoxGeometry(0.16, 0.16, 0.12), M.black, 0.45, 1.2, 0.24);                         // 根元の軸
+      grp.traverse((m) => { if (m.isMesh) { m.updateMatrix(); m.matrixAutoUpdate = false; m.userData.noLift = true; } });
+      grp.name = 'rail-crossing'; grp.userData.noLift = true; g.add(grp);
+    }
+  }
+}
 function buildBushes(data, g, native, railCheck = null) {
   for (const tall of [true, false]) {
     const H = tall ? 2 : 1, TILE = tall ? 8 : 4, layers = tall ? [0] : [-0.15, 0.15];   // 絵 1 枚 = 横 8m / 4m
@@ -2090,7 +2135,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (!native) T('buildTrees', () => buildTrees(data, city, 1, false));
     T('buildRoads', () => buildRoads(data, city, native ? () => {} : null));
     if (native) T('buildHedges', () => buildHedges(data, city, native, enoden?.onRail));
-    if (native && data.bushes) T('buildBushes', () => buildBushes(data, city, native, enoden?.onRail));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
+    if (native && data.bushes) T('buildBushes', () => buildBushes(data, city, native, enoden?.onRail));
+    if (native && data.railCrossings) T('buildRailCrossings', () => buildRailCrossings(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
