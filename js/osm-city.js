@@ -1733,7 +1733,18 @@ function buildHedges(data, g, native, railCheck = null) {
     if (a0 < L / 2) pieces.push([a0, L / 2]);
     const boxes = [];
     for (const [p0, p1] of pieces) { const len2 = p1 - p0; if (len2 < 0.4) continue; const m = Math.max(1, Math.round(len2 / 2.5)); for (let k = 0; k < m; k++) boxes.push([p0 + len2 * (k + 0.5) / m, len2 / m]); }
+    // 植え込みは緑地の中だけ: 箱の両わき・真ん中を 0.25m ごとに調べ、車道・歩道(地表の種類 1)にかかる所を切り落とす
+    const onRoadAt = (a, b) => native?.at(x + tx * a + tz * b, z + tz * a - tx * b)?.kind === 1;
+    const trimmed = [];
     for (const [off, seg] of boxes) {
+      let s0 = null, s1 = null;
+      for (let a = off - seg / 2; a <= off + seg / 2 + 1e-6; a += 0.25) {
+        const ok = ![-W / 2 + 0.05, 0, W / 2 - 0.05].some((b) => onRoadAt(a, b));
+        if (ok) { if (s0 === null) s0 = a; s1 = a; } else if (s0 !== null) { if (s1 - s0 >= 0.4) trimmed.push([(s0 + s1) / 2, s1 - s0]); s0 = s1 = null; }
+      }
+      if (s0 !== null && s1 - s0 >= 0.4) trimmed.push([(s0 + s1) / 2, s1 - s0]);
+    }
+    for (const [off, seg] of trimmed) {
       const cx = x + tx * off, cz = z + tz * off;
       if (railCheck && railCheck(cx, cz, 1)) continue;   // 線路の上には植え込みを置かない
       const col = HEDGE_GREENS[Math.floor(R() * HEDGE_GREENS.length)];
@@ -2250,6 +2261,7 @@ export function snapshotCitySurfaceLayers(data) {
   scratch.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
   // 元の高さの順を明示。水面以外の色は同じ地表を分けて割り当てる。
   for (const name of ['sidewalk', 'deck']) { const q = roadLayers.get(name); triangles(name, q.p, q.color, 'road'); }
+  rings('medianPolys', data.medianPolys || [], 0x6f8f3a);   // 形で塗る緑地帯(長方形で塗れない所。tools/shonan/edit_gap3093.py)
   triangles('strips', gs, SIDEWALK_COLOR, 'road'); triangles('medians', md, 0x6f8f3a);   // 歩道の緑地帯はなくして、ただの歩道
   if (cwg.length) triangles('cwgap', cwg, ASPHALT, 'road');
   for (const name of ['curb', 'road', 'white', 'yellow']) {

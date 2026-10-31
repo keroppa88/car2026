@@ -118,6 +118,44 @@ def main():
     assert abs(area_sum-union.area) < 1, ('overlap', area_sum-union.area)
     assert expected.symmetric_difference(union).area < 1, '地表に欠落あり'
 
+    # 歩道の細いかけら(幅 1.2m 未満で、まわりのほとんどが車道か中央分離帯の緑地)は、まわりと同じものにする(車道の上の細い線・緑地の中の四角を消す)
+    byname = {r['name']: r for r in regions}
+    carr0 = clean(sg.union_all([r['geometry'] for r in regions if r['kind'] == 'road' and r['name'] not in RAISED]))
+    med0 = byname['medians']['geometry'] if 'medians' in byname else Polygon()
+    # 速さのため、車道・緑地を小さな板に分けて木で引く
+    def tiles(g, c=50.0):
+        if g.is_empty: return np.array([], dtype=object)
+        x0, z0, x1, z1 = g.bounds
+        bx = [box(x, z, x + c, z + c) for x in np.arange(x0, x1, c) for z in np.arange(z0, z1, c)]
+        parts = sg.intersection(g, np.array(bx, dtype=object))
+        return np.array([q for q in parts if not q.is_empty], dtype=object)
+    carrT, medT = tiles(carr0), tiles(med0)
+    carrTree, medTree = sg.STRtree(carrT), (sg.STRtree(medT) if len(medT) else None)
+    def local(T, tree, q):
+        if tree is None: return Polygon()
+        idx = tree.query(q.buffer(0.2))
+        return clean(sg.union_all(T[idx])) if len(idx) else Polygon()
+    moved = {'road': [], 'medians': []}
+    for r in regions:
+        if r['name'] not in ('sidewalk', 'strips'): continue
+        g = r['geometry']
+        core = clean(sg.intersection(g.buffer(-0.6, join_style=2).buffer(0.6, join_style=2), g))
+        for q in sg.get_parts(clean(g.difference(core))):
+            if q.geom_type != 'Polygon' or q.area < 1e-4: continue
+            ring = q.exterior; L = ring.length
+            if L < 1e-6: continue
+            cl, ml = local(carrT, carrTree, q), local(medT, medTree, q)
+            fr = sg.length(sg.intersection(ring, cl.buffer(0.05))) / L if not cl.is_empty else 0
+            fm = sg.length(sg.intersection(ring, ml.buffer(0.05))) / L if not ml.is_empty else 0
+            if fr > 0.6: moved['road'].append(q)
+            elif fm > 0.6 or fr + fm > 0.85: moved['medians' if fm >= fr else 'road'].append(q)
+    for k, qs in moved.items():
+        if not qs or k not in byname: continue
+        u = clean(sg.union_all(qs))
+        for r in regions:
+            if r['name'] in ('sidewalk', 'strips'): r['geometry'] = clean(r['geometry'].difference(u))
+        byname[k]['geometry'] = clean(byname[k]['geometry'].union(u))
+        print('歩道のかけら →', k, len(qs), round(u.area, 1), 'm²', flush=True)
     # 縁石: 歩道が車道に接している所は全部、幅 25cm の縁石の帯にする(線の切れ目・交差点で途切れないように)。色は濃いめのグレー
     walk = [r for r in regions if r['name'] in ('sidewalk', 'strips')]
     carr = clean(sg.union_all([r['geometry'] for r in regions if r['kind'] == 'road' and r['name'] not in RAISED]))
