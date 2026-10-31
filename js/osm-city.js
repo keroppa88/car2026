@@ -1883,6 +1883,23 @@ function buildBoats(data, g, native) {
     grp.matrixAutoUpdate = false; grp.updateMatrix(); grp.name = 'boat-' + b.k; g.add(grp);
   }
 }
+// コンクリートの厚い柵(高さ h・厚さ w。上の角を少し落とす)。tools/shonan/add_barrier6134.py など
+function buildBarriers(data, g, native) {
+  const o = { p: [], n: [] };
+  for (const b of data.barriers || []) {
+    for (let i = 0; i + 1 < b.pts.length; i++) {
+      const [x0, z0] = b.pts[i], [x1, z1] = b.pts[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.05) continue;
+      const n = Math.max(1, Math.round(L / 4)), ang = Math.atan2(x1 - x0, z1 - z0);
+      for (let k = 0; k < n; k++) {
+        const cx = x0 + (x1 - x0) * (k + 0.5) / n, cz = z0 + (z1 - z0) * (k + 0.5) / n, y0 = Math.max(0, native?.at(cx, cz)?.y ?? 0);
+        boxInto(o, cx, y0 + b.h * 0.4, cz, b.w, b.h * 0.8, L / n + 0.02, ang);                  // 下の太い所
+        boxInto(o, cx, y0 + b.h * 0.9, cz, b.w * 0.6, b.h * 0.2, L / n + 0.02, ang);            // 上の細い所
+      }
+    }
+  }
+  if (!o.p.length) return;
+  const m = solidMesh(o, new THREE.MeshLambertMaterial({ color: 0xb4b5b2 })); m.name = 'concrete-barrier'; m.userData.noLift = true; g.add(m);
+}
 function buildBushes(data, g, native, railCheck = null) {
   for (const tall of [true, false]) {
     const H = tall ? 2 : 1, TILE = tall ? 8 : 4, layers = tall ? [0] : [-0.15, 0.15];   // 絵 1 枚 = 横 8m / 4m
@@ -2305,7 +2322,8 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (native) T('buildHedges', () => buildHedges(data, city, native, enoden?.onRail));
     if (native && data.bushes) T('buildBushes', () => buildBushes(data, city, native, enoden?.onRail));
     if (native && data.railCrossings) T('buildRailCrossings', () => buildRailCrossings(data, city, native));
-    if (native && data.boats) T('buildBoats', () => buildBoats(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
+    if (native && data.boats) T('buildBoats', () => buildBoats(data, city, native));
+    if (native && data.barriers) T('buildBarriers', () => buildBarriers(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
     T('buildArches', () => buildArches(data, city));
