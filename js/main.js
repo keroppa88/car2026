@@ -8,18 +8,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261101-hedge-1';
+import { decorateOsmCity } from './osm-city.js?v=20261106-fuji-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261101-hedge-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261106-fuji-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
+import { buildFujiMap } from './fuji-map.js?v=20261106-2';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -48,7 +49,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const NEO_COURSE = COURSE_KEY === 'neo';
   const OSM_COURSE = COURSE_KEY === 'nihonbashi' || COURSE_KEY === 'shonan';   // 日本橋・湘南: OpenStreetMap から組み立てる街
   const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
-  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE;
+  const FUJI_COURSE = COURSE_KEY === 'fuji';   // 富士スピードウェイ(閉じたサーキット)
+  const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE;   // 地面の高さを格子から直接読むコース
+  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -2560,7 +2563,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       });
     // 嵐が丘の草原はどこでも走れる。巨大な地面メッシュへはレイを飛ばさず、
     // 高さの格子から直接、地面の面を作って返す。
-    if (COURSE_KEY === 'moor' && gunmaCourse?.ground) {
+    if (GRID_GROUND_COURSE && gunmaCourse?.ground) {
       const y = gunmaCourse.groundHeightAt(x, z);
       hits.push({
         point: new THREE.Vector3(x, y, z),
@@ -4268,7 +4271,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!gunmaCourse?.route.length || !vehicles.length) return;
     // 街並みは車線が広い(中央線から車線中央まで2.8m)。
     const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
-      NEO_COURSE ? MAP_CONFIG.laneOffset : 2.05, gunmaCourse.seam.offset);
+      NEO_COURSE || FUJI_COURSE ? MAP_CONFIG.laneOffset : 2.05, gunmaCourse.seam.offset);
     const anchor = nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z);
     const starts = {
       same: paths.same.distances[anchor] + 95,
@@ -4276,10 +4279,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     };
     let created = 0;
     // 街並みも二車線の対面通行。左車線が自分と同じ向き、右車線が対向車。
-    const trafficPlan = [
-      ['same', GUNMA_CPU_SAME, [65, 75, 85]],
-      ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
-    ];
+    const trafficPlan = FUJI_COURSE
+      ? [['same', GUNMA_CPU_SAME, [110, 125, 140]]]   // サーキットは同じ向きだけ
+      : [
+        ['same', GUNMA_CPU_SAME, [65, 75, 85]],
+        ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
+      ];
     for (const [direction, count, speeds] of trafficPlan) {
       const path = paths[direction];
       for (let i = 0; i < count; i++) {
@@ -5753,7 +5758,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     let sequenceLayout = null;
     try {
       if (TOUGE_COURSE) {
-        gunmaCourse = COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
+        gunmaCourse = FUJI_COURSE ? buildFujiMap(await (await fetch(MAP_CONFIG.courseData)).json())
+          : COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
           : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
         originalBox = new THREE.Box3().setFromObject(map);
@@ -6232,7 +6238,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     BOUND_X_MAX = fin.max.x + 5;
     BOUND_Z = Math.max(Math.abs(fin.min.z), Math.abs(fin.max.z)) + 5;
     // 嵐が丘の草原は地図(道路)の外まで続く。走れる範囲を地面全体に広げる。
-    if (COURSE_KEY === 'moor' && gunmaCourse?.gridBounds) {
+    if (GRID_GROUND_COURSE && gunmaCourse?.gridBounds) {
       const ground = gunmaCourse.gridBounds;
       BOUND_X_MIN = ground.minX;
       BOUND_X_MAX = ground.maxX;
@@ -6672,6 +6678,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 低地の窪みに溜まる、地表近くの霧。
         moorFog = createMoorFog(scene, gunmaCourse);
         document.body.dataset.mapFog = 'moor-haze';
+      }
+      if (FUJI_COURSE) {
+        // 富士スピードウェイ: 晴れた空。地面と建物は地図の外に置く(地面の高さは格子から直接読む)。
+        applyWeatherSky();
+        scene.add(gunmaCourse.ground);
+        scene.add(gunmaCourse.scenery);
+        for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
+          const layer = scene.getObjectByName(name);
+          if (layer) layer.visible = false;
+        }
+        document.body.dataset.mapFog = 'fuji-clear';
       }
       if (COURSE_KEY === 'gunma') {
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
@@ -9946,8 +9963,33 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     rpmEl.classList.toggle('red', rpm > 0.93);
   }
 
+  function buildFujiSpeedProfile(path) {
+    const pts = path.points, n = pts.length, v = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[(i - 5 + n) % n], b = pts[i], c = pts[(i + 5) % n];
+      const h1 = Math.atan2(b.x - a.x, b.z - a.z), h2 = Math.atan2(c.x - b.x, c.z - b.z);
+      const turn = Math.abs(Math.atan2(Math.sin(h2 - h1), Math.cos(h2 - h1)));
+      const len = Math.hypot(c.x - a.x, c.z - a.z) / 2 || 1;
+      const radius = turn > 1e-4 ? len / turn : 1e6;
+      v[i] = Math.min(90, Math.sqrt(9 * radius));
+    }
+    for (let k = 0; k < 2; k++) for (let i = n - 1; i >= 0; i--) {   // 手前から減速(輪なので2周)
+      const j = (i + 1) % n, ds = path.distances[i + 1] - path.distances[i];
+      v[i] = Math.min(v[i], Math.sqrt(v[j] * v[j] + 2 * 6 * ds));
+    }
+    return v;
+  }
   function updateGunmaTrafficCar(ai, dt) {
     const path = ai.gunmaPath;
+    if (FUJI_COURSE) {
+      // サーキット: カーブの手前で減速し、出口で加速する(曲がる半径から出せる速さ。横 9m/s²、減速 6m/s²)
+      if (!path.fujiSpeed) path.fujiSpeed = buildFujiSpeedProfile(path);
+      let lo = 0, hi = path.points.length;
+      const d0 = ((ai.gunmaDistance % path.length) + path.length) % path.length;
+      while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (path.distances[mid] <= d0) lo = mid; else hi = mid; }
+      const target = Math.min(ai.base, path.fujiSpeed[lo]);
+      ai.v += THREE.MathUtils.clamp(target - ai.v, -6 * dt, 3.5 * dt);
+    }
     ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
     const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
     const ahead = sampleGunmaTrafficPath(path, ai.gunmaDistance + 4);

@@ -385,6 +385,40 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 富士スピードウェイ(本コース)。コースの線と建物は OpenStreetMap、起伏は PLATEAU 小山町(2023)の地形。
+  // tools/fuji/make_fuji.py → map/fuji-course.json → js/fuji-map.js
+  fuji: {
+    ...commonMap,
+    label: '富士スピードウェイ',
+    file: 'procedural:fuji',
+    preview: 'picture/fuji.png',
+    courseData: 'map/fuji-course.json?v=20261106-2',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaEdgeLine'],
+    // 縁石とランオフの芝にも入れる(その先の地面はコード側で高さを返す)。
+    drivableMaterialAliases: ['GunmaShoulder', 'GunmaGrass'],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: true,
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    // スタートはメインストレートの中ほど(コントロールライン)。1コーナーの方(北東)を向く。
+    spawnReference: 'fixed',
+    spawnReferenceX: 30.91,
+    spawnReferenceZ: -194.29,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: 2.2429,
+    spawnOffsetRight: 0,
+    laneOffset: 0,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261106 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   route66: {
     ...commonMap,
     label: 'ルート66',
@@ -633,9 +667,9 @@ export const MAP_CONFIGS = {
     // 木・柵・街灯などの見た目の部品は当たり判定にしない(建物・水は osm-city の判定で止まる)
     ignoreMapWallCollisions: true,
     file: null,
-    surfaceData: 'map/shonan-surfaces.json?v=20261101-hedge-1',
+    surfaceData: 'map/shonan-surfaces.json?v=20261106-fuji-1',
     preview: 'picture/shonan.png',
-    cityData: 'map/shonan-city.json?v=20261101-hedge-1',
+    cityData: 'map/shonan-city.json?v=20261106-fuji-1',
     scale: 1,
     assetRevision: '20261022-tokyoeki-3',
     spawnSearchRadius: 40,
@@ -653,7 +687,7 @@ export const MAP_CONFIGS = {
     ],
     // Y の自動運転: 行き先(大磯/稲村ヶ崎)まで国道134号を左側の車線で走る
     autoDriveMode: 'shonanRoute',
-    routeData: 'map/shonan-routes.json?v=20261101-hedge-1',
+    routeData: 'map/shonan-routes.json?v=20261106-fuji-1',
     // 江の島だけ高低差(PLATEAU の地形 dem から)
     terrainData: 'map/shonan-terrain.json?v=20261026-3',
     spawnReferenceX: 9860.65,
@@ -667,4 +701,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi'];   // メトロポリス(tokyoeki)は湘南に置き換え
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi', 'fuji'];   // メトロポリス(tokyoeki)は湘南に置き換え
