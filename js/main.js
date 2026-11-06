@@ -20,7 +20,7 @@ import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildFujiMap } from './fuji-map.js?v=20261106-6';
+import { buildFujiMap } from './fuji-map.js?v=20261106-7';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -5758,7 +5758,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     let sequenceLayout = null;
     try {
       if (TOUGE_COURSE) {
-        gunmaCourse = FUJI_COURSE ? buildFujiMap(await (await fetch(MAP_CONFIG.courseData)).json())
+        gunmaCourse = FUJI_COURSE ? buildFujiMap(await (await fetch(MAP_CONFIG.courseData)).json(),
+          MAP_CONFIG.landcoverImage ? await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = MAP_CONFIG.landcoverImage; }) : null)
           : COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
           : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;

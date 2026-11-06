@@ -5,7 +5,7 @@ import * as THREE from '../lib/three.module.js';
 // 閉じた輪なので、つなぎ目(seam)はずらしなし。
 export const FUJI_ROAD_HALF = 7.5;   // 本コースの幅 15m
 
-export function buildFujiMap(data) {
+export function buildFujiMap(data, landcover = null) {   // landcover: 地面の塗り分け図(Image)
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   const n = route.length;
   const ring = (i) => ((i % n) + n) % n;
@@ -107,7 +107,7 @@ export function buildFujiMap(data) {
       const k = (iz) => (iz * (cols + 1));
       const fx = Math.round((xc - minX) / G.cell), fz = Math.round((zc - minZ) / G.cell);
       fv.push(x, G.h[Math.min(lines, fz) * (cols + 1) + Math.min(cols, fx)] / 10 - (inside ? 3 : 0.3), z);
-      fc.push(grass[0], grass[1], grass[2]);
+      if (landcover) fc.push(0.021, 0.075, 0.025); else fc.push(grass[0], grass[1], grass[2]);   // 塗り分け図の外は木々の深い緑
     }
     const w = 2 * m + 1;
     for (let j = 0; j < w - 1; j++) for (let i = 0; i < w - 1; i++) { const a = j * w + i; fi.push(a, a + w, a + 1, a + 1, a + w, a + w + 1); }
@@ -122,7 +122,15 @@ export function buildFujiMap(data) {
   groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   groundGeo.setIndex(idx);
   groundGeo.computeVertexNormals();
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));   // 地面は少し奥へ(ランオフに出てこない)
+  let groundTex = null;
+  if (landcover && data.landcover) {
+    const L = data.landcover, uv = new Float32Array((cols + 1) * (lines + 1) * 2);
+    for (let k = 0; k < uv.length / 2; k++) { uv[k * 2] = (verts[k * 3] - L.x0) / (L.W * L.px); uv[k * 2 + 1] = 1 - (verts[k * 3 + 2] - L.z0) / (L.H * L.px); }
+    groundGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    groundTex = new THREE.Texture(landcover); groundTex.colorSpace = THREE.SRGBColorSpace; groundTex.anisotropy = 8; groundTex.needsUpdate = true;
+    colors.fill(1);
+  }
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', map: groundTex, vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));   // 地面は少し奥へ(ランオフに出てこない)
   ground.name = 'FujiGround';
   const groundHeightAt = (x, z) => {
     const fx = THREE.MathUtils.clamp((x - minX) / G.cell, 0, cols - 1e-6);
@@ -150,7 +158,7 @@ export function buildFujiMap(data) {
     // その外の芝(6m)は地面へなじませる
     { name: 'GunmaGrass', from: -1, to: 0, y: -0.06, color: 0x5d7a35, grass: -1 },
     { name: 'GunmaGrass', from: 0, to: 1, y: -0.06, color: 0x5d7a35, grass: 1 },
-  ];
+  ].filter((b) => !(landcover && (b.run || b.grass)));   // 塗り分け図があれば、ランオフ・芝は地面の絵で描く
   // 左右: 法線 nn は進む向きの左。across > 0 が左(runL / kerbL)、across < 0 が右
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
