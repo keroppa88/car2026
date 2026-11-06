@@ -20,17 +20,21 @@ NRM = []
 for i in range(n):
     a, c = R[(i - 2) % n], R[(i + 2) % n]; dx, dz = c - a; l = math.hypot(dx, dz); NRM.append((dz / l, -dx / l))
 # 縁石
-pink = cv2.dilate(((r > 200) & (b > 170) & (g < 200) & (r - g > 40)).astype(np.uint8), np.ones((3, 3), np.uint8))
-for side, sg in (('L', 1), ('R', -1)):
-    v = np.zeros(n)
-    for i in range(n):
-        c = t = 0
-        for o in np.arange(7, 13, 1.0):
-            u, w = px(R[i, 0] + sg * NRM[i][0] * o, Y[i], R[i, 1] + sg * NRM[i][1] * o); u, w = int(round(u)), int(round(w))
-            if 0 <= u < W and 0 <= w < H: t += 1; c += pink[w, u]
-        v[i] = c / max(t, 1)
-    m = ndimage.uniform_filter1d(v, 9, mode='wrap') > 0.3
-    m = ndimage.binary_opening(ndimage.binary_closing(m, np.ones(9)), np.ones(5))
+pink = ((r > 200) & (b > 170) & (g < 200) & (r - g > 40)).astype(np.uint8)
+# コースを横切る線(-15〜+15m)の上のピンクを数え、どちら側に寄っているかで縁石の側を決める(線が太くて両方の縁にかかるので)
+pl, pr = np.zeros(n), np.zeros(n)
+for i in range(n):
+    for o in np.arange(-15, 15.01, 0.5):
+        if abs(o) < 2: continue
+        u, w = px(R[i, 0] + NRM[i][0] * o, Y[i], R[i, 1] + NRM[i][1] * o); u, w = int(round(u)), int(round(w))
+        if 0 <= u < W and 0 <= w < H and pink[w, u]:
+            if o > 0: pl[i] += 1
+            else: pr[i] += 1
+pl, pr = ndimage.uniform_filter1d(pl, 5, mode='wrap'), ndimage.uniform_filter1d(pr, 5, mode='wrap')
+tot = pl + pr
+for side, a_, b_ in (('L', pl, pr), ('R', pr, pl)):
+    m = (tot > 2.5) & (a_ > 0.6 * tot)   # はっきりこちら側に寄っている所だけ
+    m = ndimage.binary_opening(ndimage.binary_closing(m, np.ones(5)), np.ones(3))
     d['kerb' + side] = m.astype(int).tolist(); print('縁石', side, int(m.sum()), '/', n)
 # 分かれ道
 dark = ((abs(r - 72) < 14) & (abs(g - 72) < 14) & (abs(b - 74) < 14)).astype(np.uint8)
