@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261107-fuji-3';
+import { decorateOsmCity } from './osm-city.js?v=20261107-fuji-4';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261107-fuji-3';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261107-fuji-4';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -2589,6 +2589,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 高さの格子から直接、地面の面を作って返す。
     if (GRID_GROUND_COURSE && gunmaCourse?.ground) {
       const y = gunmaCourse.groundHeightAt(x, z);
+      // 富士: 路面(コース・分かれ道)の下の地面(路面より 0.6m 下)は拾わない。拾うと車が路面の下へ沈んだまま走る
+      if (FUJI_COURSE && hits.some((h) => h.point.y > y + 0.05)) return hits;
       hits.push({
         point: new THREE.Vector3(x, y, z),
         face: { normal: gunmaCourse.groundNormalAt(x, z) },
