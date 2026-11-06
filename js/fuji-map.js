@@ -17,6 +17,26 @@ export function buildFujiMap(data) {
     return { x: dz / l, z: -dx / l };
   };
   const tangents = route.map((_, i) => normalAt(i));
+  // ---- コースの両側のアスファルトのランオフの幅(縁石の外から)。直線は細く、カーブの外側は広く、内側は少し ----
+  // 曲がり具合は前後 ±24m の向きの変わり方から。左に曲がる所は右(外)を広げる
+  const K = 8, curv = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = at(i - K), b = at(i), c = at(i + K);
+    const h1 = Math.atan2(b.x - a.x, b.z - a.z), h2 = Math.atan2(c.x - b.x, c.z - b.z);
+    const turn = Math.atan2(Math.sin(h2 - h1), Math.cos(h2 - h1));
+    curv[i] = turn / (Math.hypot(c.x - a.x, c.z - a.z) / 2 || 1);   // 1/半径(左回りが正)
+  }
+  const runL = new Float32Array(n), runR = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = curv[i], radius = Math.abs(k) > 1e-5 ? 1 / Math.abs(k) : 1e5;
+    const outer = THREE.MathUtils.clamp(10 + 2600 / radius, 10, 42);            // 外側: 直線 10m、半径 100m で 36m
+    const inner = Math.min(THREE.MathUtils.clamp(9 + 500 / radius, 9, 16), Math.max(2, radius * 0.6 - FUJI_ROAD_HALF - 1.2));
+    // 左の法線は左回りの内側。k > 0(左に曲がる)なら左が内、右が外
+    runL[i] = k > 0 ? inner : outer; runR[i] = k > 0 ? outer : inner;
+  }
+  // 前後 ±45m でならし(広い所はカーブの前後にも続く)、さらに広い方へ寄せる
+  const smooth = (w) => { const o = new Float32Array(n); for (let i = 0; i < n; i++) { let m = 0, s = 0; for (let j = -15; j <= 15; j++) { m = Math.max(m, w[ring(i + j)]); s += w[ring(i + j)]; } o[i] = 0.5 * m + 0.5 * s / 31; } return o; };
+  const runLs = smooth(smooth(runL)), runRs = smooth(smooth(runR));
   // 帯は輪を一周 + 1点で閉じる
   const extIndices = Array.from({ length: n + 1 }, (_, j) => j);
   const ext = extIndices.map(at);
@@ -56,9 +76,9 @@ export function buildFujiMap(data) {
       const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix;
       let h = G.h[k] / 10;
       const near = nearestRoute(x, z);
-      if (near.i >= 0 && near.d < 40) {
-        const ry = route[near.i].y - 0.25;
-        const t = THREE.MathUtils.smoothstep(near.d, FUJI_ROAD_HALF + 9, 40);
+      if (near.i >= 0 && near.d < 90) {
+        const ry = route[near.i].y - 0.6, wide = FUJI_ROAD_HALF + 1.2 + Math.max(runLs[near.i], runRs[near.i]);
+        const t = THREE.MathUtils.smoothstep(near.d, wide + 4, wide + 30);
         h = THREE.MathUtils.lerp(ry, h, t);
       }
       verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
@@ -96,7 +116,7 @@ export function buildFujiMap(data) {
   groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   groundGeo.setIndex(idx);
   groundGeo.computeVertexNormals();
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide }));
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));   // 地面は少し奥へ(ランオフに出てこない)
   ground.name = 'FujiGround';
   const groundHeightAt = (x, z) => {
     const fx = THREE.MathUtils.clamp((x - minX) / G.cell, 0, cols - 1e-6);
@@ -118,19 +138,27 @@ export function buildFujiMap(data) {
     { name: 'GunmaEdgeLine', from: R - 0.5, to: R - 0.35, y: 0.02, color: 0xe6e6e0 },
     { name: 'GunmaShoulder', from: -R - 1.2, to: -R, y: 0.01, kerb: true },
     { name: 'GunmaShoulder', from: R, to: R + 1.2, y: 0.01, kerb: true },
-    { name: 'GunmaGrass', from: -R - 14, to: -R - 1.2, y: -0.06, color: 0x5d7a35, grass: true },
-    { name: 'GunmaGrass', from: R + 1.2, to: R + 14, y: -0.06, color: 0x5d7a35, grass: true },
+    // アスファルトのランオフ(路面より明るいグレー)。幅は場所ごと(runL / runR)
+    { name: 'GunmaShoulder', from: -1, to: 0, y: -0.02, color: 0x5f6163, run: -1 },
+    { name: 'GunmaShoulder', from: 0, to: 1, y: -0.02, color: 0x5f6163, run: 1 },
+    // その外の芝(6m)は地面へなじませる
+    { name: 'GunmaGrass', from: -1, to: 0, y: -0.06, color: 0x5d7a35, grass: -1 },
+    { name: 'GunmaGrass', from: 0, to: 1, y: -0.06, color: 0x5d7a35, grass: 1 },
   ];
+  const runAt = (i, side) => (side < 0 ? runLs : runRs)[ring(extIndices[i])];
   const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
     for (let i = 0; i < ext.length; i++) {
       const p = ext[i], nn = extTangents[i];
       for (let s = 0; s < 2; s++) {
-        const across = s ? band.to : band.from, o = (i * 2 + s) * 3;
+        let across = s ? band.to : band.from, outerEdge = false;
+        if (band.run) { const w = R + 1.2 + runAt(i, band.run); across = band.run < 0 ? (s ? -R - 1.2 : -w) : (s ? w : R + 1.2); }
+        if (band.grass) { const w = R + 1.2 + runAt(i, band.grass); across = band.grass < 0 ? (s ? -w : -w - 6) : (s ? w + 6 : w); outerEdge = Math.abs(across) > w + 1; }
+        const o = (i * 2 + s) * 3;
         v[o] = p.x + nn.x * across; v[o + 2] = p.z + nn.z * across;
-        // ランオフの外の端は地面に合わせる
-        v[o + 1] = band.grass && Math.abs(across) > R + 13 ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
+        // 芝の外の端は地面に合わせる
+        v[o + 1] = outerEdge ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
         if (col) { const c = (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }
       }
       if (i + 1 < ext.length) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
