@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261106-fuji-1';
+import { decorateOsmCity } from './osm-city.js?v=20261106-fuji-2';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261106-fuji-1';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261106-fuji-2';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -52,6 +52,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const FUJI_COURSE = COURSE_KEY === 'fuji';   // 富士スピードウェイ(閉じたサーキット)
   const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE;   // 地面の高さを格子から直接読むコース
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE;
+  // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
+  const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -423,6 +425,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
       // Q: 地図。1回目=右上に小さく / 2回目=全画面 / 3回目=消す
       if (k.toLowerCase() === 'q') cycleMiniMap();
+      // U: 空撮(真上から、北が上)。もう一度押すと車の後ろへ戻る。ホイールで拡大縮小、右ドラッグで移動
+      if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') toggleAerialView();
       // E: 右の方向指示器 / W: 左の方向指示器(今は街並みだけ)。同じキーでもう一度押すと消える。
       if (NEO_COURSE && k.toLowerCase() === 'e') setTurnSignal(turnSignal === 1 ? 0 : 1);
       if (NEO_COURSE && k.toLowerCase() === 'w') setTurnSignal(turnSignal === -1 ? 0 : -1);
@@ -540,7 +544,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, TOUGE_COURSE ? 2200 : OSM_COURSE ? 12000 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, FUJI_COURSE || OSM_COURSE ? 12000 : TOUGE_COURSE ? 2200 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -2276,7 +2280,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 追従カメラの振れる範囲。下げすぎると地面へ潜るので 0.08 で止める。
   const CAM_PITCH_MIN = 0.08;
   // 日本橋・湘南: 客観視点で真上近く(約89度)まで振れるようにして、地図を真上から見られる
-  const CAM_PITCH_MAX = OSM_COURSE ? Math.PI / 2 - 0.02 : 1.25;
+  const CAM_PITCH_MAX = MAP_VIEW_COURSE ? Math.PI / 2 - 0.02 : 1.25;
   // 主観視点(bonnetView 2)は車体を映さないので、真上まで見上げられるようにする。
   // 見上げる角度は lookPitch = 0.34 - cam.pitch なので、真上(π/2)には
   // cam.pitch が負まで必要になる。真上ちょうどは lookAt の上方向と重なって
@@ -2312,7 +2316,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
   // 日本橋・湘南: マウスで指している地面の座標(x=東、z=南、m)を画面の下の中央に出す。修正の指示に使う
-  if (OSM_COURSE) {
+  if (MAP_VIEW_COURSE) {
     const coordEl = document.createElement('div');
     coordEl.id = 'cursor-coord';
     coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;';
@@ -2329,9 +2333,29 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
+        ground.constant = FUJI_COURSE ? -player.pos.y : 0;   // 富士は起伏があるので、車の高さの平面で読む
         coordEl.textContent = ray.ray.intersectPlane(ground, hit) ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
       });
     });
+  }
+  let aerialView = false;
+  function toggleAerialView() {
+    aerialView = !aerialView;
+    bonnetView = 0;
+    if (aerialView) {
+      cam.pitch = CAM_PITCH_MAX;
+      cam.yaw = -player.heading - Math.PI;   // 北(-z)が画面の上
+      const r = gunmaCourse?.route;
+      if (r?.length) {   // コース全体が入る高さ、中心はコースの真ん中
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const p of r) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+        cam.panX = (x0 + x1) / 2 - player.pos.x; cam.panZ = (z0 + z1) / 2 - player.pos.z;
+        cam.dist = Math.max(z1 - z0, (x1 - x0) / camera.aspect) * 1.05 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+      } else cam.dist = 1500;
+    } else {
+      cam.yaw = 0; cam.pitch = 0.34; cam.dist = 10; cam.panX = cam.panZ = 0;
+    }
+    document.body.dataset.aerialView = String(aerialView);
   }
   // ダブルクリックで視点の中心を車に戻す
   renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
@@ -2417,7 +2441,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   window.addEventListener('wheel', (e) => {
     if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
     // 日本橋はビルを眺められるよう、ずっと遠くまで引ける
-    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, OSM_COURSE ? 4000 : 28);
+    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, MAP_VIEW_COURSE ? 4000 : 28);
   }, { passive: true });
 
   window.addEventListener('resize', () => {
