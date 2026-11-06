@@ -127,20 +127,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const L = data.landcover, uv = new Float32Array((cols + 1) * (lines + 1) * 2);
     for (let k = 0; k < uv.length / 2; k++) { uv[k * 2] = (verts[k * 3] - L.x0) / (L.W * L.px); uv[k * 2 + 1] = 1 - (verts[k * 3 + 2] - L.z0) / (L.H * L.px); }
     groundGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    // 指示の絵で塗った所(芝生・アスファルト・砂地)を塗り分け図の上に描き足す(tools/fuji/apply_area_paint.py)
-    let src = landcover;
-    if (data.paintAreas?.length) {
-      const cv = document.createElement('canvas'); cv.width = landcover.width; cv.height = landcover.height;
-      const cx = cv.getContext('2d'); cx.drawImage(landcover, 0, 0);
-      const FILL = { lawn: 'rgb(160,186,112)', paved: 'rgb(155,154,152)', sand: 'rgb(214,196,140)' };
-      for (const a of data.paintAreas) {
-        cx.fillStyle = FILL[a.k] || FILL.paved; cx.beginPath();
-        a.o.forEach(([x, z], i) => { const u = (x - L.x0) / L.px * (cv.width / L.W), v = (z - L.z0) / L.px * (cv.height / L.H); i ? cx.lineTo(u, v) : cx.moveTo(u, v); });
-        cx.closePath(); cx.fill();
-      }
-      src = cv;
-    }
-    groundTex = new THREE.Texture(src); groundTex.colorSpace = THREE.SRGBColorSpace; groundTex.anisotropy = 8; groundTex.needsUpdate = true;
+    groundTex = new THREE.Texture(landcover); groundTex.colorSpace = THREE.SRGBColorSpace; groundTex.anisotropy = 8; groundTex.needsUpdate = true;
     colors.fill(1);
   }
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', map: groundTex, vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));   // 地面は少し奥へ(ランオフに出てこない)
@@ -232,27 +219,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   const scenery = new THREE.Group(); scenery.name = 'fuji-buildings';
   scenery.add(far);
   const wallMat = new THREE.MeshLambertMaterial({ color: 0xe4e4e0 }), roofMat = new THREE.MeshLambertMaterial({ color: 0xb8bbbd });
-  // ---- 観客席(コンクリートの壁 3m の上に、コースから離れるほど高くなる段の席) ----
-  const standMat = new THREE.MeshLambertMaterial({ color: 0x9c9d9a }), seatMat = new THREE.MeshLambertMaterial({ color: 0xc9cbcc });
-  const nearestCourse = (x, z) => { let bi = 0, bd = Infinity; for (let i = 0; i < n; i += 2) { const d = (route[i].x - x) ** 2 + (route[i].z - z) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; };
   for (const b of data.buildings) {
-    if (!b.stand) continue;
-    const q = b.p; let e = 0, bl = 0;
-    for (let k = 0; k < 4; k++) { const l = Math.hypot(q[(k + 1) % 4][0] - q[k][0], q[(k + 1) % 4][1] - q[k][1]); if (l > bl) { bl = l; e = k; } }
-    // 長い辺のうちコースに近い方を前に
-    let A = q[e], B = q[(e + 1) % 4], C = q[(e + 2) % 4], D = q[(e + 3) % 4];
-    const mid = (u, v) => [(u[0] + v[0]) / 2, (u[1] + v[1]) / 2], ci = (m) => { const r = route[nearestCourse(...m)]; return Math.hypot(r.x - m[0], r.z - m[1]); };
-    if (ci(mid(C, D)) < ci(mid(A, B))) [A, B, C, D] = [C, D, A, B];
-    const depth = Math.hypot(D[0] - A[0], D[1] - A[1]), nx = (D[0] - A[0]) / depth, nz = (D[1] - A[1]) / depth;
-    const tx = (B[0] - A[0]) / bl, tz = (B[1] - A[1]) / bl, ang = Math.atan2(tx, tz), y0 = Math.min(...q.map(([x, z]) => groundHeightAt(x, z)));
-    const cxm = (A[0] + B[0]) / 2, czm = (A[1] + B[1]) / 2;
-    const add = (mat, off, w, h, yb) => { const g = new THREE.BoxGeometry(0.1, h, bl); const m = new THREE.Mesh(g, mat); m.scale.x = w * 10; m.position.set(cxm + nx * off, yb + h / 2, czm + nz * off); m.rotation.y = ang; scenery.add(m); };
-    add(standMat, 0.4, 0.8, 3, y0);                                   // 前の壁
-    const steps = Math.max(4, Math.floor((depth - 1) / 0.9));
-    for (let k = 0; k < steps; k++) add(k % 2 ? seatMat : standMat, 1 + (k + 0.5) * (depth - 1) / steps, (depth - 1) / steps + 0.02, 3 + (k + 1) * 0.45, y0);
-  }
-  for (const b of data.buildings) {
-    if (b.stand) continue;
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
     const depth = b.roof ? 0.6 : b.h;
     const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
@@ -260,61 +227,6 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const m = new THREE.Mesh(geo, [roofMat, wallMat]);
     m.position.y = b.roof ? b.y + b.h - 0.6 : b.y;
     scenery.add(m);
-  }
-
-  // ---- 白い柵: 高さ 1.5m の白いガードレール(3段)。金網はなし ----
-  if (data.fences?.length) {
-    const rail = document.createElement('canvas'); rail.width = 64; rail.height = 64; const r2 = rail.getContext('2d');
-    r2.fillStyle = '#e8eae8'; r2.fillRect(0, 0, 64, 64);
-    for (let k = 0; k < 3; k++) { const y = k * 21; const gr = r2.createLinearGradient(0, y, 0, y + 21); gr.addColorStop(0, '#f4f5f4'); gr.addColorStop(0.5, '#dfe2e0'); gr.addColorStop(0.55, '#b9bcba'); gr.addColorStop(1, '#eef0ee'); r2.fillStyle = gr; r2.fillRect(0, y, 64, 21); }
-    const railTex = new THREE.CanvasTexture(rail); railTex.wrapS = THREE.RepeatWrapping; railTex.colorSpace = THREE.SRGBColorSpace;
-    const rp = [], ru = [];
-    const quad = (P, U, a, b2, y0, y1, u0, u1, v0, v1) => { P.push(a[0], y0, a[1], b2[0], y0, b2[1], b2[0], y1, b2[1], a[0], y0, a[1], b2[0], y1, b2[1], a[0], y1, a[1]); U.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1); };
-    for (const f of data.fences) {
-      let acc = 0;
-      for (let i = 0; i + 1 < f.pts.length; i++) {
-        const a = f.pts[i], b2 = f.pts[i + 1], L = Math.hypot(b2[0] - a[0], b2[1] - a[1]), m = Math.max(1, Math.round(L / 3));
-        for (let k = 0; k < m; k++) {
-          const p0 = [a[0] + (b2[0] - a[0]) * k / m, a[1] + (b2[1] - a[1]) * k / m], p1 = [a[0] + (b2[0] - a[0]) * (k + 1) / m, a[1] + (b2[1] - a[1]) * (k + 1) / m];
-          const y = Math.min(groundHeightAt(...p0), groundHeightAt(...p1)) - 0.1, l = L / m;
-          quad(rp, ru, p0, p1, y, y + 1.6, acc / 4, (acc + l) / 4, 0, 1);
-          acc += l;
-        }
-      }
-    }
-    const mk = (P, U, mat, name) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); m.name = name; scenery.add(m); };
-    mk(rp, ru, new THREE.MeshLambertMaterial({ map: railTex, side: THREE.DoubleSide }), 'fuji-guardrail');
-  }
-  // ---- 地面の描画: 赤白のシェブロン(ピット出口)と白い破線 ----
-  const heightNear = (x, z) => { const r = route[nearestCourse(x, z)]; return Math.max(r.y, groundHeightAt(x, z)) + 0.03; };
-  for (const dc of data.decals || []) {
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const c2 = cv.getContext('2d');
-    c2.fillStyle = '#eeeeea'; c2.fillRect(0, 0, 256, 64); c2.fillStyle = '#c4282a';
-    for (let x = -64; x < 256 + 64; x += 32) { c2.beginPath(); c2.moveTo(x, 0); c2.lineTo(x + 16, 0); c2.lineTo(x + 48, 32); c2.lineTo(x + 16, 64); c2.lineTo(x, 64); c2.lineTo(x + 32, 32); c2.fill(); }
-    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping;
-    const [axx, axz] = dc.axis, al = Math.hypot(axx, axz), ux = axx / al, uz = axz / al;
-    const o = dc.o, shape = new THREE.Shape(o.map(([x, z]) => new THREE.Vector2(x, -z)));
-    const g = new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI / 2);
-    const pos = g.getAttribute('position'), uv = new Float32Array(pos.count * 2);
-    let a0 = Infinity, a1 = -Infinity; for (const [x, z] of o) { const t = -x * uz + z * ux; a0 = Math.min(a0, t); a1 = Math.max(a1, t); }
-    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); pos.setY(k, heightNear(x, z)); uv[k * 2] = (x * ux + z * uz) / (a1 - a0 || 1) / 4; uv[k * 2 + 1] = ((-x * uz + z * ux) - a0) / (a1 - a0 || 1); }   // 横幅いっぱいに矢じり
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 })); m.name = 'GunmaEdgeLine'; group.add(m);
-  }
-  for (const mk2 of data.markings || []) {
-    const [dl, gap] = mk2.dash || [1e9, 0], v = [];
-    let acc = 0;
-    for (let i = 0; i + 1 < mk2.pts.length; i++) {
-      const a = mk2.pts[i], b2 = mk2.pts[i + 1], L = Math.hypot(b2[0] - a[0], b2[1] - a[1]), tx = (b2[0] - a[0]) / L, tz = (b2[1] - a[1]) / L, w = mk2.w;
-      for (let s0 = 0; s0 < L; s0 += 0.5) {
-        const s1 = Math.min(L, s0 + 0.5); if (((acc + s0) % (dl + gap)) >= dl) continue;
-        const p = [a[0] + tx * s0, a[1] + tz * s0], q2 = [a[0] + tx * s1, a[1] + tz * s1], y0 = heightNear(...p), y1 = heightNear(...q2);
-        v.push(p[0] - tz * w, y0, p[1] + tx * w, q2[0] - tz * w, y1, q2[1] + tx * w, q2[0] + tz * w, y1, q2[1] - tx * w, p[0] - tz * w, y0, p[1] + tx * w, q2[0] + tz * w, y1, q2[1] - tx * w, p[0] + tz * w, y0, p[1] - tx * w);
-      }
-      acc += L;
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaEdgeLine', color: 0xf2f2ee, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 })); m.name = 'GunmaEdgeLine'; group.add(m);
   }
 
   const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : groundHeightAt(x, z));
