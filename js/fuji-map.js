@@ -199,7 +199,9 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         const a = P[Math.max(0, i - 1)], c = P[Math.min(m - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = dz / l, nz = -dx / l;
         const y = Math.max(THREE.MathUtils.lerp(ya, yb, acc[i] / (total || 1)), groundHeightAt(P[i][0], P[i][1]) + 0.04) - 0.01 + dy;
         for (const o of [o0, o1]) v.push(P[i][0] + nx * o, y, P[i][1] + nz * o);
-        if (i + 1 < m) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+        // 白線は本コースの路面の上には引かない(分かれ目・合流の所)
+        const onCourse = (k) => nearestRoute(P[k][0], P[k][1]).d < FUJI_ROAD_HALF + 1;
+        if (i + 1 < m && !(dy && (onCourse(i) || onCourse(i + 1)))) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
       }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: dy ? 'GunmaEdgeLine' : 'GunmaRoad', color: col, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
