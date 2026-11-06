@@ -162,7 +162,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   // 左右: 法線 nn は進む向きの左。across > 0 が左(runL / kerbL)、across < 0 が右
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
-  const grey = new THREE.Color(0x5f6163);
+  const grey = new THREE.Color(landcover ? 0x9b9a98 : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
   const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
@@ -186,6 +186,25 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     geo.setIndex(ind); geo.computeVertexNormals();
     const mat = new THREE.MeshLambertMaterial({ name: band.name, color: col ? 0xffffff : band.color, vertexColors: !!col, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat); mesh.name = band.name; group.add(mesh);
+  }
+  // 分かれ道(ピットレーン・ダンロップの近道。tools/fuji/apply_kerb_paint.py)。路面と両わきの白線、縁石なし
+  for (const br of data.branches || []) {
+    const P = br.pts, m = P.length, half = br.w / 2;
+    const ya = route[br.from].y, yb = route[br.to].y;
+    let total = 0; const acc = [0];
+    for (let i = 1; i < m; i++) { total += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); acc.push(total); }
+    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]]) {
+      const v = [], ind = [];
+      for (let i = 0; i < m; i++) {
+        const a = P[Math.max(0, i - 1)], c = P[Math.min(m - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = dz / l, nz = -dx / l;
+        const y = Math.max(THREE.MathUtils.lerp(ya, yb, acc[i] / (total || 1)), groundHeightAt(P[i][0], P[i][1]) + 0.04) - 0.01 + dy;
+        for (const o of [o0, o1]) v.push(P[i][0] + nx * o, y, P[i][1] + nz * o);
+        if (i + 1 < m) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: dy ? 'GunmaEdgeLine' : 'GunmaRoad', color: col, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
+      mesh.name = dy ? 'GunmaEdgeLine' : 'GunmaRoad'; group.add(mesh);
+    }
   }
   // スタート・フィニッシュの白線(コースの幅いっぱい、幅 1m)
   {
