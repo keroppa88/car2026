@@ -36,7 +36,13 @@ export function buildFujiMap(data) {
   }
   // 前後 ±45m でならし(広い所はカーブの前後にも続く)、さらに広い方へ寄せる
   const smooth = (w) => { const o = new Float32Array(n); for (let i = 0; i < n; i++) { let m = 0, s = 0; for (let j = -15; j <= 15; j++) { m = Math.max(m, w[ring(i + j)]); s += w[ring(i + j)]; } o[i] = 0.5 * m + 0.5 * s / 31; } return o; };
-  const runLs = smooth(smooth(runL)), runRs = smooth(smooth(runR));
+  let runLs = smooth(smooth(runL)), runRs = smooth(smooth(runR));
+  // 空撮から測った実際の幅があればそれを使う(tools/fuji/measure_runoff.py)。カーブの内側は曲がる半径より広げない
+  if (data.runL && data.runR) {
+    const cap = (i, inner) => { const k = Math.abs(curv[i]); return inner && k > 1e-5 ? Math.max(1.5, 0.9 / k - FUJI_ROAD_HALF - 1.2) : 1e9; };
+    runLs = Float32Array.from(data.runL, (w, i) => Math.min(w, cap(i, curv[i] > 0)));
+    runRs = Float32Array.from(data.runR, (w, i) => Math.min(w, cap(i, curv[i] < 0)));
+  }
   // 帯は輪を一周 + 1点で閉じる
   const extIndices = Array.from({ length: n + 1 }, (_, j) => j);
   const ext = extIndices.map(at);

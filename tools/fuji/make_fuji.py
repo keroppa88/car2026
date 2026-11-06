@@ -82,9 +82,15 @@ G = np.where(out, ndimage.gaussian_filter(G, 6), G)
 bld = []
 HT = {'grandstand': 14, 'commercial': 14, 'roof': 6}
 NAMED = {'ピットビルA': 12, 'ピットビルB': 12, 'コントロールセンター': 18, 'サービスガレージ': 7, 'レストランOrizuru': 8}
+# ホームストレートの両わき(ストレートの線から 120m 以内、ストレートの両端の間)の建物だけ残す
+sa, sb = Q[bs % n], Q[(bs + best) % n]; sd = (sb - sa) / np.linalg.norm(sb - sa); sL = np.linalg.norm(sb - sa)
+def by_straight(pts):
+    c = np.mean(pts, 0) - sa; t = c @ sd; off = abs(c[0] * sd[1] - c[1] * sd[0])
+    return -20 < t < sL + 20 and off < 120
 for wid, (r, t) in W.items():
     if 'building' not in t or r[0] != r[-1] or len(r) < 4: continue
     pts = [xz(*N[q]) for q in r[:-1] if q in N]
+    if not by_straight(pts): continue
     h = NAMED.get(t.get('name'), HT.get(t['building'], 7))
     if t.get('building:levels'): h = float(t['building:levels']) * 3.5
     gy = min(dem_at(lat_of(p[1]), lon_of(p[0])) for p in pts) - BASE

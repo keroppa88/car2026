@@ -392,7 +392,7 @@ export const MAP_CONFIGS = {
     label: '富士スピードウェイ',
     file: 'procedural:fuji',
     preview: 'picture/fuji.png',
-    courseData: 'map/fuji-course.json?v=20261106-2',
+    courseData: 'map/fuji-course.json?v=20261106-4',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
