@@ -151,7 +151,10 @@ export function buildFujiMap(data) {
     { name: 'GunmaGrass', from: -1, to: 0, y: -0.06, color: 0x5d7a35, grass: -1 },
     { name: 'GunmaGrass', from: 0, to: 1, y: -0.06, color: 0x5d7a35, grass: 1 },
   ];
-  const runAt = (i, side) => (side < 0 ? runLs : runRs)[ring(extIndices[i])];
+  // 左右: 法線 nn は進む向きの左。across > 0 が左(runL / kerbL)、across < 0 が右
+  const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
+  const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
+  const grey = new THREE.Color(0x5f6163);
   const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
@@ -165,7 +168,7 @@ export function buildFujiMap(data) {
         v[o] = p.x + nn.x * across; v[o + 2] = p.z + nn.z * across;
         // 芝の外の端は地面に合わせる
         v[o + 1] = outerEdge ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
-        if (col) { const c = (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }
+        if (col) { const c = !kerbAt(i, band.from < 0 ? -1 : 1) ? grey : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
       }
       if (i + 1 < ext.length) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
