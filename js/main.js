@@ -8,19 +8,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261106-fuji-2';
+import { decorateOsmCity } from './osm-city.js?v=20261107-fuji-3';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261106-fuji-2';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261107-fuji-3';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildFujiMap } from './fuji-map.js?v=20261106-8';
+import { buildFujiMap } from './fuji-map.js?v=20261107-2';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -9947,7 +9947,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       driveTiltTarget.setFromEuler(driveTiltEuler);
       combinedTiltTarget.copy(smoothedRoadTilt).multiply(driveTiltTarget);
       player.tilt.quaternion.copy(combinedTiltTarget);
+      // 富士: 加速・旋回で車体が傾いても、下がった側(後ろ・外側)が路面にめり込まないように持ち上げる
+      player.tilt.position.y = FUJI_COURSE ? 2.3 * Math.abs(Math.sin(drivePitch)) + 0.9 * Math.abs(Math.sin(driveRoll)) : 0;
     } else {
+      player.tilt.position.y = 0;
       // 手続き生成コースでも同じ荷重移動方向を使い、地形ピッチを加える。
       player.tilt.rotation.z = driveRoll;
       player.tilt.rotation.x = clamp(drivePitch - slopePitch, -0.28, 0.28);

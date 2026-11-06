@@ -82,9 +82,9 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix;
       let h = G.h[k] / 10;
       const near = nearestRoute(x, z);
-      if (near.i >= 0 && near.d < 90) {
+      if (near.i >= 0 && near.d < 120) {
         const ry = route[near.i].y - 0.6, wide = FUJI_ROAD_HALF + 1.2 + Math.max(runLs[near.i], runRs[near.i]);
-        const t = THREE.MathUtils.smoothstep(near.d, wide + 4, wide + 30);
+        const t = THREE.MathUtils.smoothstep(near.d, wide + 2 * G.cell, wide + 2 * G.cell + 30);   // 升目(6m)2つぶんは平らに(斜めの三角が路面へかぶらない)
         h = THREE.MathUtils.lerp(ry, h, t);
       }
       verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
@@ -106,7 +106,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const xc = THREE.MathUtils.clamp(x, minX, maxX), zc = THREE.MathUtils.clamp(z, minZ, maxZ);
       const k = (iz) => (iz * (cols + 1));
       const fx = Math.round((xc - minX) / G.cell), fz = Math.round((zc - minZ) / G.cell);
-      fv.push(x, G.h[Math.min(lines, fz) * (cols + 1) + Math.min(cols, fx)] / 10 - (inside ? 3 : 0.3), z);
+      fv.push(x, G.h[Math.min(lines, fz) * (cols + 1) + Math.min(cols, fx)] / 10 - (inside ? 40 : 0.3), z);
       if (landcover) fc.push(0.021, 0.075, 0.025); else fc.push(grass[0], grass[1], grass[2]);   // 塗り分け図の外は木々の深い緑
     }
     const w = 2 * m + 1;
