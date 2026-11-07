@@ -331,8 +331,54 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
   };
   pitWall();
+  // ---- パドックのピット棟(白い3階建て)。1階はピットレーンへ向いて、車2台分(幅 5.6m)の開口が並ぶ。
+  //      ピットレーンと建物の間は作業スペース(コースより少し薄いグレー) ----
+  const pitLane = (data.branches || []).find((b) => b.w <= 9);
+  const distPL = (x, z) => { if (!pitLane) return 1e9; const PP = pitLane.pts; let best = 1e9; for (let k = 0; k + 1 < PP.length; k++) { const [ax, az] = PP[k], [bx, bz] = PP[k + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); } return best; };
+  const _BX = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  const boxInto = (out, cx, cy, cz, sx, sy, sz, ang = 0) => {   // 箱(横 sx・高さ sy・奥 sz、y 軸まわりに ang)を out に足す
+    const P = _BX.getAttribute('position').array, N = _BX.getAttribute('normal').array, c = Math.cos(ang), s2 = Math.sin(ang);
+    for (let i = 0; i < P.length; i += 3) {
+      const x = P[i] * sx, y = P[i + 1] * sy, z = P[i + 2] * sz;
+      out.p.push(cx + x * c + z * s2, cy + y, cz - x * s2 + z * c); out.n.push(N[i] * c + N[i + 2] * s2, N[i + 1], -N[i] * s2 + N[i + 2] * c);
+    }
+  };
+  const pitBuilding = (b) => {
+    const H = 10.5, y0 = b.y;
+    const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: H, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, [new THREE.MeshLambertMaterial({ color: 0xe6e7e6 }), new THREE.MeshLambertMaterial({ color: 0xf4f4f2, emissive: 0x8c8c8a })]); m.position.y = y0; scenery.add(m);
+    // ピットレーンに向いた面: 外周の辺のうち、真ん中がピットレーンに近く、ある程度長い辺
+    const q = b.p, open = { p: [], n: [] }, band = { p: [], n: [] }, work = [];
+    let cx = 0, cz = 0; for (const [x, z] of q) { cx += x / q.length; cz += z / q.length; }
+    for (let k = 0; k < q.length; k++) {
+      const A = q[k], B = q[(k + 1) % q.length], L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 8) continue;
+      const tx = (B[0] - A[0]) / L, tz = (B[1] - A[1]) / L; let nx = -tz, nz = tx;
+      const mx = (A[0] + B[0]) / 2, mz = (A[1] + B[1]) / 2;
+      if ((mx - cx) * nx + (mz - cz) * nz < 0) { nx = -nx; nz = -nz; }   // 外向き
+      if (distPL(mx + nx * 3, mz + nz * 3) > distPL(mx, mz) || distPL(mx, mz) > 30) continue;   // ピットレーンの方を向いた辺だけ
+      const ang = Math.atan2(nx, nz), W = 5.6, PITCH = 6.4, cnt = Math.floor((L - 1) / PITCH), s0 = (L - cnt * PITCH) / 2;
+      for (let j = 0; j < cnt; j++) {   // 開口(暗い奥)
+        const s = s0 + (j + 0.5) * PITCH;
+        boxInto(open, A[0] + tx * s + nx * 0.03, y0 + 1.7, A[1] + tz * s + nz * 0.03, W, 3.4, 0.06, ang);
+      }
+      boxInto(band, mx + nx * 0.04, y0 + 3.6, mz + nz * 0.04, L, 0.25, 0.06, ang);   // 1階と2階の間の帯
+      // 作業スペース: 建物の前からピットレーンの端まで、2m ごと
+      for (let s = 0; s < L - 0.01; s += 2) {
+        const e = Math.min(L, s + 2), p0 = [A[0] + tx * s, A[1] + tz * s], p1 = [A[0] + tx * e, A[1] + tz * e];
+        const reach = (pt) => Math.max(0, distPL(...pt) - pitLane.w / 2 + 0.3);
+        const r0 = reach(p0), r1 = reach(p1), a2 = [p0[0] + nx * r0, p0[1] + nz * r0], b2 = [p1[0] + nx * r1, p1[1] + nz * r1];
+        const yy = (pt) => Math.max(groundHeightAt(...pt) + 0.03, y0 + 0.02);
+        work.push(p0[0], yy(p0), p0[1], p1[0], yy(p1), p1[1], b2[0], yy(b2), b2[1], p0[0], yy(p0), p0[1], b2[0], yy(b2), b2[1], a2[0], yy(a2), a2[1]);
+      }
+    }
+    const mk = (o, color) => { if (!o.p.length) return; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3)); scenery.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }))); };
+    mk(open, 0x2c2e31); mk(band, 0xd0d1d0);
+    if (work.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(work, 3)); g.computeVertexNormals(); const wm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); wm.name = 'pit-work-area'; scenery.add(wm); }
+  };
   for (const b of data.buildings) {
     if (b.name === 'グランドスタンド') { grandstand(b); continue; }
+    if (/^ピットビル/.test(b.name || '')) { pitBuilding(b); continue; }
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
     const depth = b.roof ? 0.6 : b.h;
     const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
