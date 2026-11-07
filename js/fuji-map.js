@@ -225,7 +225,69 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   const scenery = new THREE.Group(); scenery.name = 'fuji-buildings';
   scenery.add(far);
   const wallMat = new THREE.MeshLambertMaterial({ color: 0xe4e4e0 }), roofMat = new THREE.MeshLambertMaterial({ color: 0xb8bbbd });
+  // ---- ホームストレートの観客席(グランドスタンド)。コースの側から: 芝生 → 白いガードレール(1.5m)と金網 → 幅2mの通路 → 観客席(コースへ向かって下る段々) ----
+  const grandstand = (b) => {
+    // 長方形の長い辺のうち、コースに近い方が前
+    const q = b.p; let best = null;
+    const near = (x, z) => { const k = nearestRoute(x, z); return k.i < 0 ? 1e9 : k.d; };
+    for (let k = 0; k < q.length; k++) {
+      const A = q[k], B = q[(k + 1) % q.length], L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      if (!best || L > best.L + 1 || (Math.abs(L - best.L) <= 1 && near((A[0] + B[0]) / 2, (A[1] + B[1]) / 2) < best.d)) best = { A, B, L, d: near((A[0] + B[0]) / 2, (A[1] + B[1]) / 2) };
+    }
+    const { A, B, L } = best, tx = (B[0] - A[0]) / L, tz = (B[1] - A[1]) / L;
+    // 奥行きの向き(コースから離れる向き)と奥行き
+    let ox = -tz, oz = tx; const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    if (near(mid[0] + ox * 5, mid[1] + oz * 5) < near(...mid)) { ox = -ox; oz = -oz; }
+    let depth = 0; for (const [x, z] of q) depth = Math.max(depth, (x - A[0]) * ox + (z - A[1]) * oz);
+    const ang = Math.atan2(tx, tz), gy = (x, z) => groundHeightAt(x, z);
+    const y0 = Math.min(gy(A[0], A[1]), gy(B[0], B[1]), gy(mid[0], mid[1]));
+    const conc = new THREE.MeshLambertMaterial({ color: 0xb4b5b2 }), seat = new THREE.MeshLambertMaterial({ color: 0xc8cacb }), seat2 = new THREE.MeshLambertMaterial({ color: 0xa9abad });
+    const slab = (mat, off, d, h, yb) => {   // 前の辺と平行な、長さ L の箱。off: 前の辺からの奥行きの位置(中心)
+      const m = new THREE.Mesh(new THREE.BoxGeometry(d, h, L), mat);
+      m.position.set(mid[0] + ox * off, yb + h / 2, mid[1] + oz * off); m.rotation.y = ang + Math.PI / 2 * 0; m.rotation.y = Math.atan2(tx, tz);
+      scenery.add(m);
+    };
+    // 前の壁(高さ 2.5m)、そこから奥へ段々に上がる(1段 奥行き 0.85m・高さ 0.42m)、いちばん奥は背の壁
+    const WALL = 2.5, STEP = 0.85, RISE = 0.42, rows = Math.max(4, Math.floor((depth - 1) / STEP));
+    slab(conc, 0.4, 0.8, WALL + 0.3, y0);
+    for (let k = 0; k < rows; k++) slab(k % 2 ? seat : seat2, 0.8 + (k + 0.5) * STEP, STEP + 0.02, WALL + (k + 1) * RISE, y0);
+    slab(conc, 0.8 + rows * STEP + 0.4, 0.8, WALL + rows * RISE + 1.6, y0);   // 背の壁(手すり)
+    // 前: 通路(2m)・柵・芝生。前の辺に沿って 2m ごと
+    const path = [], lawn = [], rail = [], railUv = [], net = [], netUv = [], posts = { p: [], n: [] };
+    const quadH = (P, a, b2, ya, yb) => P.push(a[0], ya, a[1], b2[0], yb, b2[1], b2[0], yb, b2[1]);
+    const flat = (P, p0, p1, p2, p3) => { const y = (pt) => gy(pt[0], pt[1]) + 0.03; P.push(p0[0], y(p0), p0[1], p1[0], y(p1), p1[1], p2[0], y(p2), p2[1], p0[0], y(p0), p0[1], p2[0], y(p2), p2[1], p3[0], y(p3), p3[1]); };
+    const wallQ = (P, U, a, b2, y0a, y0b, h, u0, u1, vmax) => { P.push(a[0], y0a, a[1], b2[0], y0b, b2[1], b2[0], y0b + h, b2[1], a[0], y0a, a[1], b2[0], y0b + h, b2[1], a[0], y0a + h, a[1]); U.push(u0, 0, u1, 0, u1, vmax, u0, 0, u1, vmax, u0, vmax); };
+    const FENCE = 2.2;   // 柵は観客席の前から 2.2m 手前(通路 2m)
+    for (let s0 = 0; s0 < L - 0.01; s0 += 2) {
+      const s1 = Math.min(L, s0 + 2), at = (s, o) => [A[0] + tx * s - ox * o, A[1] + tz * s - oz * o];
+      flat(path, at(s0, 0.1), at(s1, 0.1), at(s1, FENCE - 0.1), at(s0, FENCE - 0.1));
+      // 芝生: 柵からコースの縁石の外まで
+      const reach = (s) => { const pt = at(s, FENCE), k = nearestRoute(...pt); return Math.max(FENCE, FENCE + k.d - (FUJI_ROAD_HALF + 1.25)); };
+      flat(lawn, at(s0, FENCE), at(s1, FENCE), at(s1, reach(s1)), at(s0, reach(s0)));
+      const fa = at(s0, FENCE), fb = at(s1, FENCE), ya = gy(...fa) - 0.05, yb = gy(...fb) - 0.05;
+      wallQ(rail, railUv, fa, fb, ya, yb, 1.5, s0 / 4, s1 / 4, 1);
+      wallQ(net, netUv, fa, fb, ya + 1.5, yb + 1.5, 2.6, s0 / 1.2, s1 / 1.2, 2.6 / 1.2);
+      if (Math.round(s0) % 4 === 0) { const pg = new THREE.CylinderGeometry(0.05, 0.05, 2.7, 6).toNonIndexed(); pg.translate(fa[0], ya + 1.5 + 1.35, fa[1]); posts.p.push(...pg.getAttribute('position').array); posts.n.push(...pg.getAttribute('normal').array); }
+    }
+    const mesh = (P, mat, U) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); if (U) g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); scenery.add(m); return m; };
+    mesh(path, new THREE.MeshLambertMaterial({ color: 0x55575a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+    mesh(lawn, new THREE.MeshLambertMaterial({ color: 0x8fb35e, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+    // 白いガードレール(3段の波板)
+    const rc = document.createElement('canvas'); rc.width = 64; rc.height = 64; const r2 = rc.getContext('2d');
+    for (let k = 0; k < 3; k++) { const y = k * 21, gr = r2.createLinearGradient(0, y, 0, y + 21); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.45, '#eef0ef'); gr.addColorStop(0.55, '#c9cccb'); gr.addColorStop(1, '#f7f8f7'); r2.fillStyle = gr; r2.fillRect(0, y, 64, 21); }
+    const rt = new THREE.CanvasTexture(rc); rt.wrapS = THREE.RepeatWrapping; rt.colorSpace = THREE.SRGBColorSpace;
+    mesh(rail, new THREE.MeshLambertMaterial({ map: rt, side: THREE.DoubleSide, emissive: 0x222222 }), railUv).name = 'fuji-guardrail';
+    // 金網(ひし形の網目)
+    const nc = document.createElement('canvas'); nc.width = 64; nc.height = 64; const n2 = nc.getContext('2d');
+    n2.strokeStyle = 'rgba(60,64,66,0.95)'; n2.lineWidth = 1.5;
+    for (let k = -64; k < 128; k += 10) { n2.beginPath(); n2.moveTo(k, 0); n2.lineTo(k - 64, 64); n2.stroke(); n2.beginPath(); n2.moveTo(k - 64, 0); n2.lineTo(k, 64); n2.stroke(); }
+    const nt = new THREE.CanvasTexture(nc); nt.wrapS = nt.wrapT = THREE.RepeatWrapping;
+    mesh(net, new THREE.MeshLambertMaterial({ map: nt, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }), netUv).name = 'fuji-catchfence';
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(posts.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(posts.n, 3));
+    scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
+  };
   for (const b of data.buildings) {
+    if (b.name === 'グランドスタンド') { grandstand(b); continue; }
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
     const depth = b.roof ? 0.6 : b.h;
     const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
