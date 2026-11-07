@@ -83,7 +83,11 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       let h = G.h[k] / 10;
       const near = nearestRoute(x, z);
       if (near.i >= 0 && near.d < 120) {
-        const ry = route[near.i].y - 0.6, wide = FUJI_ROAD_HALF + 1.2 + Math.max(runLs[near.i], runRs[near.i]);
+        // 路面と同じ高さ(5cm 下)にそろえて、コースとコースの外に段差を作らない。高さは近い2点の間で補う
+        const a = route[near.i], b2 = route[ring(near.i + 1)], c2 = route[ring(near.i - 1)];
+        const seg = (q) => { const dx = q.x - a.x, dz = q.z - a.z, l2 = dx * dx + dz * dz || 1; return THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / l2, 0, 1); };
+        const tb = seg(b2), tc = seg(c2);
+        const ry = (tb >= tc ? a.y + (b2.y - a.y) * tb : a.y + (c2.y - a.y) * tc) - 0.05, wide = FUJI_ROAD_HALF + 1.2 + Math.max(runLs[near.i], runRs[near.i]);
         const t = THREE.MathUtils.smoothstep(near.d, wide + 2 * G.cell, wide + 2 * G.cell + 30);   // 升目(6m)2つぶんは平らに(斜めの三角が路面へかぶらない)
         h = THREE.MathUtils.lerp(ry, h, t);
       }
