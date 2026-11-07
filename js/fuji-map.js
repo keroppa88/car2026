@@ -286,6 +286,51 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(posts.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(posts.n, 3));
     scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
   };
+  // ---- ホームストレートの内側(ピット側): 白線の外に幅 2.5m のコースのアスファルト、その外に高さ 1m のコンクリート壁と金網。内側はピットレーン ----
+  const pitWall = () => {
+    const pit = (data.branches || []).find((b) => b.w <= 9);   // ピットレーン(幅 8m)
+    if (!pit) return;
+    const PP = pit.pts, distPit = (x, z) => { let best = Infinity; for (let k = 0; k + 1 < PP.length; k++) { const [ax, az] = PP[k], [bx, bz] = PP[k + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); } return best; };
+    const OUT = FUJI_ROAD_HALF + 2.5, half = pit.w / 2;
+    // ピットレーンがコースの横を並んで走る所(壁を立てる余地がある所)を、コースの点ごとに調べる
+    const on = new Uint8Array(n); let side = 0;
+    for (let i = 0; i < n; i++) {
+      const p = route[i], t = tangents[i], d0 = distPit(p.x, p.z);
+      if (d0 > 40) continue;
+      const dl = distPit(p.x + t.x * 12, p.z + t.z * 12), dr = distPit(p.x - t.x * 12, p.z - t.z * 12);
+      const sgn = dl < dr ? 1 : -1;   // ピットのある側(左が +)
+      if (d0 - half >= OUT + 0.8) { on[i] = 1; side = sgn; }
+    }
+    if (!side) return;
+    const asp = [], wall = [], wallTop = [], net = [], netUv = [], posts = { p: [], n: [] };
+    const P = (i, o, dy = 0) => { const p = route[i], t = tangents[i]; return [p.x + t.x * o * side, p.y + dy, p.z + t.z * o * side]; };
+    const quad = (arr, a, b, c, d) => arr.push(...a, ...b, ...c, ...a, ...c, ...d);
+    let run = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n; if (!on[i] || !on[j]) { run = 0; continue; }
+      quad(asp, P(i, FUJI_ROAD_HALF - 0.02, 0.0), P(j, FUJI_ROAD_HALF - 0.02, 0.0), P(j, OUT, 0.0), P(i, OUT, 0.0));   // コースと同じアスファルト
+      quad(wall, P(i, OUT, -0.1), P(j, OUT, -0.1), P(j, OUT, 1.0), P(i, OUT, 1.0));                                   // 壁の表
+      quad(wall, P(i, OUT + 0.3, -0.1), P(j, OUT + 0.3, -0.1), P(j, OUT + 0.3, 1.0), P(i, OUT + 0.3, 1.0));         // 壁の裏
+      quad(wallTop, P(i, OUT, 1.0), P(j, OUT, 1.0), P(j, OUT + 0.3, 1.0), P(i, OUT + 0.3, 1.0));                     // 壁の上
+      const a = P(i, OUT + 0.15, 1.0), b2 = P(j, OUT + 0.15, 1.0), l = Math.hypot(b2[0] - a[0], b2[2] - a[2]);
+      net.push(a[0], a[1], a[2], b2[0], b2[1], b2[2], b2[0], b2[1] + 2.6, b2[2], a[0], a[1], a[2], b2[0], b2[1] + 2.6, b2[2], a[0], a[1] + 2.6, a[2]);
+      netUv.push(run / 1.2, 0, (run + l) / 1.2, 0, (run + l) / 1.2, 2.6 / 1.2, run / 1.2, 0, (run + l) / 1.2, 2.6 / 1.2, run / 1.2, 2.6 / 1.2);
+      if (Math.floor(run / 4) !== Math.floor((run + l) / 4) || run === 0) { const pg = new THREE.CylinderGeometry(0.05, 0.05, 2.7, 6).toNonIndexed(); pg.translate(a[0], a[1] + 1.35, a[2]); posts.p.push(...pg.getAttribute('position').array); posts.n.push(...pg.getAttribute('normal').array); }
+      run += l;
+    }
+    const mesh = (arr, mat, uv, parent = scenery) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); parent.add(m); return m; };
+    mesh(asp, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }), null, group).name = 'GunmaRoad';   // 走れる路面
+    mesh(wall, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide }));
+    mesh(wallTop, new THREE.MeshLambertMaterial({ color: 0xd2d3d0, side: THREE.DoubleSide }));
+    const nc = document.createElement('canvas'); nc.width = 64; nc.height = 64; const n2 = nc.getContext('2d');
+    n2.strokeStyle = 'rgba(60,64,66,0.95)'; n2.lineWidth = 1.5;
+    for (let k = -64; k < 128; k += 10) { n2.beginPath(); n2.moveTo(k, 0); n2.lineTo(k - 64, 64); n2.stroke(); n2.beginPath(); n2.moveTo(k - 64, 0); n2.lineTo(k, 64); n2.stroke(); }
+    const nt = new THREE.CanvasTexture(nc); nt.wrapS = nt.wrapT = THREE.RepeatWrapping;
+    mesh(net, new THREE.MeshLambertMaterial({ map: nt, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }), netUv).name = 'fuji-pitfence';
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(posts.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(posts.n, 3));
+    scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
+  };
+  pitWall();
   for (const b of data.buildings) {
     if (b.name === 'グランドスタンド') { grandstand(b); continue; }
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
