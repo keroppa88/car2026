@@ -13,15 +13,14 @@ from scipy import ndimage, optimize
 ROOT = Path(__file__).resolve().parents[2]
 F = ROOT / 'map/fuji-course.json'; d = json.loads(F.read_text()); R = np.array([[p[0], p[2]] for p in d['route']])
 I = cv2.imread(sys.argv[1]); DBG = Path(sys.argv[2]) if len(sys.argv) > 2 else None
-COL = {  # BGR
-    'paved': (255, 200, 0),     # 水色: アスファルト(コース以外)
-    'grass': (60, 230, 150),    # 黄緑: 草地
-    'forest': (30, 110, 0),     # 深い緑: 森
-    'sand': (0, 230, 255),      # 黄: 砂地
-    'parking': (230, 90, 40),   # 青: 駐車場
-    'building': (200, 60, 230), # 桃: 建物
-    'stand': (255, 255, 255),   # 白: 観客席
-    'red': (0, 0, 230),         # 赤白の縞
+COL = {  # BGR。アニメ調の基本色
+    'paved': (178, 176, 175),   # 薄いグレー: アスファルト(コース以外)
+    'grass': (120, 200, 150),   # 黄緑: 草地
+    'forest': (60, 120, 60),    # 緑: 森
+    'sand': (150, 196, 214),    # ベージュ: 砂地
+    'parking': (160, 152, 148), # 少し濃いグレー: 駐車場
+    'building': (130, 124, 122),# 建物の下
+    'stand': (130, 124, 122),   # 観客席の下
 }
 KEYS = list(COL); ID = {k: i for i, k in enumerate(KEYS)}
 
@@ -78,10 +77,17 @@ lab[np.isin(cc, [i for i in range(1, n) if st[i, cv2.CC_STAT_AREA] < 300])] = ID
 # 赤い大きなかたまり = 縞の三角
 red = ((r_ > 130) & (r_ > g + 40) & (r_ > b + 30)).astype(np.uint8)
 red = cv2.morphologyEx(red, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)); n, cc, st, _ = cv2.connectedComponentsWithStats(red)
-redmask = np.zeros((H, W), bool)
+redmask = np.zeros((H, W), bool); chev = []
 for i in range(1, n):
-    if st[i, cv2.CC_STAT_AREA] > 250 and min(st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]) > 10:
-        redmask |= cc == i; print('赤い三角', st[i, :2] + [x0, z0], st[i, cv2.CC_STAT_AREA], 'm2')
+    ar = st[i, cv2.CC_STAT_AREA]
+    if ar > 300 and min(st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]) > 5 and ar > 0.25 * st[i, cv2.CC_STAT_WIDTH] * st[i, cv2.CC_STAT_HEIGHT]:
+        cen = np.array([st[i, 0] + st[i, 2] / 2 + x0, st[i, 1] + st[i, 3] / 2 + z0]); dr = np.hypot(*(R - cen).T)
+        if dr.min() > 30: continue     # コースのそばだけ(赤い屋根や車を除く)
+        print(' コースの点', int(dr.argmin()), end=' ')
+        m1 = (cc == i).astype(np.uint8); redmask |= m1 > 0
+        cn = max(cv2.findContours(m1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
+        cn = cv2.approxPolyDP(cn, 1.5, True)[:, 0]
+        chev.append([[round(float(x + x0), 1), round(float(y + z0), 1)] for x, y in cn]); print('赤白の縞', chev[-1][0], ar, 'm2')
 # 写っていない所は前の塗り分け(舗装・芝・木)
 old = cv2.imread(str(ROOT / 'map/fuji-landcover.png')); 
 if DBG and (DBG / 'landcover_old.png').exists(): old = cv2.imread(str(DBG / 'landcover_old.png'))
@@ -89,7 +95,7 @@ ol = np.full((H, W), ID['forest'], np.uint8)
 if old is not None and old.shape[:2] == (H, W):
     og = old[..., 1].astype(int) - old[..., 0]
     ol = np.where(old[..., 1].astype(int) - old[..., 2] > 20, np.where(old[..., 1] > 140, ID['grass'], ID['forest']), ID['paved']).astype(np.uint8)
-lab[~have] = ol[~have]
+lab[~have] = ol[~have]; lab[redmask] = ID['paved']
 
 # 3. OSM
 lat0, lon0 = d['origin']; KX = math.cos(math.radians(lat0)) * 111320.0; KZ = 110574.0
@@ -105,10 +111,14 @@ for want in ('sand', 'parking', 'building', 'stand'):
     for k, p in polys:
         if k == want: cv2.fillPoly(lab, [p], ID[k])
 out = np.array([COL[k] for k in KEYS], np.uint8)[lab]
-# 縞: ホームストレートの向きに直角な 2m 幅の赤白
+# 赤白の縞(V字)は js が板で描く。向き = ホームストレートの向き
 st_i = d['start']; dx, dz = R[(st_i + 5) % len(R)] - R[st_i]; l = math.hypot(dx, dz)
-yy, xx = np.mgrid[0:H, 0:W]; stripe = (((xx * dx + yy * dz) / l / 2.0).astype(int) % 2) == 0
-out[redmask & stripe] = COL['red']; out[redmask & ~stripe] = (255, 255, 255)
+# ピット入口の細い縞(空撮では薄くて自動で拾えない): コースの点 1436〜1445 の右 10〜13.5m
+def side_pt(i, o):
+    a, b = R[(i - 2) % len(R)], R[(i + 2) % len(R)]; ex, ez = b - a; ll = math.hypot(ex, ez); p = R[i % len(R)]
+    return [round(float(p[0] + ez / ll * o), 1), round(float(p[1] - ex / ll * o), 1)]
+chev.append([side_pt(1436, -10.3), side_pt(1445, -10.3), side_pt(1445, -13.5), side_pt(1436, -13.5)])
+d['chevrons'] = [{'p': c, 'dir': [round(dx / l, 4), round(dz / l, 4)]} for c in chev]
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), out)
 d['landcover'] = {'x0': x0, 'z0': z0, 'px': 1.0, 'W': W, 'H': H}; F.write_text(json.dumps(d, separators=(',', ':')))
 for k in KEYS: print(k, round(float((lab == ID[k]).mean()) * 100, 1), '%')

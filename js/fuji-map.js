@@ -111,7 +111,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const k = (iz) => (iz * (cols + 1));
       const fx = Math.round((xc - minX) / G.cell), fz = Math.round((zc - minZ) / G.cell);
       fv.push(x, G.h[Math.min(lines, fz) * (cols + 1) + Math.min(cols, fx)] / 10 - (inside ? 40 : 0.3), z);
-      if (landcover) fc.push(0.021, 0.075, 0.025); else fc.push(grass[0], grass[1], grass[2]);   // 塗り分け図の外は木々の深い緑
+      if (landcover) fc.push(0.045, 0.19, 0.045); else fc.push(grass[0], grass[1], grass[2]);   // 塗り分け図の外は木々の深い緑
     }
     const w = 2 * m + 1;
     for (let j = 0; j < w - 1; j++) for (let i = 0; i < w - 1; i++) { const a = j * w + i; fi.push(a, a + w, a + 1, a + 1, a + w, a + w + 1); }
@@ -166,7 +166,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   // 左右: 法線 nn は進む向きの左。across > 0 が左(runL / kerbL)、across < 0 が右
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
-  const grey = new THREE.Color(landcover ? 0x9b9a98 : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
+  const grey = new THREE.Color(landcover ? 0xafb0b2 : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
   const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
@@ -273,8 +273,16 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     uv.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1); list.u = u1;
   };
   const meshUV = (P, U, tex, extra = {}) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, ...extra })); scenery.add(m); return m; };
+  const _BX = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  const boxInto = (out, cx, cy, cz, sx, sy, sz, ang = 0) => {   // 箱(横 sx・高さ sy・奥 sz、y 軸まわりに ang)を out に足す
+    const P = _BX.getAttribute('position').array, N = _BX.getAttribute('normal').array, c = Math.cos(ang), s2 = Math.sin(ang);
+    for (let i = 0; i < P.length; i += 3) {
+      const x = P[i] * sx, y = P[i + 1] * sy, z = P[i + 2] * sz;
+      out.p.push(cx + x * c + z * s2, cy + y, cz - x * s2 + z * c); out.n.push(N[i] * c + N[i + 2] * s2, N[i + 1], -N[i] * s2 + N[i + 2] * c);
+    }
+  };
   // ---- ホームストレートの観客席(グランドスタンド)。コースの側から: 芝生 → 白いガードレール(1.5m)と金網 → 幅2mの通路 → 観客席(コースへ向かって下る段々) ----
-  const grandstand = (b) => {
+  const grandstand = (b, opt = {}) => {
     // 長方形の長い辺のうち、コースに近い方が前
     const q = b.p; let best = null;
     const near = (x, z) => { const k = nearestRoute(x, z); return k.i < 0 ? 1e9 : k.d; };
@@ -307,6 +315,22 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       meshUV(P2, U2, sponsorTex(BOARDS)).name = 'stand-boards';
     }
     slab(conc, 0.8 + rows * STEP + 0.4, 0.8, WALL + rows * RISE + 1.6, y0);   // 背の壁(手すり)
+    if (opt.roof) {   // 白いギザギザ(折り板)の屋根: 席の奥半分の上。山は前へとがって少し上がる。奥に柱
+      const yT = y0 + WALL + rows * RISE + 7, back = depth + 9, front = depth * 0.5, PITCH = 13, cnt = Math.max(1, Math.round(L / PITCH)), pw = L / cnt, V = [], col = { p: [], n: [] };
+      const pt = (s, o, y) => [A[0] + tx * s + ox * o, y, A[1] + tz * s + oz * o], quad = (a, b2, c, d2) => V.push(...a, ...b2, ...c, ...a, ...c, ...d2);
+      for (let k = 0; k < cnt; k++) {
+        const s0 = k * pw, sm = s0 + pw / 2, s1 = s0 + pw;
+        quad(pt(s0, back, yT - 2.6), pt(sm, back, yT), pt(sm, front - 7, yT + 1.6), pt(s0, front, yT - 1.6));
+        quad(pt(sm, back, yT), pt(s1, back, yT - 2.6), pt(s1, front, yT - 1.6), pt(sm, front - 7, yT + 1.6));
+        V.push(...pt(s0, back, yT - 2.6), ...pt(s1, back, yT - 2.6), ...pt(sm, back, yT));   // 奥の三角の壁
+        boxInto(col, ...pt(s0, back - 0.5, (y0 + yT - 2.6) / 2), 0.7, yT - 2.6 - y0, 0.7, ang);
+      }
+      boxInto(col, ...pt(L, back - 0.5, (y0 + yT - 2.6) / 2), 0.7, yT - 2.6 - y0, 0.7, ang);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(V, 3)); g.computeVertexNormals();
+      scenery.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xf2f3f1, emissive: 0x555555, side: THREE.DoubleSide })));
+      const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(col.p, 3)); cg.setAttribute('normal', new THREE.Float32BufferAttribute(col.n, 3)); scenery.add(new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ color: 0xc9cbca })));
+    }
+    if (opt.front === false) return;
     // 前: 通路(2m)・柵・芝生。前の辺に沿って 2m ごと
     const path = [], lawn = [], rail = [], railUv = [], net = [], netUv = [], posts = { p: [], n: [] };
     const quadH = (P, a, b2, ya, yb) => P.push(a[0], ya, a[1], b2[0], yb, b2[1], b2[0], yb, b2[1]);
@@ -397,14 +421,6 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   //      ピットレーンと建物の間は作業スペース(コースより少し薄いグレー) ----
   const pitLane = (data.branches || []).find((b) => b.w <= 9);
   const distPL = (x, z) => { if (!pitLane) return 1e9; const PP = pitLane.pts; let best = 1e9; for (let k = 0; k + 1 < PP.length; k++) { const [ax, az] = PP[k], [bx, bz] = PP[k + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); } return best; };
-  const _BX = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
-  const boxInto = (out, cx, cy, cz, sx, sy, sz, ang = 0) => {   // 箱(横 sx・高さ sy・奥 sz、y 軸まわりに ang)を out に足す
-    const P = _BX.getAttribute('position').array, N = _BX.getAttribute('normal').array, c = Math.cos(ang), s2 = Math.sin(ang);
-    for (let i = 0; i < P.length; i += 3) {
-      const x = P[i] * sx, y = P[i + 1] * sy, z = P[i + 2] * sz;
-      out.p.push(cx + x * c + z * s2, cy + y, cz - x * s2 + z * c); out.n.push(N[i] * c + N[i + 2] * s2, N[i + 1], -N[i] * s2 + N[i + 2] * c);
-    }
-  };
   const pitBuilding = (b) => {
     const H = 10.5, y0 = b.y;
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -448,7 +464,8 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     if (work.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(work, 3)); g.computeVertexNormals(); const wm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); wm.name = 'pit-work-area'; scenery.add(wm); }
   };
   for (const b of data.buildings) {
-    if (b.name === 'グランドスタンド') { grandstand(b); continue; }
+    if (b.name === 'グランドスタンド') { grandstand(b, { roof: true }); continue; }
+    if (b.kind === 'stand') { grandstand(b, { front: false }); continue; }
     if (/^ピットビル/.test(b.name || '')) { pitBuilding(b); continue; }
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
     const depth = b.roof ? 0.6 : b.h;
@@ -457,6 +474,72 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const m = new THREE.Mesh(geo, [roofMat, wallMat]);
     m.position.y = b.roof ? b.y + b.h - 0.6 : b.y;
     scenery.add(m);
+  }
+
+  // ---- 遠景: 富士山(北西 = 最終コーナーの方向。実際は約 20km 先なので、近くに小さく置いて同じ見え方にする)と、まわりの山並み(適当) ----
+  {
+    const D = 5600, bx = -0.60 * D, bz = -0.80 * D, prof = [[0, 900], [110, 892], [260, 800], [520, 640], [900, 470], [1500, 300], [2300, 160], [3300, 60], [4200, 0]];
+    const P = [], C = [], SEG = 48, col = (y, a) => { const snow = 640 + 70 * Math.sin(a * 7) + 40 * Math.sin(a * 13 + 1); return y > snow ? [0.97, 0.97, 0.98] : y > 330 ? [0.42, 0.44, 0.60] : y > 120 ? [0.36, 0.48, 0.52] : [0.22, 0.44, 0.24]; };
+    for (let k = 0; k + 1 < prof.length; k++) for (let j = 0; j < SEG; j++) {
+      const a0 = j / SEG * Math.PI * 2, a1 = (j + 1) / SEG * Math.PI * 2, [r0, y0] = prof[k], [r1, y1] = prof[k + 1];
+      const v = (r, y, a) => [bx + Math.cos(a) * r, y - 60, bz + Math.sin(a) * r];
+      for (const [r, y, a] of [[r0, y0, a0], [r1, y1, a0], [r1, y1, a1], [r0, y0, a0], [r1, y1, a1], [r0, y0, a1]]) { P.push(...v(r, y, a)); C.push(...col((y0 + y1) / 2, (a0 + a1) / 2)); }
+    }
+    // 山並み: 半径 5.2km の輪。高さは波の重ね合わせ(北と西が高い)
+    const RR = 5200, N2 = 180, hh = (a) => 150 + 110 * Math.sin(a * 3 + 1) + 70 * Math.sin(a * 7 + 2) + 40 * Math.sin(a * 17) + 120 * Math.max(0, -Math.sin(a));
+    for (let j = 0; j < N2; j++) {
+      const a0 = j / N2 * Math.PI * 2, a1 = (j + 1) / N2 * Math.PI * 2, q = (a, y, r = RR) => [Math.cos(a) * r, y, Math.sin(a) * r];
+      for (const pt of [q(a0, -80), q(a1, -80), q(a1, hh(a1), RR + 500), q(a0, -80), q(a1, hh(a1), RR + 500), q(a0, hh(a0), RR + 500)]) { P.push(...pt); C.push(0.30, 0.47, 0.40); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false })); m.name = 'fuji-mountains'; scenery.add(m);
+  }
+  // ---- コースをまたぐ看板の橋: 支柱1本から腕がのびるL字(side 0 は両側に支柱)。[コースの点, 文字, 支柱の側] ----
+  {
+    const fr = { p: [], n: [] }, signT = (text, bg = '#1d2f6b', fg = '#ffffff') => canvasTex(512, 64, (x, w, h) => { x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.font = 'bold 40px Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, w / 2, h / 2 + 2, w - 24); }, false);
+    const BG = ['#b4141e', '#1d2f6b', '#f2c400', '#d71e28', '#111111', '#1d4f9c', '#1d2f6b', '#d71e28'];
+    (data.gantries || []).forEach(([i, text, side], gi) => {
+      const p = route[ring(i)], t = tangents[ring(i)], ang = Math.atan2(-t.z, t.x), OUT = R + 3.5, Hc = 6.2, BH = 1.7;
+      const o0 = side > 0 ? -R - 0.5 : -OUT, o1 = side < 0 ? R + 0.5 : OUT, len = o1 - o0, oc = (o0 + o1) / 2, at = (o) => [p.x + t.x * o, p.z + t.z * o];
+      for (const o of side === 0 ? [-OUT, OUT] : [side * OUT]) { const [x, z] = at(o), gy0 = Math.min(groundHeightAt(x, z), p.y) - 0.3; boxInto(fr, x, (gy0 + p.y + Hc + BH) / 2, z, 0.9, p.y + Hc + BH - gy0, 0.9, ang); }
+      const [cx, cz] = at(oc); boxInto(fr, cx, p.y + Hc + BH / 2, cz, len, BH, 0.7, ang);
+      const tex = signT(text, BG[gi % BG.length], BG[gi % BG.length] === '#f2c400' ? '#111111' : '#ffffff'), sw = Math.min(len - 2, 16);
+      for (const k of [0, 1]) { const a = ang + k * Math.PI, m = new THREE.Mesh(new THREE.PlaneGeometry(sw, BH - 0.2), new THREE.MeshLambertMaterial({ map: tex, emissive: 0x222222 })); m.rotation.y = a; m.position.set(cx + Math.sin(a) * 0.37, p.y + Hc + BH / 2, cz + Math.cos(a) * 0.37); scenery.add(m); }
+    });
+    if (fr.p.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fr.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(fr.n, 3)); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xd9dadb })); m.name = 'fuji-gantries'; scenery.add(m); }
+  }
+  // ---- 地面に貼る絵: 範囲(x0〜x1, z0〜z1)を 1m 升目の板にして地面の高さに沿わせ、絵(1m = 8画素、透明の所は抜く)を貼る。
+  //      draw(ctx): 地図の座標 (x, z) のまま描ける ----
+  const groundDecal = (x0, x1, z0, z1, draw, name) => {
+    x0 = Math.floor(x0) - 1; z0 = Math.floor(z0) - 1; x1 = Math.ceil(x1) + 1; z1 = Math.ceil(z1) + 1;
+    const PX = 8, tex = canvasTex((x1 - x0) * PX, (z1 - z0) * PX, (c) => { c.setTransform(PX, 0, 0, PX, -x0 * PX, -z0 * PX); draw(c); }, false);
+    const P = [], U = [], yy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z), k.i >= 0 && k.d < R + 3 ? route[k.i].y : -1e9) + 0.045; };
+    for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++)
+      for (const [a, b2] of [[x, z], [x, z + 1], [x + 1, z + 1], [x, z], [x + 1, z + 1], [x + 1, z]]) { P.push(a, yy(a, b2), b2); U.push((a - x0) / (x1 - x0), 1 - (b2 - z0) / (z1 - z0)); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 })); m.name = name; scenery.add(m);
+  };
+  // ピット出入口の赤白の縞(V字)。p: 外形、dir: 縞の向き(V の開く向き)
+  for (const cv of data.chevrons || []) {
+    const q = cv.p, [dx, dz] = cv.dir, xs = q.map((v) => v[0]), zs = q.map((v) => v[1]);
+    const al = q.map(([x, z]) => x * dx + z * dz), ac = q.map(([x, z]) => -x * dz + z * dx), mid = (Math.min(...ac) + Math.max(...ac)) / 2, Wd = (Math.max(...ac) - Math.min(...ac)) / 2 + 1, PER = Wd > 6 ? 5 : 3, TH = PER * 0.62;
+    groundDecal(Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs), (c) => {
+      c.beginPath(); q.forEach(([x, z], k) => (k ? c.lineTo(x, z) : c.moveTo(x, z))); c.closePath(); c.clip();
+      c.fillStyle = '#f5f5f2'; c.fill();
+      c.transform(dx, dz, -dz, dx, 0, 0);   // ここから (沿う向き, 横)
+      c.fillStyle = '#cd3237';
+      for (let b0 = Math.floor((Math.min(...al) - Wd) / PER) * PER; b0 < Math.max(...al) + PER; b0 += PER) {
+        c.beginPath(); c.moveTo(b0, mid); c.lineTo(b0 + Wd, mid + Wd); c.lineTo(b0 + Wd + TH, mid + Wd); c.lineTo(b0 + TH, mid); c.lineTo(b0 + Wd + TH, mid - Wd); c.lineTo(b0 + Wd, mid - Wd); c.closePath(); c.fill();
+      }
+    }, 'fuji-chevron');
+  }
+  // 路面の看板ペイント
+  for (const [i, o, len, wid, bg, fg, text] of data.decals || []) {
+    const p = route[ring(i)], t = tangents[ring(i)], fx = -t.z, fz = t.x, cx = p.x + t.x * o, cz = p.z + t.z * o, r = Math.hypot(len, wid) / 2;
+    groundDecal(cx - r, cx + r, cz - r, cz + r, (c) => {
+      c.transform(fx, fz, -fz, fx, cx, cz); c.fillStyle = bg; c.fillRect(-len / 2, -wid / 2, len, wid);
+      c.fillStyle = fg; c.font = `bold ${wid * 0.5}px Arial, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, 0, wid * 0.03, len - 2);
+    }, 'fuji-decal');
   }
 
   const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : groundHeightAt(x, z));
