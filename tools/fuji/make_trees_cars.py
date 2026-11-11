@@ -1,5 +1,5 @@
 """富士スピードウェイ: 塗り分け図(map/fuji-landcover.png)から、木と駐車場の車の位置を作る → map/fuji-course.json の trees / cars
-木: 森の画素に。コースから 130m 以内は 9m おきに1本ずつ(大きさ 9〜13m)、その奥は 20m おきに大きな木の塊(20〜28m)。
+木: 森の画素に。コースから 130m 以内は 9m おきに1本ずつ(大きさ 9〜13m)、その奥は、コースの輪の内側だけ 20m おきに大きな木(20〜28m)。外側の奥は木なし。
 車: 駐車場のかたまりごとに向きを決め、2列ずつ向かい合わせ + 通路で並べる。7割ほど埋める。
 python3 tools/fuji/make_trees_cars.py   (make_landcover_mosaic.py のあとに)
 """
@@ -28,7 +28,9 @@ def scatter(mask, step, s0, s1):
             if 0 <= u < W and 0 <= v < H and mask[v, u]: trees.append([u + L['x0'], v + L['z0'], round(float(rng.uniform(s0, s1)), 1)])
 scatter(forest & (dist > 16) & (dist <= 130), 9, 9, 13)
 near = len(trees)
-scatter(forest & (dist > 130), 20, 20, 28)
+# 奥の大きな木は、コースの輪の内側だけ。外側の奥は緑の地面だけにする
+inside = np.zeros((H, W), np.uint8); cv2.fillPoly(inside, [P(d['route'])], 1)
+scatter(forest & (dist > 130) & (inside > 0), 20, 20, 28)
 d['trees'] = [[round(x), round(z), s] for x, z, s in trees]
 # 車
 park = cv2.erode(is_('parking').astype(np.uint8), np.ones((3, 3), np.uint8))
