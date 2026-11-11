@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261111-fuji-7';
+import { treeBillboards } from './osm-city.js?v=20261111-fuji-8';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -189,7 +189,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
   const grey = new THREE.Color(landcover ? 0x898a8c : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
-  const roadC = new THREE.Color(0x47494b), red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
+  const lineCuts = { L: [], R: [] }, roadC = new THREE.Color(0x47494b), lawnC = new THREE.Color(0x96c878), red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
     for (let i = 0; i < ext.length; i++) {
@@ -202,9 +202,15 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         v[o] = p.x + nn.x * across; v[o + 2] = p.z + nn.z * across;
         // 芝の外の端は地面に合わせる
         v[o + 1] = outerEdge ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
-        if (col) { const bm = branchNear(v[o], v[o + 2]); const c = bm && bm.d < bm.half - 0.2 ? roadC : !kerbAt(i, band.from < 0 ? -1 : 1) ? ((band.from < 0 ? data.roadR : data.roadL)?.[ring(extIndices[i])] ? roadC : grey) : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
+        if (col) { const bm = branchNear(v[o], v[o + 2]); const c = bm && bm.d < bm.half - 0.2 ? roadC : !kerbAt(i, band.from < 0 ? -1 : 1) ? ((band.from < 0 ? data.roadR : data.roadL)?.[ring(extIndices[i])] ? roadC : (band.from < 0 ? data.lawnR : data.lawnL)?.[ring(extIndices[i])] ? lawnC : grey) : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
       }
-      if (i + 1 < ext.length) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+      if (i + 1 < ext.length) {
+        if (band.name === 'GunmaEdgeLine') {   // 近道の口を横切る白線は引かない
+          const q = ext[i + 1], n2 = extTangents[i + 1], ac = (band.from + band.to) / 2, bm = branchNear((p.x + nn.x * ac + q.x + n2.x * ac) / 2, (p.z + nn.z * ac + q.z + n2.z * ac) / 2);
+          if (bm && bm.d < bm.half - 0.1) { lineCuts[ac > 0 ? 'L' : 'R'].push(i); continue; }
+        }
+        ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+      }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
@@ -230,10 +236,35 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide })); mesh.name = 'GunmaRoad'; group.add(mesh);
     }
     const P = br.pts, m = P.length, half = br.w / 2;
+    let outerSign = 0;
+    if (br.w > 9) {   // 島(本コースとの間)と反対の側 = 外側。外側の白線は、本コースの白線から途切れずにつなぐ
+      const A = P[0], Bq = P[m - 1], L = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]) || 1, dx = (Bq[0] - A[0]) / L, dz = (Bq[1] - A[1]) / L, nx = dz, nz = -dx;
+      const far = route[Math.round((br.from + br.to) / 2)], mx = (A[0] + Bq[0]) / 2, mz = (A[1] + Bq[1]) / 2;
+      outerSign = Math.hypot(mx + nx - far.x, mz + nz - far.z) > Math.hypot(mx - nx - far.x, mz - nz - far.z) ? 1 : -1;
+      const side = lineCuts.L.length ? 'L' : lineCuts.R.length ? 'R' : null;
+      if (side) {
+        const cuts = lineCuts[side], ac = (side === 'L' ? 1 : -1) * (R - 0.425), ia = Math.min(...cuts), ib = Math.max(...cuts) + 1;
+        const lp = (i) => [ext[i].x + extTangents[i].x * ac, ext[i].z + extTangents[i].z * ac], sOf = (q) => (q[0] - A[0]) * dx + (q[1] - A[1]) * dz;
+        let e0 = lp(ia), e1 = lp(ib); if (sOf(e0) > sOf(e1)) [e0, e1] = [e1, e0];
+        const oo = outerSign * (half - 0.375), ctl = [e0];
+        for (let t = sOf(e0) + 6; t < sOf(e1) - 6; t += 2) ctl.push([A[0] + dx * t + nx * oo, A[1] + dz * t + nz * oo]);
+        ctl.push(e1);
+        const v = [], yy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z) + 0.065, k.i >= 0 && k.d < R + 1.5 ? route[k.i].y + 0.03 : -1e9); };
+        const pts = []; for (let k = 0; k + 1 < ctl.length; k++) { const [ax, az] = ctl[k], [bx, bz] = ctl[k + 1], c = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az))); for (let j = 0; j < c; j++) pts.push([ax + (bx - ax) * j / c, az + (bz - az) * j / c]); }
+        pts.push(ctl[ctl.length - 1]);
+        const off = pts.map((q, i) => { const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)], ex = c[0] - a[0], ez = c[1] - a[1], el = Math.hypot(ex, ez) || 1; return [ez / el * 0.075, -ex / el * 0.075]; });
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const c4 = [[pts[i][0] - off[i][0], pts[i][1] - off[i][1]], [pts[i + 1][0] - off[i + 1][0], pts[i + 1][1] - off[i + 1][1]], [pts[i + 1][0] + off[i + 1][0], pts[i + 1][1] + off[i + 1][1]], [pts[i][0] + off[i][0], pts[i][1] + off[i][1]]];
+          for (const k of [0, 1, 2, 0, 2, 3]) v.push(c4[k][0], yy(c4[k][0], c4[k][1]), c4[k][1]);
+        }
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaEdgeLine', color: 0xe6e6e0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 })); mesh.name = 'GunmaEdgeLine'; group.add(mesh);
+      }
+    }
     const ya = route[br.from].y, yb = route[br.to].y;
     let total = 0; const acc = [0];
     for (let i = 1; i < m; i++) { total += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); acc.push(total); }
-    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]].filter((q) => !(br.w > 9 && !q[3]))) {
+    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]].filter((q) => !(br.w > 9 && (!q[3] || Math.sign(q[0]) === outerSign)))) {
       const v = [], ind = [];
       for (let i = 0; i < m; i++) {
         const a = P[Math.max(0, i - 1)], c = P[Math.min(m - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = dz / l, nz = -dx / l;
