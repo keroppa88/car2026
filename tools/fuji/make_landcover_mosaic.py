@@ -99,14 +99,24 @@ lab[~have] = ol[~have]; lab[redmask] = ID['paved']
 
 # 3. OSM
 lat0, lon0 = d['origin']; KX = math.cos(math.radians(lat0)) * 111320.0; KZ = 110574.0
-N, polys = {}, []
+N, polys, ways = {}, [], []
 for _, e in etree.iterparse(str(ROOT / 'tools/fuji/fuji.osm'), events=('end',)):
     if e.tag == 'node': N[e.get('id')] = ((float(e.get('lon')) - lon0) * KX - x0, -(float(e.get('lat')) - lat0) * KZ - z0)
     elif e.tag == 'way':
         t = {x.get('k'): x.get('v') for x in e.findall('tag')}; nd = [n.get('ref') for n in e.findall('nd')]
         k = ('stand' if t.get('building') == 'grandstand' or t.get('leisure') == 'bleachers' else 'building' if 'building' in t
              else 'parking' if t.get('amenity') in ('parking', 'motorcycle_parking') else 'sand' if t.get('natural') == 'sand' else None)
+        if t.get('highway') in ('service', 'tertiary', 'residential', 'raceway', 'unclassified', 'track'): ways.append(np.array([N[q] for q in nd if q in N], np.int32))
         if k and len(nd) > 3 and nd[0] == nd[-1]: polys.append((k, np.array([N[q] for q in nd], np.int32)))
+# せまい舗装(幅 8m 未満の切れ端、コースのふちの細いグレー)は草地にする。OSM にある道路・分かれ道のまわりは残す
+course = np.zeros((H, W), np.uint8); cv2.polylines(course, [(R - [x0, z0]).astype(np.int32)], True, 1, 18)
+keep = np.zeros((H, W), np.uint8)
+for wy in ways: cv2.polylines(keep, [wy], False, 1, 8)
+for b in d.get('branches', []): cv2.polylines(keep, [(np.array(b['pts']) - [x0, z0]).astype(np.int32)], False, 1, int(b['w']) + 4)
+pv = ((lab == ID['paved']) & (course == 0)).astype(np.uint8)
+wide = cv2.dilate(cv2.morphologyEx(pv, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))), np.ones((5, 5), np.uint8))
+thin = (pv > 0) & (wide == 0) & (keep == 0) & have
+lab[thin] = ID['grass']; print('せまい舗装 → 草地', int(thin.sum()), 'm2')
 for want in ('sand', 'parking', 'building', 'stand'):
     for k, p in polys:
         if k == want: cv2.fillPoly(lab, [p], ID[k])
