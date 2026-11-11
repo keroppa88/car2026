@@ -13,6 +13,7 @@ from scipy import ndimage, optimize
 ROOT = Path(__file__).resolve().parents[2]
 F = ROOT / 'map/fuji-course.json'; d = json.loads(F.read_text()); R = np.array([[p[0], p[2]] for p in d['route']])
 I = cv2.imread(sys.argv[1]); DBG = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+ASPH_GB, ASPH_RB = 4, 8   # アスファルトとみなす色の幅(緑-青、赤-青)
 COL = {  # BGR。アニメ調の基本色
     'paved': (140, 138, 137),   # 薄いグレー: アスファルト(コース以外)
     'grass': (120, 200, 150),   # 黄緑: 草地
@@ -61,7 +62,13 @@ A = cv2.GaussianBlur(img, (3, 3), 0).astype(np.float32); b, g, r_ = A[..., 0], A
 mu = cv2.blur(lum, (9, 9)); sd = np.sqrt(np.maximum(cv2.blur(lum * lum, (9, 9)) - mu * mu, 0))
 sand = (cv2.blur(r_ - g, (5, 5)) > 7) & (cv2.blur(r_ - b, (5, 5)) > 20) & (mu > 150)
 veg = (cv2.blur(g - b, (5, 5)) > 12) & ~sand
-forest = veg & ((mu < 118) | (sd > 13))
+# 舗装は「はっきりしたアスファルト」(青み〜無彩色のグレー)だけ。枯れ草・土など黄みのある微妙な所は草地にする。
+# ホームストレートのまわり(130m 以内)は今まで通り
+asph = (cv2.blur(g - b, (5, 5)) < ASPH_GB) & (cv2.blur(r_ - b, (5, 5)) < ASPH_RB)
+hs = np.ones((H, W), np.uint8); st0 = d['start']; cv2.polylines(hs, [(R[np.arange(st0 - 110, st0 + 240) % len(R)] - [x0, z0]).astype(np.int32)], False, 0, 1)
+nearHome = cv2.distanceTransform(hs, cv2.DIST_L2, 5) < 130
+veg0 = veg.copy(); veg = veg | (~asph & ~sand & ~nearHome)
+forest = veg0 & ((mu < 118) | (sd > 13))
 lab = np.full((H, W), ID['paved'], np.uint8)
 lab[veg] = ID['grass']; lab[forest] = ID['forest']
 lab[sand] = ID['sand']
