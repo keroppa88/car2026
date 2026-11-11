@@ -476,6 +476,30 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     scenery.add(m);
   }
 
+  // ---- コースの両側の柵: 白いガードレール(高さ 1m、3段の波板)の上に金網(2m)。見た目だけ(当たり判定なし) ----
+  if (data.fences) {
+    const rail = [], railU = [], net = [], netU = [], posts = { p: [], n: [] };
+    for (const line of data.fences) { let u = 0;
+      for (let k = 0; k + 1 < line.length; k++) {
+        const a = line[k], b = line[k + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]), ya = groundHeightAt(a[0], a[1]) - 0.1, yb = groundHeightAt(b[0], b[1]) - 0.1;
+        const q = (P, U, y0, h, per) => { P.push(a[0], ya + y0, a[1], b[0], yb + y0, b[1], b[0], yb + y0 + h, b[1], a[0], ya + y0, a[1], b[0], yb + y0 + h, b[1], a[0], ya + y0 + h, a[1]); U.push(u / per, 0, (u + l) / per, 0, (u + l) / per, h / per, u / per, 0, (u + l) / per, h / per, u / per, h / per); };
+        q(rail, railU, 0, 1.1, 1.1); q(net, netU, 1.1, 2.0, 1.2);
+        if (k % 2 === 0) boxInto(posts, a[0], ya + 1.55, a[1], 0.1, 3.1, 0.1);
+        u += l;
+      } }
+    const rt = canvasTex(64, 64, (x) => { for (let k = 0; k < 3; k++) { const y = k * 21.4, gr = x.createLinearGradient(0, y, 0, y + 21.4); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.45, '#eef0ef'); gr.addColorStop(0.55, '#c3c7c6'); gr.addColorStop(1, '#f7f8f7'); x.fillStyle = gr; x.fillRect(0, y, 64, 21.4); } });
+    meshUV(rail, railU, rt, { emissive: 0x8a8a8a }).name = 'fuji-fence-rail';   // 白く見えるように明るく
+    // 柵の切れ目(出入口)の印: 柵の端にオレンジ赤のブロック(長さ 2.5m)
+    const mark = { p: [], n: [] };
+    for (const line of data.fences) for (const [e, f] of [[line[0], line[1]], [line[line.length - 1], line[line.length - 2]]]) {
+      const l = Math.hypot(f[0] - e[0], f[1] - e[1]) || 1, dx = (f[0] - e[0]) / l, dz = (f[1] - e[1]) / l;
+      boxInto(mark, e[0] + dx * 1.25, groundHeightAt(e[0], e[1]) + 0.55, e[1] + dz * 1.25, 2.5, 1.2, 0.6, Math.atan2(-dz, dx));
+    }
+    const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(mark.p, 3)); mg.setAttribute('normal', new THREE.Float32BufferAttribute(mark.n, 3)); scenery.add(new THREE.Mesh(mg, new THREE.MeshLambertMaterial({ color: 0xe8552a, emissive: 0x401000 })));
+    const nt = canvasTex(64, 64, (x) => { x.strokeStyle = 'rgba(70,74,76,0.95)'; x.lineWidth = 1.5; for (let k = -64; k < 128; k += 10) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k - 64, 64); x.stroke(); x.beginPath(); x.moveTo(k - 64, 0); x.lineTo(k, 64); x.stroke(); } }); nt.wrapT = THREE.RepeatWrapping;
+    meshUV(net, netU, nt, { transparent: true, alphaTest: 0.3 }).name = 'fuji-fence-net';
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(posts.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(posts.n, 3)); scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x8a8e90 })));
+  }
   // ---- 遠景: 富士山(ほぼ真西・わずかに南 = ホームストレートを逆にたどった最終コーナーの方向。緯度経度から。実際は約 20km 先なので、近くに小さく置いて同じ見え方にする)と、まわりの山並み(適当) ----
   {
     const D = 5600, bx = -0.998 * D, bz = 0.068 * D, prof = [[0, 900], [110, 892], [260, 800], [520, 640], [900, 470], [1500, 300], [2300, 160], [3300, 60], [4200, 0]];
