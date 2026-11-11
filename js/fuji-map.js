@@ -483,8 +483,14 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       for (let k = 0; k + 1 < line.length; k++) {
         const a = line[k], b = line[k + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]), ya = groundHeightAt(a[0], a[1]) - 0.1, yb = groundHeightAt(b[0], b[1]) - 0.1;
         const q = (P, U, y0, h, per) => { P.push(a[0], ya + y0, a[1], b[0], yb + y0, b[1], b[0], yb + y0 + h, b[1], a[0], ya + y0, a[1], b[0], yb + y0 + h, b[1], a[0], ya + y0 + h, a[1]); U.push(u / per, 0, (u + l) / per, 0, (u + l) / per, h / per, u / per, 0, (u + l) / per, h / per, u / per, h / per); };
-        q(rail, railU, 0, 1.1, 1.1); q(net, netU, 1.1, 2.0, 1.2);
-        if (k % 2 === 0) boxInto(posts, a[0], ya + 1.55, a[1], 0.1, 3.1, 0.1);
+        q(rail, railU, 0, 1.1, 1.1);
+        // 金網はガードレールの後ろ(コースの外側へ 1.5m)。地面から高さ 3m
+        let ox = -(b[1] - a[1]) / (l || 1) * 1.5, oz = (b[0] - a[0]) / (l || 1) * 1.5;
+        if (nearestRoute(a[0] + ox, a[1] + oz).d < nearestRoute(a[0] - ox, a[1] - oz).d) { ox = -ox; oz = -oz; }
+        const a2 = [a[0] + ox, a[1] + oz], b2 = [b[0] + ox, b[1] + oz], y2a = groundHeightAt(a2[0], a2[1]) - 0.1, y2b = groundHeightAt(b2[0], b2[1]) - 0.1, hN = 3.0;
+        net.push(a2[0], y2a, a2[1], b2[0], y2b, b2[1], b2[0], y2b + hN, b2[1], a2[0], y2a, a2[1], b2[0], y2b + hN, b2[1], a2[0], y2a + hN, a2[1]);
+        netU.push(u / 1.2, 0, (u + l) / 1.2, 0, (u + l) / 1.2, hN / 1.2, u / 1.2, 0, (u + l) / 1.2, hN / 1.2, u / 1.2, hN / 1.2);
+        if (k % 2 === 0) boxInto(posts, a2[0], y2a + hN / 2, a2[1], 0.1, hN, 0.1);
         u += l;
       } }
     const rt = canvasTex(64, 64, (x) => { for (let k = 0; k < 3; k++) { const y = k * 21.4, gr = x.createLinearGradient(0, y, 0, y + 21.4); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.45, '#eef0ef'); gr.addColorStop(0.55, '#c3c7c6'); gr.addColorStop(1, '#f7f8f7'); x.fillStyle = gr; x.fillRect(0, y, 64, 21.4); } });
