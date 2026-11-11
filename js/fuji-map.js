@@ -566,17 +566,46 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   // ---- 遠景: 富士山(ほぼ真西・わずかに南 = ホームストレートを逆にたどった最終コーナーの方向。緯度経度から。実際は約 20km 先なので、近くに小さく置いて同じ見え方にする)と、まわりの山並み(適当) ----
   {
     const D = 5600, bx = -0.998 * D, bz = 0.068 * D, prof = [[0, 900], [110, 892], [260, 800], [520, 640], [900, 470], [1500, 300], [2300, 160], [3300, 60], [4200, 0]];
-    const P = [], C = [], SEG = 48, col = (y, a) => { const snow = 640 + 70 * Math.sin(a * 7) + 40 * Math.sin(a * 13 + 1); return y > snow ? [0.97, 0.97, 0.98] : y > 330 ? [0.42, 0.44, 0.60] : y > 120 ? [0.36, 0.48, 0.52] : [0.22, 0.44, 0.24]; };
+    const P = [], C = [], FP = [], FU = [], SEG = 96, col = (y, a) => { const snow = 640 + 70 * Math.sin(a * 7) + 40 * Math.sin(a * 13 + 1); return y > snow ? [0.97, 0.97, 0.98] : y > 330 ? [0.42, 0.44, 0.60] : y > 120 ? [0.36, 0.48, 0.52] : [0.22, 0.44, 0.24]; };
     for (let k = 0; k + 1 < prof.length; k++) for (let j = 0; j < SEG; j++) {
-      const a0 = j / SEG * Math.PI * 2, a1 = (j + 1) / SEG * Math.PI * 2, [r0, y0] = prof[k], [r1, y1] = prof[k + 1];
+      const a0 = j / SEG * Math.PI * 2 + Math.PI, a1 = (j + 1) / SEG * Math.PI * 2 + Math.PI, [r0, y0] = prof[k], [r1, y1] = prof[k + 1];   // つなぎ目は見えない西側
       const v = (r, y, a) => [bx + Math.cos(a) * r, y - 60, bz + Math.sin(a) * r];
-      for (const [r, y, a] of [[r0, y0, a0], [r1, y1, a0], [r1, y1, a1], [r0, y0, a0], [r1, y1, a1], [r0, y0, a1]]) { P.push(...v(r, y, a)); C.push(...col((y0 + y1) / 2, (a0 + a1) / 2)); }
+      for (const [r, y, a] of [[r0, y0, a0], [r1, y1, a0], [r1, y1, a1], [r0, y0, a0], [r1, y1, a1], [r0, y0, a1]]) { FP.push(...v(r, y, a)); FU.push(a, y); }
+    }
+    { // 富士山だけ写実風: 暗めの青い山肌、谷すじに沿って細かく入り組む雪、すそのもや
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(FP, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(FU, 2));
+      const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ side: THREE.DoubleSide, fog: false,
+        vertexShader: 'varying vec2 vU; void main() { vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `varying vec2 vU;
+          float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float ns(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+          float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * ns(p); p = p * 2.03 + 7.1; a *= 0.5; } return v; }
+          void main() {
+            float a = vU.x, h = vU.y;
+            float gul = fbm(vec2(a * 13.0, h * 0.0045));                    // 谷すじ(上下に長い)
+            float fine = fbm(vec2(a * 48.0, h * 0.02));                   // 細かい岩と雪のまだら
+            float ridge = abs(fbm(vec2(a * 9.0, h * 0.004 + 3.0)) - 0.5) * 2.0;
+            float line = 330.0 + 120.0 * (fbm(vec2(a * 6.0, 1.7)) - 0.5);   // 雪の下の端(方角でゆれる)
+            float sv = h + (gul - 0.5) * 330.0 + (fine - 0.5) * 110.0;       // 谷には雪が下まで残る
+            float snow = smoothstep(line - 14.0, line + 14.0, sv);
+            snow *= 1.0 - smoothstep(0.44, 0.34, fine + (h - 480.0) * 0.0009) * 0.85;   // 雪の中に岩が顔を出す
+            float lit = 0.5 + 0.5 * cos(a - 6.1);                            // 南東から日が当たる
+            float shade = clamp(0.35 + 0.65 * lit + (gul - 0.5) * 0.9 + (ridge - 0.5) * 0.35, 0.0, 1.0);
+            vec3 snowC = mix(vec3(0.50, 0.60, 0.86), vec3(1.0, 1.0, 1.0), shade);
+            vec3 rock = mix(vec3(0.055, 0.085, 0.22), vec3(0.13, 0.18, 0.38), clamp(0.25 + 0.6 * lit + (fine - 0.5) * 0.7 + (gul - 0.5) * 0.5, 0.0, 1.0));
+            vec3 c = mix(rock, snowC, snow);
+            c = mix(c, vec3(0.34, 0.45, 0.70), 0.22);                         // 遠くの青み
+            float haze = smoothstep(380.0, 40.0, h + (fbm(vec2(a * 9.0, 0.3)) - 0.5) * 90.0);
+            c = mix(c, vec3(0.70, 0.79, 0.90), haze * 0.92);                  // すそのもや
+            gl_FragColor = vec4(c, 1.0);
+          }` }));
+      m.name = 'fuji-san'; m.frustumCulled = false; scenery.add(m);
     }
     // 山並み: 半径 5.2km の輪。高さは波の重ね合わせ(北と西が高い)
     const RR = 5200, N2 = 180, hh = (a) => 150 + 110 * Math.sin(a * 3 + 1) + 70 * Math.sin(a * 7 + 2) + 40 * Math.sin(a * 17) + 120 * Math.max(0, -Math.sin(a));
     for (let j = 0; j < N2; j++) {
       const a0 = j / N2 * Math.PI * 2, a1 = (j + 1) / N2 * Math.PI * 2, q = (a, y, r = RR) => [Math.cos(a) * r, y, Math.sin(a) * r];
-      for (const pt of [q(a0, -80), q(a1, -80), q(a1, hh(a1), RR + 500), q(a0, -80), q(a1, hh(a1), RR + 500), q(a0, hh(a0), RR + 500)]) { P.push(...pt); C.push(0.30, 0.47, 0.40); }
+      for (const pt of [q(a0, -80), q(a1, -80), q(a1, hh(a1), RR + 500), q(a0, -80), q(a1, hh(a1), RR + 500), q(a0, hh(a0), RR + 500)]) { P.push(...pt); C.push(0.50, 0.57, 0.54); }   // もやの向こう: 淡いグレーに少し緑
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false })); m.name = 'fuji-mountains'; scenery.add(m);
