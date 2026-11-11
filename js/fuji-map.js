@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261111-fuji-11';
+import { treeBillboards } from './osm-city.js?v=20261112-fuji-1';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -206,6 +206,10 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       }
       if (i + 1 < ext.length) {
         if (band.kerb && landcover && !kerbAt(i, band.from < 0 ? -1 : 1) && !kerbAt(i + 1, band.from < 0 ? -1 : 1)) continue;   // 縁石のない所は帯を描かない(地面の塗り分けがそのまま見える)
+        if (band.name === 'GunmaEdgeLine' && data.pitExit) {   // ピット出口の車線と並ぶ所は実線をやめる(あとで破線を引く)
+          const E = data.pitExit, ri = ring(extIndices[i]);
+          if ((band.from + band.to) / 2 * E.side > 0 && ri >= E.dash && ri < E.prof[E.prof.length - 1][0]) continue;
+        }
         if (band.name === 'GunmaEdgeLine') {   // 近道の口を横切る白線は引かない
           const q = ext[i + 1], n2 = extTangents[i + 1], ac = (band.from + band.to) / 2, bm = branchNear((p.x + nn.x * ac + q.x + n2.x * ac) / 2, (p.z + nn.z * ac + q.z + n2.z * ac) / 2);
           if (bm && bm.d < bm.half - 0.1) { lineCuts[ac > 0 ? 'L' : 'R'].push(i); continue; }
@@ -282,6 +286,31 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: dy ? 'GunmaEdgeLine' : 'GunmaRoad', color: col, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
       mesh.name = dy ? 'GunmaEdgeLine' : 'GunmaRoad'; group.add(mesh);
     }
+  }
+  // ---- ピット出口の合流(tools/fuji/edit_pit_exit.py)。本コースの横に並ぶ車線・縞の下の路面・白線(外側、縞のふち、破線、終わりの横線) ----
+  if (data.pitExit) {
+    const E = data.pitExit, sg = E.side, PR = E.prof, i0 = PR[0][0], i1 = PR[PR.length - 1][0];
+    const lerpProf = (fi, c) => { for (let k = 0; k + 1 < PR.length; k++) if (fi <= PR[k + 1][0]) return PR[k][c] + (PR[k + 1][c] - PR[k][c]) * (fi - PR[k][0]) / (PR[k + 1][0] - PR[k][0]); return PR[PR.length - 1][c]; };
+    const at = (fi, o, dy) => { const a = Math.floor(fi), f = fi - a, p = route[ring(a)], q = route[ring(a + 1)], t = tangents[ring(a)], u = tangents[ring(a + 1)];
+      return [p.x + (q.x - p.x) * f + (t.x + (u.x - t.x) * f) * o * sg, p.y + (q.y - p.y) * f + dy, p.z + (q.z - p.z) * f + (t.z + (u.z - t.z) * f) * o * sg]; };
+    const road = [], line = [], quad = (arr, a, b, c, e) => arr.push(...a, ...b, ...c, ...a, ...c, ...e);
+    const strip = (arr, f0, f1, oA, oB, dy) => { for (let f = f0; f < f1 - 1e-6; f += 0.5) { const g = Math.min(f1, f + 0.5); quad(arr, at(f, oA(f), dy), at(g, oA(g), dy), at(g, oB(g), dy), at(f, oB(f), dy)); } };
+    const inner = (f) => lerpProf(f, 1), outer = (f) => lerpProf(f, 2);
+    strip(road, i0, i1, () => R - 0.02, outer, -0.02);
+    strip(line, i0, i1, (f) => Math.max(R - 0.5, outer(f) - 0.45), (f) => Math.max(R - 0.35, outer(f) - 0.3), 0.03);        // 外側の線(すぼまる所まで)
+    strip(line, i0, E.tip, (f) => inner(f) + 0.1, (f) => inner(f) + 0.25, 0.03);                                            // 縞のふち(車線の側)
+    for (let f = E.dash; f + 2.5 <= E.to; f += 20 / 3) strip(line, f, f + 2.5, () => R - 0.5, () => R - 0.35, 0.03);        // 破線(7.5m、20m おき)
+    strip(line, E.to, E.to + 0.1, () => R - 0.35, outer, 0.03);                                                             // 車線の終わりの横線
+    const mk = (arr, name, color, off) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name, color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: off })); m.name = name; group.add(m); };
+    mk(road, 'GunmaRoad', 0x47494b, -1); mk(line, 'GunmaEdgeLine', 0xe6e6e0, -3);
+  }
+  // ピット出口の手前の、コンクリートで囲まれた人のいる場所(tools/fuji/apply_pitexit_paint.py): まわりに高さ 1m の壁
+  if (data.pitIsland && data.pitIsland.length > 2) {
+    const q = data.pitIsland, v = [];
+    for (let k = 0; k < q.length; k++) { const a = q[k], b = q[(k + 1) % q.length], ya = groundHeightAt(a[0], a[1]), yb = groundHeightAt(b[0], b[1]);
+      v.push(a[0], ya, a[1], b[0], yb, b[1], b[0], yb + 1, b[1], a[0], ya, a[1], b[0], yb + 1, b[1], a[0], ya + 1, a[1]); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide })); m.name = 'fuji-pit-island'; group.add(m);
   }
   // ピットレーンの青い線(ピット棟の側の縁、幅 0.8m)。コースから離れて並ぶ所だけ
   {
@@ -446,7 +475,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const on = new Uint8Array(n); let side = 0;
     for (let i = 0; i < n; i++) {
       const p = route[i], t = tangents[i], d0 = distPit(p.x, p.z);
-      if (d0 > 40) continue;
+      if (d0 > 40 || (data.pitExit && i >= data.pitExit.wallEnd && i < data.pitExit.wallEnd + 90)) continue;   // 壁はピット出口の線まで
       const dl = distPit(p.x + t.x * 12, p.z + t.z * 12), dr = distPit(p.x - t.x * 12, p.z - t.z * 12);
       const sgn = dl < dr ? 1 : -1;   // ピットのある側(左が +)
       if (d0 - half >= OUT + 0.8) { on[i] = 1; side = sgn; }

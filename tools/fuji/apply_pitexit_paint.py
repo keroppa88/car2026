@@ -1,0 +1,39 @@
+"""富士スピードウェイ: ピット出口の空撮に塗った絵(tools/fuji/paint/pitexit_paint.png)を地面に反映する。
+赤 (237,28,36) = ピットロード・ホームストレート(路面の色) / ピンク (255,174,201) = コンクリート(舗装) / 黄 (255,201,14) = コンクリートで囲まれた、人のいる場所
+絵の画素 → 地図 の対応は pitexit_paint_H.npy(空撮を全体の空撮と特徴点で照合して求めたもの)。
+空撮の路面はコースの線より右へ約 2.75m ずれて写っているので、その分だけ左へ戻して重ねる。
+python3 tools/fuji/apply_pitexit_paint.py   (edit_pit_exit.py のあとに)
+"""
+import json
+from pathlib import Path
+import numpy as np, cv2
+ROOT = Path(__file__).resolve().parents[2]; F = ROOT / 'map/fuji-course.json'; d = json.loads(F.read_text())
+P = cv2.imread(str(ROOT / 'tools/fuji/paint/pitexit_paint.png')); M = np.load(ROOT / 'tools/fuji/paint/pitexit_paint_H.npy')
+R = np.array([[p[0], p[2]] for p in d['route']]); n = len(R); st = d['start']; t = R[(st + 5) % n] - R[st]; t /= np.linalg.norm(t)
+SH = np.array([t[1], -t[0]]) * 2.75                                   # 左へ 2.75m
+L = d['landcover']; W, H = L['W'], L['H']
+G = np.array([[1, 0, L['x0'] + 0.5 - SH[0]], [0, 1, L['z0'] + 0.5 - SH[1]], [0, 0, 1.0]])   # 升目 → (ずらす前の)地図
+J = P.astype(int); near = lambda rgb: (np.abs(J - np.array(rgb[::-1])).max(2) <= 8).astype(np.uint8) * 255
+warp = lambda m: cv2.warpPerspective(m, np.linalg.inv(M) @ G, (W, H), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP) > 127
+red, pink, yel = warp(near((237, 28, 36))), warp(near((255, 174, 201))), warp(near((255, 201, 14)))
+inside = warp(np.full(P.shape[:2], 255, np.uint8))
+k = lambda s: np.ones((s, s), np.uint8); cl = lambda m, s: cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, k(s)) > 0
+yel = cl(yel, 3); red = cl(red | yel, 7) & ~yel                         # 白線・破線・縞のすき間を埋める
+pink = cv2.morphologyEx(cl(pink, 3).astype(np.uint8), cv2.MORPH_OPEN, k(2)) > 0
+ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)
+ov[pink & ~red & inside] = 3; ov[red & inside] = 1; ov[yel & inside] = 5
+cv2.imwrite(str(ovp), ov)
+lc = cv2.imread(str(ROOT / 'map/fuji-landcover.png'))
+src = (ROOT / 'tools/fuji/make_landcover_mosaic.py').read_text(); col = lambda key: tuple(int(q) for q in src.split(f"'{key}': (")[1].split(')')[0].split(','))
+for c, v in {1: (75, 73, 71), 3: col('paved'), 5: (206, 206, 204)}.items(): lc[ov == c] = v
+cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), lc)
+# 黄の場所の外形(まわりに低いコンクリートの壁を立てる)
+cn = max(cv2.findContours(yel.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
+cn = cv2.approxPolyDP(cn, 0.8, True)[:, 0]
+d['pitIsland'] = [[round(float(x + L['x0'] + 0.5), 1), round(float(y + L['z0'] + 0.5), 1)] for x, y in cn]
+F.write_text(json.dumps(d, separators=(',', ':')))
+NR = np.stack([-(np.roll(R, -2, 0) - np.roll(R, 2, 0))[:, 1], (np.roll(R, -2, 0) - np.roll(R, 2, 0))[:, 0]], 1); NR /= np.linalg.norm(NR, axis=1)[:, None]
+for nm, m in (('黄', yel), ('赤', red)):
+    ys, xs = np.nonzero(m & inside); q = np.stack([xs + L['x0'] + 0.5, ys + L['z0'] + 0.5], 1)[::7]
+    i = np.array([np.hypot(*(R - p).T).argmin() for p in q]); o = np.array([(p - R[a]) @ NR[a] for p, a in zip(q, i)])
+    print(nm, int(m.sum()), 'm2', [(int(a), round(float(o[i == a].min()), 1), round(float(o[i == a].max()), 1)) for a in range(i.min(), i.max() + 1, 12) if (i == a).any()])
