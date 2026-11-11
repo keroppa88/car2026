@@ -75,6 +75,20 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     }
     return { i: bi, d: Math.sqrt(best) };
   };
+  // 近道(幅の広い分かれ道)の路面: 両端のコースの高さをまっすぐ結ぶ坂。地面もこれに合わせる(路面から地面が突き出ないように)
+  const wideBranches = (data.branches || []).filter((b) => b.w > 9).map((b) => {
+    const P = b.pts, acc = [0]; for (let i = 1; i < P.length; i++) acc.push(acc[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    return { P, acc, total: acc[acc.length - 1] || 1, ya: route[b.from].y, yb: route[b.to].y, half: b.w / 2 };
+  });
+  const branchNear = (x, z) => {
+    let best = null;
+    for (const b of wideBranches) for (let k = 0; k + 1 < b.P.length; k++) {
+      const [ax, az] = b.P[k], [bx, bz] = b.P[k + 1], dx = bx - ax, dz = bz - az, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+      const d = Math.hypot(ax + dx * t - x, az + dz * t - z);
+      if (!best || d < best.d) best = { d, half: b.half, y: THREE.MathUtils.lerp(b.ya, b.yb, (b.acc[k] + (b.acc[k + 1] - b.acc[k]) * t) / b.total) };
+    }
+    return best;
+  };
   const verts = new Float32Array((cols + 1) * (lines + 1) * 3);
   const colors = new Float32Array(verts.length);
   const grass = [0.20, 0.30, 0.11], dry = [0.30, 0.31, 0.14];
@@ -91,6 +105,13 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         const ry = (tb >= tc ? a.y + (b2.y - a.y) * tb : a.y + (c2.y - a.y) * tc) - 0.05, wide = FUJI_ROAD_HALF + 1.2 + Math.max(runLs[near.i], runRs[near.i]);
         const t = THREE.MathUtils.smoothstep(near.d, wide + 2 * G.cell, wide + 2 * G.cell + 30);   // 升目(6m)2つぶんは平らに(斜めの三角が路面へかぶらない)
         h = THREE.MathUtils.lerp(ry, h, t);
+      }
+      const bq = branchNear(x, z);
+      if (bq && bq.d < bq.half + 2 * G.cell + 30) {   // 近道のまわり: 近道の坂に合わせ、コースの近くではコースの高さとなめらかに混ぜる
+        const hb = THREE.MathUtils.lerp(bq.y - 0.05, G.h[k] / 10, THREE.MathUtils.smoothstep(bq.d, bq.half + 2 * G.cell, bq.half + 2 * G.cell + 30));
+        const wc = near.i >= 0 && near.d < 120 ? 1 / (1 + Math.max(0, near.d - FUJI_ROAD_HALF - 1.2)) ** 4 : 0, wb = 1 / (1 + Math.max(0, bq.d - bq.half)) ** 4;
+        const f = wc ? THREE.MathUtils.smoothstep(near.d, FUJI_ROAD_HALF + 7.7, FUJI_ROAD_HALF + 17.7) : 1;   // コースの路面とそのすぐ外はコースの高さのまま(地面が路面の上に出ない)
+        h = THREE.MathUtils.lerp(h, (h * wc + hb * wb) / (wc + wb), f);
       }
       verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
       const mix = 0.5 + 0.5 * Math.sin(x * 0.013 + Math.sin(z * 0.009) * 2);
@@ -168,7 +189,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
   const grey = new THREE.Color(landcover ? 0x898a8c : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
-  const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
+  const roadC = new THREE.Color(0x47494b), red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
     for (let i = 0; i < ext.length; i++) {
@@ -181,7 +202,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         v[o] = p.x + nn.x * across; v[o + 2] = p.z + nn.z * across;
         // 芝の外の端は地面に合わせる
         v[o + 1] = outerEdge ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
-        if (col) { const c = !kerbAt(i, band.from < 0 ? -1 : 1) ? grey : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
+        if (col) { const bm = branchNear(v[o], v[o + 2]); const c = bm && bm.d < bm.half - 0.2 ? roadC : !kerbAt(i, band.from < 0 ? -1 : 1) ? grey : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
       }
       if (i + 1 < ext.length) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
@@ -194,18 +215,32 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   }
   // 分かれ道(ピットレーン・ダンロップの近道。tools/fuji/apply_kerb_paint.py)。路面と両わきの白線、縁石なし
   for (const br of data.branches || []) {
+    if (br.w > 9) {   // 近道: 地面に沿わせた細かい升目の路面(地面が突き出ない)。両端は 14m のばしてコースとのすき間を埋める(コースの上では路面の下にもぐる)
+      const Q = br.pts, n0 = Q.length, e0 = [Q[0][0] - Q[1][0], Q[0][1] - Q[1][1]], e1 = [Q[n0 - 1][0] - Q[n0 - 2][0], Q[n0 - 1][1] - Q[n0 - 2][1]];
+      const nrm = (e) => { const l = Math.hypot(e[0], e[1]) || 1; return [e[0] / l, e[1] / l]; }, u0 = nrm(e0), u1 = nrm(e1);
+      const ctl = [[Q[0][0] + u0[0] * 14, Q[0][1] + u0[1] * 14], ...Q, [Q[n0 - 1][0] + u1[0] * 14, Q[n0 - 1][1] + u1[1] * 14]], line = [];
+      for (let k = 0; k + 1 < ctl.length; k++) { const [ax, az] = ctl[k], [bx, bz] = ctl[k + 1], L = Math.hypot(bx - ax, bz - az), c = Math.max(1, Math.ceil(L / 2)); for (let j = 0; j < c; j++) line.push([ax + (bx - ax) * j / c, az + (bz - az) * j / c]); }
+      line.push(ctl[ctl.length - 1]);
+      const NS = 8, hw = br.w / 2, v = [], ind = [], onC = [], yAt = (x, z) => groundHeightAt(x, z) + (nearestRoute(x, z).d < FUJI_ROAD_HALF + 1.5 ? 0.02 : 0.045);
+      line.forEach((q, i) => { const a = line[Math.max(0, i - 1)], c = line[Math.min(line.length - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1;
+        for (let j = 0; j <= NS; j++) { const o = -hw + br.w * j / NS, x = q[0] + dz / l * o, z = q[1] - dx / l * o; v.push(x, yAt(x, z), z); onC.push(nearestRoute(x, z).d < FUJI_ROAD_HALF - 0.3); }
+        if (i + 1 < line.length) for (let j = 0; j < NS; j++) { const a2 = i * (NS + 1) + j, b2 = a2 + NS + 1; if ((i < 7 || i >= line.length - 8) && !(onC[a2] && onC[a2 + 1])) continue;   // のばした所はコースの上だけ
+          ind.push(a2, b2, a2 + 1, a2 + 1, b2, b2 + 1); } });
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide })); mesh.name = 'GunmaRoad'; group.add(mesh);
+    }
     const P = br.pts, m = P.length, half = br.w / 2;
     const ya = route[br.from].y, yb = route[br.to].y;
     let total = 0; const acc = [0];
     for (let i = 1; i < m; i++) { total += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); acc.push(total); }
-    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]]) {
+    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]].filter((q) => !(br.w > 9 && !q[3]))) {
       const v = [], ind = [];
       for (let i = 0; i < m; i++) {
         const a = P[Math.max(0, i - 1)], c = P[Math.min(m - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = dz / l, nz = -dx / l;
         const y = Math.max(THREE.MathUtils.lerp(ya, yb, acc[i] / (total || 1)), groundHeightAt(P[i][0], P[i][1]) + 0.04) - 0.01 + dy;
-        for (const o of [o0, o1]) v.push(P[i][0] + nx * o, y, P[i][1] + nz * o);
+        for (const o of [o0, o1]) v.push(P[i][0] + nx * o, br.w > 9 ? groundHeightAt(P[i][0] + nx * o, P[i][1] + nz * o) + 0.065 : y, P[i][1] + nz * o);
         // 白線は本コースの路面の上には引かない(分かれ目・合流の所)
-        const onCourse = (k) => nearestRoute(P[k][0], P[k][1]).d < FUJI_ROAD_HALF + 1;
+        const onCourse = (k) => { const a2 = P[Math.max(0, k - 1)], c2 = P[Math.min(m - 1, k + 1)], ex = c2[0] - a2[0], ez = c2[1] - a2[1], el = Math.hypot(ex, ez) || 1, om = (o0 + o1) / 2; return nearestRoute(P[k][0] + ez / el * om, P[k][1] - ex / el * om).d < FUJI_ROAD_HALF + 2.2; };   // 線そのものの位置で見る(縁石の帯の上にも引かない)
         if (i + 1 < m && !(dy && (onCourse(i) || onCourse(i + 1)))) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
       }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
