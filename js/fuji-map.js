@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261112-fuji-1';
+import { treeBillboards } from './osm-city.js?v=20261112-fuji-2';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -304,14 +304,6 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const mk = (arr, name, color, off) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name, color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: off })); m.name = name; group.add(m); };
     mk(road, 'GunmaRoad', 0x47494b, -1); mk(line, 'GunmaEdgeLine', 0xe6e6e0, -3);
   }
-  // ピット出口の手前の、コンクリートで囲まれた人のいる場所(tools/fuji/apply_pitexit_paint.py): まわりに高さ 1m の壁
-  if (data.pitIsland && data.pitIsland.length > 2) {
-    const q = data.pitIsland, v = [];
-    for (let k = 0; k < q.length; k++) { const a = q[k], b = q[(k + 1) % q.length], ya = groundHeightAt(a[0], a[1]), yb = groundHeightAt(b[0], b[1]);
-      v.push(a[0], ya, a[1], b[0], yb, b[1], b[0], yb + 1, b[1], a[0], ya, a[1], b[0], yb + 1, b[1], a[0], ya + 1, a[1]); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide })); m.name = 'fuji-pit-island'; group.add(m);
-  }
   // ピットレーンの青い線(ピット棟の側の縁、幅 0.8m)。コースから離れて並ぶ所だけ
   {
     const pit = (data.branches || []).find((b) => b.w <= 9);
@@ -466,43 +458,41 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
   };
   // ---- ホームストレートの内側(ピット側): 白線の外に幅 2.5m のコースのアスファルト、その外に高さ 1m のコンクリート壁と金網。内側はピットレーン ----
+  // ---- ホームストレートのコースとピットレーンの間(tools/fuji/edit_pit_lane.py の pitWall): コースの縁から 2.5m のアスファルト、
+  //      高さ 1m のコンクリート壁と金網、人のいるコンクリートの場所、ピット側の低い壁。始まりは V 字にとがる ----
   const pitWall = () => {
-    const pit = (data.branches || []).find((b) => b.w <= 9);   // ピットレーン(幅 8m)
-    if (!pit) return;
-    const PP = pit.pts, distPit = (x, z) => { let best = Infinity; for (let k = 0; k + 1 < PP.length; k++) { const [ax, az] = PP[k], [bx, bz] = PP[k + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); } return best; };
-    const OUT = FUJI_ROAD_HALF + 2.5, half = pit.w / 2;
-    // ピットレーンがコースの横を並んで走る所(壁を立てる余地がある所)を、コースの点ごとに調べる
-    const on = new Uint8Array(n); let side = 0;
-    for (let i = 0; i < n; i++) {
-      const p = route[i], t = tangents[i], d0 = distPit(p.x, p.z);
-      if (d0 > 40 || (data.pitExit && i >= data.pitExit.wallEnd && i < data.pitExit.wallEnd + 90)) continue;   // 壁はピット出口の線まで
-      const dl = distPit(p.x + t.x * 12, p.z + t.z * 12), dr = distPit(p.x - t.x * 12, p.z - t.z * 12);
-      const sgn = dl < dr ? 1 : -1;   // ピットのある側(左が +)
-      if (d0 - half >= OUT + 0.8) { on[i] = 1; side = sgn; }
-    }
-    if (!side) return;
-    const asp = [], wall = [], wallTop = [], net = [], netUv = [], posts = { p: [], n: [] };
-    const P = (i, o, dy = 0) => { const p = route[i], t = tangents[i]; return [p.x + t.x * o * side, p.y + dy, p.z + t.z * o * side]; };
+    const PWd = data.pitWall; if (!PWd) return;
+    const side = PWd.side, i0 = PWd.from, i1 = PWd.to, mid = (PWd.cw + PWd.pw + 0.3) / 2;
+    const ramp = (i) => THREE.MathUtils.clamp((i - i0) / PWd.apex, 0, 1);
+    const cwAt = (i) => mid + (PWd.cw - mid) * ramp(i), pwAt = (i) => mid + (PWd.pw - mid) * ramp(i);
+    const asp = [], wall = [], wallTop = [], floor = [], net = [], netUv = [], posts = { p: [], n: [] };
+    const P = (i, o, dy = 0) => { const p = route[ring(i)], t = tangents[ring(i)]; return [p.x + t.x * o * side, p.y + dy, p.z + t.z * o * side]; };
     const quad = (arr, a, b, c, d) => arr.push(...a, ...b, ...c, ...a, ...c, ...d);
+    const box = (i, j, oA, oB, oA2, oB2, y0, y1) => {   // 前後の点 i→j で、横 oA〜oB(i)・oA2〜oB2(j)、高さ y0〜y1 の壁
+      quad(wall, P(i, oA, y0), P(j, oA2, y0), P(j, oA2, y1), P(i, oA, y1)); quad(wall, P(i, oB, y0), P(j, oB2, y0), P(j, oB2, y1), P(i, oB, y1));
+      quad(wallTop, P(i, oA, y1), P(j, oA2, y1), P(j, oB2, y1), P(i, oB, y1));
+    };
     let run = 0;
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n; if (!on[i] || !on[j]) { run = 0; continue; }
-      quad(asp, P(i, FUJI_ROAD_HALF - 0.02, 0.0), P(j, FUJI_ROAD_HALF - 0.02, 0.0), P(j, OUT, 0.0), P(i, OUT, 0.0));   // コースと同じアスファルト
-      quad(wall, P(i, OUT, -0.1), P(j, OUT, -0.1), P(j, OUT, 1.0), P(i, OUT, 1.0));                                   // 壁の表
-      quad(wall, P(i, OUT + 0.3, -0.1), P(j, OUT + 0.3, -0.1), P(j, OUT + 0.3, 1.0), P(i, OUT + 0.3, 1.0));         // 壁の裏
-      quad(wallTop, P(i, OUT, 1.0), P(j, OUT, 1.0), P(j, OUT + 0.3, 1.0), P(i, OUT + 0.3, 1.0));                     // 壁の上
-      const a = P(i, OUT + 0.15, 1.0), b2 = P(j, OUT + 0.15, 1.0), l = Math.hypot(b2[0] - a[0], b2[2] - a[2]);
+    for (let i = i0; i < i1; i++) {
+      const j = i + 1, ci = cwAt(i), cj = cwAt(j), pi = pwAt(i), pj = pwAt(j);
+      quad(asp, P(i, FUJI_ROAD_HALF - 0.02), P(j, FUJI_ROAD_HALF - 0.02), P(j, ci), P(i, ci));   // コースと同じアスファルト
+      box(i, j, ci, ci + 0.3, cj, cj + 0.3, -0.1, 1.0);                                            // コース側の壁
+      box(i, j, pi, pi + 0.3, pj, pj + 0.3, -0.1, 1.0);                                            // ピット側の壁
+      if (pi > ci + 0.3) quad(floor, P(i, ci + 0.3, 0.12), P(j, cj + 0.3, 0.12), P(j, pj, 0.12), P(i, pi, 0.12));   // 人のいる場所の床
+      const a = P(i, ci + 0.15, 1.0), b2 = P(j, cj + 0.15, 1.0), l = Math.hypot(b2[0] - a[0], b2[2] - a[2]);
       net.push(a[0], a[1], a[2], b2[0], b2[1], b2[2], b2[0], b2[1] + 2.6, b2[2], a[0], a[1], a[2], b2[0], b2[1] + 2.6, b2[2], a[0], a[1] + 2.6, a[2]);
       netUv.push(run / 1.2, 0, (run + l) / 1.2, 0, (run + l) / 1.2, 2.6 / 1.2, run / 1.2, 0, (run + l) / 1.2, 2.6 / 1.2, run / 1.2, 2.6 / 1.2);
       if (Math.floor(run / 4) !== Math.floor((run + l) / 4) || run === 0) { const pg = new THREE.CylinderGeometry(0.05, 0.05, 2.7, 6).toNonIndexed(); pg.translate(a[0], a[1] + 1.35, a[2]); posts.p.push(...pg.getAttribute('position').array); posts.n.push(...pg.getAttribute('normal').array); }
       run += l;
     }
+    quad(wall, P(i1, cwAt(i1), -0.1), P(i1, pwAt(i1) + 0.3, -0.1), P(i1, pwAt(i1) + 0.3, 1.0), P(i1, cwAt(i1), 1.0));   // 終わりのふた
     const mesh = (arr, mat, uv, parent = scenery) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); parent.add(m); return m; };
     mesh(asp, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }), null, group).name = 'GunmaRoad';   // 走れる路面
     mesh(wall, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide }));
-    { // 壁のコース側の面に看板(赤・青の板)
+    mesh(floor, new THREE.MeshLambertMaterial({ color: 0xcfd0cc, side: THREE.DoubleSide })).name = 'pitwall-floor';
+    { // コース側の壁の、コースに向いた面に看板(赤・青の板)
       const P2 = [], U2 = []; let u = 0;
-      for (let i = 0; i < n; i++) { const j = (i + 1) % n; if (!on[i] || !on[j]) continue; const a = P(i, OUT - 0.03), b2 = P(j, OUT - 0.03), l = Math.hypot(b2[0] - a[0], b2[2] - a[2]);
+      for (let i = i0 + PWd.apex; i < i1; i++) { const a = P(i, PWd.cw - 0.03), b2 = P(i + 1, PWd.cw - 0.03), l = Math.hypot(b2[0] - a[0], b2[2] - a[2]);
         P2.push(a[0], a[1] - 0.05, a[2], b2[0], b2[1] - 0.05, b2[2], b2[0], b2[1] + 0.95, b2[2], a[0], a[1] - 0.05, a[2], b2[0], b2[1] + 0.95, b2[2], a[0], a[1] + 0.95, a[2]);
         const k = side > 0 ? 1 : -1; U2.push(k * u / 10, 0, k * (u + l) / 10, 0, k * (u + l) / 10, 1, k * u / 10, 0, k * (u + l) / 10, 1, k * u / 10, 1); u += l; }   // 文字が裏返らない向き
       meshUV(P2, U2, sponsorTex([['#1d4f9c', '#ffffff', 'TTDC'], ['#d71e28', '#ffffff', 'TOYOTA'], ['#1d4f9c', '#ffffff', 'TTDC'], ['#ffffff', '#d71e28', 'DENSO']])).name = 'pitwall-boards';

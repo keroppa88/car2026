@@ -124,6 +124,12 @@ pv = ((lab == ID['paved']) & (course == 0)).astype(np.uint8)
 wide = cv2.dilate(cv2.morphologyEx(pv, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))), np.ones((5, 5), np.uint8))
 thin = (pv > 0) & (wide == 0) & (keep == 0) & have
 lab[thin] = ID['grass']; print('せまい舗装 → 草地', int(thin.sum()), 'm2')
+# コースのそばの小さな舗装のかたまり(800m2 未満、コースから 40m 以内)は草地。OSM の道路のまわりは残す
+pv2 = ((lab == ID['paved']) & (course == 0)).astype(np.uint8)
+ncc, cc2, st2, _ = cv2.connectedComponentsWithStats(pv2, connectivity=4)
+rl = np.ones((H, W), np.uint8); cv2.polylines(rl, [(R - [x0, z0]).astype(np.int32)], True, 0, 1)
+smallp = np.isin(cc2, [i for i in range(1, ncc) if st2[i, cv2.CC_STAT_AREA] < 800]) & (cv2.distanceTransform(rl, cv2.DIST_L2, 5) < 40) & (keep == 0) & have
+lab[smallp] = ID['grass']; print('コースのそばの小さな舗装 → 草地', int(smallp.sum()), 'm2')
 for want in ('sand', 'parking', 'building', 'stand'):
     for k, p in polys:
         if k == want: cv2.fillPoly(lab, [p], ID[k])
@@ -135,7 +141,7 @@ def side_pt(i, o):
     a, b = R[(i - 2) % len(R)], R[(i + 2) % len(R)]; ex, ez = b - a; ll = math.hypot(ex, ez); p = R[i % len(R)]
     return [round(float(p[0] + ez / ll * o), 1), round(float(p[1] - ex / ll * o), 1)]
 chev.append([side_pt(1436, -10.3), side_pt(1445, -10.3), side_pt(1445, -13.5), side_pt(1436, -13.5)])
-d['chevrons'] = [{'p': c, 'dir': [round(dx / l, 4), round(dz / l, 4)]} for c in chev]
+if 'chevrons' not in d: d['chevrons'] = [{'p': c, 'dir': [round(dx / l, 4), round(dz / l, 4)]} for c in chev]
 # 絵で直した所(tools/fuji/apply_area_paint2.py)を重ねる
 ovp = ROOT / 'tools/fuji/paint/area_overrides.png'
 if ovp.exists():

@@ -14,14 +14,14 @@ T = np.roll(R, -2, 0) - np.roll(R, 2, 0); T /= np.linalg.norm(T, axis=1)[:, None
 def pt(fi, o):
     i = int(np.floor(fi)); f = fi - i; a, b = R[i % n], R[(i + 1) % n]; na, nb = NR[i % n], NR[(i + 1) % n]
     return (a + (b - a) * f + (na + (nb - na) * f) * o).tolist()
-PROF = [[1433, 12.75, 18.5], [1452, 7.5, 12.5], [1463, 7.5, 11.75], [1511, 7.5, 11.75], [1517, 7.5, 7.5]]   # [点, 車線の内側, 外側]
+PROF = [[1433, 12.3, 18.3], [1452, 7.5, 12.5], [1463, 7.5, 11.75], [1511, 7.5, 11.75], [1517, 7.5, 7.5]]   # [点, 車線の内側, 外側]
 d['pitExit'] = {'side': -1, 'prof': PROF, 'tip': 1452, 'dash': 1466, 'to': 1511, 'wallEnd': 1433}
 pit = next(b for b in d['branches'] if b['w'] <= 9)
 idx = [int(np.hypot(*(R - p).T).argmin()) for p in pit['pts']]
 keep = [p for p, i in zip(pit['pts'], idx) if not (1428 <= i <= 1500)]
-end = [round(v, 2) for v in pt(1434, 15.6)]
+end = [round(v, 2) for v in pt(1434, 15.3)]
 pit['pts'] = ([end] + keep) if idx[0] > 1300 else (keep + [end]); pit['from' if idx[0] > 1300 else 'to'] = 1434
-ch = [[round(v, 1) for v in pt(*q)] for q in ((1435, 7.75), (1451.3, 7.75), (1435, 12.0))]
+ch = [[round(v, 1) for v in pt(*q)] for q in ((1435, 7.75), (1451.3, 7.75), (1435, 11.8))]
 d['chevrons'] = d['chevrons'][:1] + [{'p': ch, 'dir': d['chevrons'][0]['dir']}]
 # 地面: 車線と縞の所を路面の色に
 L = d['landcover']; ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)
