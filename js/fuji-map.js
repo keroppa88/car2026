@@ -1,4 +1,5 @@
 import * as THREE from '../lib/three.module.js';
+import { treeBillboards } from './osm-city.js?v=20261111-fuji-5';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -546,6 +547,21 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const nt = canvasTex(64, 64, (x) => { x.strokeStyle = 'rgba(70,74,76,0.95)'; x.lineWidth = 1.5; for (let k = -64; k < 128; k += 10) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k - 64, 64); x.stroke(); x.beginPath(); x.moveTo(k - 64, 0); x.lineTo(k, 64); x.stroke(); } }); nt.wrapT = THREE.RepeatWrapping;
     meshUV(net, netU, nt, { transparent: true, alphaTest: 0.3 }).name = 'fuji-fence-net';
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(posts.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(posts.n, 3)); scenery.add(new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0x8a8e90 })));
+  }
+  // ---- 森の木(湘南と同じ 2D の木。コースの近くは1本ずつ、奥は大きな塊)と、駐車場の車(色いろいろの箱) ----
+  if (data.trees) for (const m of treeBillboards(data.trees.map(([x, z, sz]) => [x, groundHeightAt(x, z) - 0.3, z, sz]), 'fuji-trees')) scenery.add(m);
+  if (data.cars && data.cars.length) {
+    const PAL = [0xf4f4f2, 0xf4f4f2, 0xc9ccce, 0xc9ccce, 0x2a2c2f, 0x2a2c2f, 0x7d8286, 0xc8232c, 0x1f4fa8, 0x2b7a4b, 0xe0b020, 0x8a5a2b, 0x5aa0d8];
+    const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1.75, 0.85, 4.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), data.cars.length);
+    const cab = new THREE.InstancedMesh(new THREE.BoxGeometry(1.6, 0.6, 2.3), new THREE.MeshLambertMaterial({ color: 0x30363c }), data.cars.length);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P3 = new THREE.Vector3(), S1 = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+    data.cars.forEach(([x, z, deg], i) => {
+      const y = groundHeightAt(x, z), k = Math.abs(Math.round(x * 7.3 + z * 3.1 + i * 5)) % PAL.length, tall = (i * 7) % 5 === 0 ? 1.25 : 1;
+      Q.setFromAxisAngle(Y, deg * Math.PI / 180);
+      body.setMatrixAt(i, M.compose(P3.set(x, y + 0.6, z), Q, S1.set(1, tall, 1))); body.setColorAt(i, C.setHex(PAL[k]));
+      cab.setMatrixAt(i, M.compose(P3.set(x, y + 0.6 + 0.425 * tall + 0.3, z), Q, S1.set(1, 1, tall > 1 ? 1.4 : 1)));
+    });
+    body.frustumCulled = cab.frustumCulled = false; body.name = cab.name = 'fuji-parked-cars'; scenery.add(body, cab);
   }
   // ---- 遠景: 富士山(ほぼ真西・わずかに南 = ホームストレートを逆にたどった最終コーナーの方向。緯度経度から。実際は約 20km 先なので、近くに小さく置いて同じ見え方にする)と、まわりの山並み(適当) ----
   {

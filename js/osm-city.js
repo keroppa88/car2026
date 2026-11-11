@@ -2389,3 +2389,18 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     setNight(on) { if (on === night) return; night = on; glow.forEach((m) => { m.emissiveIntensity = on ? 0.85 : 0; }); lampCtl?.setNight(on); panorama?.userData.setNight(on); foamMesh?.userData.setNight(on); setSeaNight(on); },   // 湘南: 街灯も夜だけ点ける
   };
 }
+
+// ---- ほかの地図(富士など)でも湘南と同じ 2D の木を使う。list: [x, y, z, 大きさ(m)] ----
+export function treeBillboards(list, name = 'trees') {
+  const mat = billboard(new THREE.MeshLambertMaterial({ map: makeTreeAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }));
+  const groups = TREE_KINDS.map(() => []), out = [];
+  list.forEach((t, i) => groups[(Math.round(t[0] * 31 + t[2] * 17) % TREE_KINDS.length + TREE_KINDS.length) % TREE_KINDS.length].push(t));
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Color();
+  groups.forEach((g, kind) => {
+    if (!g.length) return;
+    const m = new THREE.InstancedMesh(treeGeometry(kind), mat, g.length), R = seeded(77 + kind);
+    g.forEach(([x, y, z, s], i) => { M.compose(P.set(x, y, z), Q, S.set(s, s, s)); m.setMatrixAt(i, M); C.setHSL(0, 0, 0.85 + R() * 0.2); m.setColorAt(i, C); });
+    m.frustumCulled = false; m.name = name; out.push(m);
+  });
+  return out;
+}
