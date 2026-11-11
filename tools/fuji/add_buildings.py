@@ -37,6 +37,6 @@ d['buildings'] = keep + add
 d['gantries'] = [[117, 'Audi Sport', -1], [237, 'GOODYEAR', 1], [417, 'DUNLOP', -1], [503, 'ENEOS', 1], [664, 'LEON', -1],
                  [1166, 'MICHELIN', 0], [1301, 'Sammy   LAP  TIME  FLAG   SEGA SAMMY', 0, '#1a3f8f'], [1392, 'Panasonic      Panasonic', 0, '#1d4fb0']]
 # 路面の看板ペイント: [コースの点, 横(m, 左が+), 長さ, 幅, 地の色, 文字の色, 文字]
-d['decals'] = [[24, 26, 30, 10, '#ffffff', '#d71e28', 'TOYOTA GAZOO Racing'], [216, -24, 16, 8, '#d71e28', '#ffffff', 'Coca-Cola'], [993, 16, 22, 7, '#2a63c8', '#ffffff', 'Panasonic']]
+d['decals'] = [[24, 26, 30, 10, '#ffffff', '#d71e28', 'TOYOTA GAZOO Racing'], [993, 16, 22, 7, '#2a63c8', '#ffffff', 'Panasonic']]
 F.write_text(json.dumps(d, separators=(',', ':')))
 print('建物', len(keep), '+', len(add), ' うち観客席', sum(1 for b in add if b.get('kind')))

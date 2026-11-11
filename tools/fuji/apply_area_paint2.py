@@ -1,5 +1,6 @@
 """富士スピードウェイ: ゲームの真上ビュー(U キー)の画面に塗った絵から、地面の塗り分けを直す。
-python3 tools/fuji/apply_area_paint2.py [絵.png] [確認用の出力フォルダ]     絵は tools/fuji/paint/area_paint2.png
+python3 tools/fuji/apply_area_paint2.py 絵.png 確認用の出力フォルダ [--add] [--pink-paved]
+1枚目: area_paint2.png(オプションなし)。2枚目: area_paint3.png --add --pink-paved(--add = 前の直しに重ねる)
 色(ペイントの原色そのまま): ピンク (255,174,201) = コース(濃いグレー) / 赤 (237,28,36) = 芝生 / 水色 (153,217,234) = コンクリート / 黄 (255,242,0) = 駐車場
 合わせ方: 真下を向いたカメラ(位置・高さ・向き・画角)を、コースの線(高さつき)が絵の濃いグレーに重なるように求める。
 → tools/fuji/paint/area_overrides.png(地図の升目 1m。0 = なし、1 コース、2 芝生、3 コンクリート、4 駐車場)と map/fuji-landcover.png
@@ -14,6 +15,7 @@ src = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'tools/fuji/paint/area_
 I = cv2.imread(str(src)); Hh, Ww = I.shape[:2]; J = I.astype(int)
 near = lambda rgb, tol=6: (np.abs(J - np.array(rgb[::-1])).max(2) <= tol)
 PAINT = {1: (255, 174, 201), 2: (237, 28, 36), 3: (153, 217, 234), 4: (255, 242, 0)}
+if '--pink-paved' in sys.argv: PAINT = {3: (255, 174, 201), 2: (237, 28, 36)}   # ピンク = アスファルト(コース以外)、赤 = 芝生 だけの絵
 R3 = np.array(d['route']); n = len(R3)
 # コースの濃いグレー(塗った所も「不明」として距離 0 にしない)
 dark = ((J.max(2) - J.min(2) < 14) & (J.mean(2) > 70) & (J.mean(2) < 96)).astype(np.uint8)
