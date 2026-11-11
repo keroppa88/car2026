@@ -119,6 +119,11 @@ def side_pt(i, o):
     return [round(float(p[0] + ez / ll * o), 1), round(float(p[1] - ex / ll * o), 1)]
 chev.append([side_pt(1436, -10.3), side_pt(1445, -10.3), side_pt(1445, -13.5), side_pt(1436, -13.5)])
 d['chevrons'] = [{'p': c, 'dir': [round(dx / l, 4), round(dz / l, 4)]} for c in chev]
+# 絵で直した所(tools/fuji/apply_area_paint2.py)を重ねる
+ovp = ROOT / 'tools/fuji/paint/area_overrides.png'
+if ovp.exists():
+    ov = cv2.imread(str(ovp), 0)
+    for k, c in {1: (75, 73, 71), 2: COL['grass'], 3: COL['paved'], 4: COL['parking']}.items(): out[ov == k] = c
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), out)
 d['landcover'] = {'x0': x0, 'z0': z0, 'px': 1.0, 'W': W, 'H': H}; F.write_text(json.dumps(d, separators=(',', ':')))
 for k in KEYS: print(k, round(float((lab == ID[k]).mean()) * 100, 1), '%')

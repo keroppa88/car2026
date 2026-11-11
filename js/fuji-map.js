@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261111-fuji-6';
+import { treeBillboards } from './osm-city.js?v=20261111-fuji-7';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -202,7 +202,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         v[o] = p.x + nn.x * across; v[o + 2] = p.z + nn.z * across;
         // 芝の外の端は地面に合わせる
         v[o + 1] = outerEdge ? Math.min(p.y - 0.06, groundHeightAt(v[o], v[o + 2]) + 0.05) : p.y + band.y;
-        if (col) { const bm = branchNear(v[o], v[o + 2]); const c = bm && bm.d < bm.half - 0.2 ? roadC : !kerbAt(i, band.from < 0 ? -1 : 1) ? grey : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
+        if (col) { const bm = branchNear(v[o], v[o + 2]); const c = bm && bm.d < bm.half - 0.2 ? roadC : !kerbAt(i, band.from < 0 ? -1 : 1) ? ((band.from < 0 ? data.roadR : data.roadL)?.[ring(extIndices[i])] ? roadC : grey) : (i % 2) ? red : white; col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b; }   // 縁石のない所はランオフと同じグレー
       }
       if (i + 1 < ext.length) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
