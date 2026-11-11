@@ -14,13 +14,13 @@ ROOT = Path(__file__).resolve().parents[2]
 F = ROOT / 'map/fuji-course.json'; d = json.loads(F.read_text()); R = np.array([[p[0], p[2]] for p in d['route']])
 I = cv2.imread(sys.argv[1]); DBG = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 COL = {  # BGR。アニメ調の基本色
-    'paved': (178, 176, 175),   # 薄いグレー: アスファルト(コース以外)
+    'paved': (140, 138, 137),   # 薄いグレー: アスファルト(コース以外)
     'grass': (120, 200, 150),   # 黄緑: 草地
     'forest': (60, 120, 60),    # 緑: 森
     'sand': (150, 196, 214),    # ベージュ: 砂地
-    'parking': (160, 152, 148), # 少し濃いグレー: 駐車場
-    'building': (130, 124, 122),# 建物の下
-    'stand': (130, 124, 122),   # 観客席の下
+    'parking': (124, 120, 118), # 少し濃いグレー: 駐車場
+    'building': (108, 104, 102),# 建物の下
+    'stand': (108, 104, 102),   # 観客席の下
 }
 KEYS = list(COL); ID = {k: i for i, k in enumerate(KEYS)}
 

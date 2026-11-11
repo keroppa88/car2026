@@ -166,7 +166,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   // 左右: 法線 nn は進む向きの左。across > 0 が左(runL / kerbL)、across < 0 が右
   const runAt = (i, side) => (side > 0 ? runLs : runRs)[ring(extIndices[i])];
   const kerbAt = (i, side) => { const k = side > 0 ? data.kerbL : data.kerbR; return !k || k[ring(extIndices[i])]; };
-  const grey = new THREE.Color(landcover ? 0xafb0b2 : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
+  const grey = new THREE.Color(landcover ? 0x898a8c : 0x5f6163);   // 縁石のない所: 塗り分けの舗装と同じ薄いグレー
   const red = new THREE.Color(0xc0302a), white = new THREE.Color(0xeeeeea);
   for (const band of bands) {
     const v = new Float32Array(ext.length * 2 * 3), col = band.kerb ? new Float32Array(v.length) : null, ind = [];
@@ -427,7 +427,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const geo = new THREE.ExtrudeGeometry(shape, { depth: H, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(geo, [new THREE.MeshLambertMaterial({ color: 0xe6e7e6 }), new THREE.MeshLambertMaterial({ color: 0xf4f4f2, emissive: 0x8c8c8a })]); m.position.y = y0; scenery.add(m);
     // ピットレーンに向いた面: 外周の辺のうち、真ん中がピットレーンに近く、ある程度長い辺
-    const q = b.p, open = { p: [], n: [] }, band = { p: [], n: [] }, work = [], facG = { P: [], U: [] }, facS = { P: [], U: [] }, facT = { P: [], U: [] };
+    const q = b.p, open = { p: [], n: [] }, band = { p: [], n: [] }, canopy = { p: [], n: [] }, work = [], facG = { P: [], U: [] }, facS = { P: [], U: [] }, facT = { P: [], U: [] };
     let cx = 0, cz = 0; for (const [x, z] of q) { cx += x / q.length; cz += z / q.length; }
     for (let k = 0; k < q.length; k++) {
       const A = q[k], B = q[(k + 1) % q.length], L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 8) continue;
@@ -440,7 +440,8 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         const s = s0 + (j + 0.5) * PITCH;
         boxInto(open, A[0] + tx * s + nx * 0.03, y0 + 1.7, A[1] + tz * s + nz * 0.03, W, 3.4, 0.06, ang);
       }
-      boxInto(band, mx + nx * 0.04, y0 + 3.6, mz + nz * 0.04, L, 0.25, 0.06, ang);   // 1階と2階の間の帯
+      boxInto(band, mx + nx * 0.04, y0 + 3.6, mz + nz * 0.04, L, 0.25, 0.06, ang);
+      boxInto(canopy, mx + nx * 2.2, y0 + H + 0.9, mz + nz * 2.2, L + 4, 0.5, 9, ang);   // 大きく張り出したグレーの屋根   // 1階と2階の間の帯
       // 外向きの面に、2階のガラス窓・3階のテラス(柱と手すり)・3階の下の看板の帯
       const fa = [A[0] + nx * 0.08, A[1] + nz * 0.08], fb = [B[0] + nx * 0.08, B[1] + nz * 0.08];   // 壁の外へ 8cm
       panel(facG.P, facG.U, fa, fb, y0 + 4.2, y0 + 4.2, 2.6, 4, 0);
@@ -456,17 +457,57 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       }
     }
     const mk = (o, color) => { if (!o.p.length) return; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3)); scenery.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color }))); };
-    mk(open, 0x2c2e31); mk(band, 0xd0d1d0);
+    mk(open, 0x2c2e31); mk(band, 0xd0d1d0); mk(canopy, 0xa9acae);
     // 2階: 濃い色のガラスと細い窓枠(4m ごと)。3階: 明るい窓と太い柱(6m ごと)
     if (facG.P.length) meshUV(facG.P, facG.U, canvasTex(128, 64, (x, w, h) => { x.fillStyle = '#3c4650'; x.fillRect(0, 0, w, h); x.fillStyle = '#5a6672'; x.fillRect(0, 0, w, 10); x.fillStyle = '#d9dbdb'; x.fillRect(0, 0, 6, h); x.fillRect(0, h - 5, w, 5); x.fillRect(62, 0, 3, h); }));
     if (facS.P.length) meshUV(facS.P, facS.U, sponsorTex(BOARDS.slice(0, 4)));
     if (facT.P.length) meshUV(facT.P, facT.U, canvasTex(128, 64, (x, w, h) => { x.fillStyle = '#9aa7b0'; x.fillRect(0, 0, w, h); x.fillStyle = '#e8e9e8'; x.fillRect(0, 0, 16, h); x.fillRect(0, 0, w, 8); x.fillStyle = '#c9cccc'; x.fillRect(0, h - 22, w, 4); x.fillStyle = '#6f7a82'; for (let k = 24; k < w; k += 18) x.fillRect(k, 14, 2, h - 30); }));
     if (work.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(work, 3)); g.computeVertexNormals(); const wm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); wm.name = 'pit-work-area'; scenery.add(wm); }
   };
+  // ---- コントロールセンター(DENSO の建物): グレーの5階建て、窓の帯、屋上に赤い看板 ----
+  const controlCentre = (b) => {
+    const H = 19, y0 = b.y, q = b.p, shape = new THREE.Shape(q.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: H, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, [new THREE.MeshLambertMaterial({ color: 0x9a9da0 }), new THREE.MeshLambertMaterial({ color: 0xc4c7c9, emissive: 0x333333 })]); m.position.y = y0; scenery.add(m);
+    let cx = 0, cz = 0; for (const [x, z] of q) { cx += x / q.length; cz += z / q.length; }
+    const win = { P: [], U: [] }, sign = { P: [], U: [] };
+    for (let k = 0; k < q.length; k++) {
+      let A = q[k], B = q[(k + 1) % q.length]; const L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 4) continue;
+      let nx = -(B[1] - A[1]) / L, nz = (B[0] - A[0]) / L;
+      if (((A[0] + B[0]) / 2 - cx) * nx + ((A[1] + B[1]) / 2 - cz) * nz < 0) { nx = -nx; nz = -nz; [A, B] = [B, A]; }   // 外向き。板の表(a→b の左)が外
+      const fa = [A[0] + nx * 0.08, A[1] + nz * 0.08], fb = [B[0] + nx * 0.08, B[1] + nz * 0.08];
+      win.P.u = 0; panel(win.P, win.U, fa, fb, y0 + 3.5, y0 + 3.5, 14, 6, 0);
+      sign.P.u = 0; panel(sign.P, sign.U, fa, fb, y0 + H, y0 + H, 2.6, L / Math.max(1, Math.round(L / 14)), 0);
+    }
+    const wt = canvasTex(64, 256, (x, w, h) => { x.fillStyle = '#c4c7c9'; x.fillRect(0, 0, w, h); x.fillStyle = '#39434d'; for (let f = 0; f < 4; f++) x.fillRect(3, 14 + f * 64, w - 6, 34); });
+    meshUV(win.P, win.U, wt); meshUV(sign.P, sign.U, sponsorTex([['#d71e28', '#ffffff', 'DENSO']]), { emissive: 0x220000 });
+  };
+  // ---- ピット出口の横の高いタワー(格子の塔に色の板)と、ホームストレートの監視小屋 ----
+  {
+    const o = { p: [], n: [] }, add = (out, ...a) => boxInto(out, ...a);
+    const cols = {}, put = (color, ...a) => boxInto(cols[color] || (cols[color] = { p: [], n: [] }), ...a);
+    const cv = (data.chevrons || [])[0];
+    if (cv) {
+      let cx = 0, cz = 0; for (const [x, z] of cv.p) { cx += x / cv.p.length; cz += z / cv.p.length; }
+      const k = nearestRoute(cx, cz), rp = route[k.i]; let dx = cx - rp.x, dz = cz - rp.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      let dist = l + 14; while (dist < l + 60 && distPL(rp.x + dx * dist, rp.z + dz * dist) < 9) dist += 2;
+      const tx = rp.x + dx * (dist + 3), tz = rp.z + dz * (dist + 3), gy0 = groundHeightAt(tx, tz), ang = Math.atan2(cv.dir[0], cv.dir[1]);
+      put(0x4a4f54, tx, gy0 + 21, tz, 3.4, 42, 3.4, ang);                                   // 塔
+      [[0x1d4fb0, 39.5, 5], [0x4a4f54, 35, 4], [0xd71e28, 30.5, 3.4], [0xf2f2f0, 25.5, 6.2], [0x15803d, 20.8, 2.6]].forEach(([c, y, h]) => put(c, tx, gy0 + y, tz, 4.4, h, 4.4, ang));
+    }
+    // 監視小屋: ゴールの橋の手前、ピット側の壁ぎわ。柱の上にグレーの箱と赤い屋根
+    for (const i of [1296, 1386]) {
+      const p = route[ring(i)], t = tangents[ring(i)], sg = distPL(p.x + t.x * 12, p.z + t.z * 12) < distPL(p.x - t.x * 12, p.z - t.z * 12) ? 1 : -1;
+      const x = p.x + t.x * sg * (R + 4.6), z = p.z + t.z * sg * (R + 4.6), ang = Math.atan2(-t.z, t.x);
+      put(0x8a8e90, x, p.y + 1.5, z, 0.5, 3, 0.5, ang); put(0xc9cccd, x, p.y + 4.2, z, 2.6, 2.4, 2.6, ang); put(0x39434d, x, p.y + 4.5, z, 2.7, 1.0, 2.7, ang); put(0xa0303a, x, p.y + 5.55, z, 3.2, 0.3, 3.2, ang);
+    }
+    for (const [c, g0] of Object.entries(cols)) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(g0.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(g0.n, 3)); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: Number(c), emissive: Number(c) === 0xf2f2f0 ? 0x444444 : 0 })); m.name = 'fuji-tower'; scenery.add(m); }
+  }
   for (const b of data.buildings) {
     if (b.name === 'グランドスタンド') { grandstand(b, { roof: true }); continue; }
     if (b.kind === 'stand') { grandstand(b, { front: false }); continue; }
     if (/^ピットビル/.test(b.name || '')) { pitBuilding(b); continue; }
+    if (b.name === 'コントロールセンター') { controlCentre(b); continue; }
     const shape = new THREE.Shape(b.p.map(([x, z]) => new THREE.Vector2(x, -z)));
     const depth = b.roof ? 0.6 : b.h;
     const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
@@ -528,12 +569,12 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   {
     const fr = { p: [], n: [] }, signT = (text, bg = '#1d2f6b', fg = '#ffffff') => canvasTex(512, 64, (x, w, h) => { x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.font = 'bold 40px Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, w / 2, h / 2 + 2, w - 24); }, false);
     const BG = ['#b4141e', '#1d2f6b', '#f2c400', '#d71e28', '#111111', '#1d4f9c', '#1d2f6b', '#d71e28'];
-    (data.gantries || []).forEach(([i, text, side], gi) => {
+    (data.gantries || []).forEach(([i, text, side, bg0], gi) => {
       const p = route[ring(i)], t = tangents[ring(i)], ang = Math.atan2(-t.z, t.x), OUT = R + 3.5, Hc = 6.2, BH = 1.7;
       const o0 = side > 0 ? -R - 0.5 : -OUT, o1 = side < 0 ? R + 0.5 : OUT, len = o1 - o0, oc = (o0 + o1) / 2, at = (o) => [p.x + t.x * o, p.z + t.z * o];
       for (const o of side === 0 ? [-OUT, OUT] : [side * OUT]) { const [x, z] = at(o), gy0 = Math.min(groundHeightAt(x, z), p.y) - 0.3; boxInto(fr, x, (gy0 + p.y + Hc + BH) / 2, z, 0.9, p.y + Hc + BH - gy0, 0.9, ang); }
       const [cx, cz] = at(oc); boxInto(fr, cx, p.y + Hc + BH / 2, cz, len, BH, 0.7, ang);
-      const tex = signT(text, BG[gi % BG.length], BG[gi % BG.length] === '#f2c400' ? '#111111' : '#ffffff'), sw = Math.min(len - 2, 16);
+      const bgc = bg0 || BG[gi % BG.length], tex = signT(text, bgc, bgc === '#f2c400' ? '#111111' : '#ffffff'), sw = side === 0 ? len - 1.2 : Math.min(len - 2, 16);
       for (const k of [0, 1]) { const a = ang + k * Math.PI, m = new THREE.Mesh(new THREE.PlaneGeometry(sw, BH - 0.2), new THREE.MeshLambertMaterial({ map: tex, emissive: 0x222222 })); m.rotation.y = a; m.position.set(cx + Math.sin(a) * 0.37, p.y + Hc + BH / 2, cz + Math.cos(a) * 0.37); scenery.add(m); }
     });
     if (fr.p.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fr.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(fr.n, 3)); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xd9dadb })); m.name = 'fuji-gantries'; scenery.add(m); }
