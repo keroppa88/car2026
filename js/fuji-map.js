@@ -435,6 +435,25 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     slab(conc, 0.4, 0.8, WALL + 0.3, y0);
     const red1 = new THREE.MeshLambertMaterial({ color: 0xb04a44 }), red2 = new THREE.MeshLambertMaterial({ color: 0x9c3d38 });
     for (let k = 0; k < rows; k++) slab(k >= rows * 0.62 ? (k % 2 ? red1 : red2) : (k % 2 ? seat : seat2), 0.8 + (k + 0.5) * STEP, STEP + 0.02, WALL + (k + 1) * RISE, y0);   // 上の方は赤い席
+    { // 観客: 各段に座った人(胴は服の色いろいろ、頭は肌色・髪色)。満席に近い賑わい
+      const SHIRT = [0xd71e28, 0x1d4f9c, 0xf2f2f0, 0x2a2c2f, 0xf2c400, 0x2b7a4b, 0xe07020, 0x7a4fb0, 0x5aa0d8, 0xc8c8c8, 0xd94f8c, 0x8a5a2b];
+      const HEAD = [0xe8c4a0, 0xd9a878, 0x2a221c, 0x3a2e24, 0x1c1814, 0xc9a07a];
+      const spots = []; let seed = Math.abs(Math.round(A[0] * 13 + A[1] * 7)) + 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let k = 0; k < rows; k++) for (let sx = 0.4; sx < L - 0.3; sx += 0.62) {
+        if (rnd() > 0.82) continue;
+        const off = 0.8 + (k + 0.5) * STEP + (rnd() - 0.5) * 0.12, s2 = sx + (rnd() - 0.5) * 0.18;
+        spots.push([A[0] + tx * s2 + ox * off, y0 + WALL + (k + 1) * RISE, A[1] + tz * s2 + oz * off, rnd(), rnd(), rnd()]);
+      }
+      const body = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42, 0.62, 0.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), spots.length);
+      const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), new THREE.MeshLambertMaterial({ color: 0xffffff }), spots.length);
+      const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-ox, -oz)), P = new THREE.Vector3(), SC = new THREE.Vector3(1, 1, 1), C = new THREE.Color();
+      spots.forEach(([x, y, z, r1, r2, r3], i) => {
+        const hgt = 0.9 + r3 * 0.2;
+        body.setMatrixAt(i, M4.compose(P.set(x, y + 0.31 * hgt, z), Q, SC.set(1, hgt, 1))); body.setColorAt(i, C.setHex(SHIRT[Math.floor(r1 * SHIRT.length)]));
+        head.setMatrixAt(i, M4.compose(P.set(x, y + 0.62 * hgt + 0.13, z), Q, SC.set(1, 1, 1))); head.setColorAt(i, C.setHex(HEAD[Math.floor(r2 * HEAD.length)]));
+      });
+      body.name = head.name = 'fuji-spectators'; scenery.add(body, head);
+    }
     { // 前の壁に看板の帯(高さ 1m、壁の上の方)
       const P2 = [], U2 = [], a = [A[0] - ox * 0.02, A[1] - oz * 0.02], b2 = [B[0] - ox * 0.02, B[1] - oz * 0.02];
       const flip = ((b2[0] - a[0]) * -oz + (b2[1] - a[1]) * ox) < 0;   // 板の表をコースの側へ
