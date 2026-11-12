@@ -607,7 +607,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     if (facG.P.length) meshUV(facG.P, facG.U, canvasTex(128, 64, (x, w, h) => { x.fillStyle = '#3c4650'; x.fillRect(0, 0, w, h); x.fillStyle = '#5a6672'; x.fillRect(0, 0, w, 10); x.fillStyle = '#d9dbdb'; x.fillRect(0, 0, 6, h); x.fillRect(0, h - 5, w, 5); x.fillRect(62, 0, 3, h); }));
     if (facS.P.length) meshUV(facS.P, facS.U, sponsorTex(BOARDS.slice(0, 4)));
     if (facT.P.length) meshUV(facT.P, facT.U, canvasTex(128, 64, (x, w, h) => { x.fillStyle = '#9aa7b0'; x.fillRect(0, 0, w, h); x.fillStyle = '#e8e9e8'; x.fillRect(0, 0, 16, h); x.fillRect(0, 0, w, 8); x.fillStyle = '#c9cccc'; x.fillRect(0, h - 22, w, 4); x.fillStyle = '#6f7a82'; for (let k = 24; k < w; k += 18) x.fillRect(k, 14, 2, h - 30); }));
-    if (work.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(work, 3)); g.computeVertexNormals(); const wm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); wm.name = 'pit-work-area'; scenery.add(wm); }
+    if (false && work.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(work, 3)); g.computeVertexNormals(); const wm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); wm.name = 'pit-work-area'; scenery.add(wm); }
   };
   // ---- コントロールセンター(DENSO の建物): グレーの5階建て、窓の帯、屋上に赤い看板 ----
   const controlCentre = (b) => {
@@ -825,6 +825,34 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const k = (v * lcW + u) * 4, r = lcData[k], g = lcData[k + 1], b = lcData[k + 2];
     return !(Math.abs(r - b) <= 12 && g < 160);   // 灰色(舗装・駐車場・建物の下)以外
   };
+  // ---- パドック: ピット棟A・B とコントロールセンターの辺をつないだ範囲と、ピットレーンの縁までの手前を、
+  //      濃いめのコンクリートの平らな板 1 枚で描く(地面の絵には塗らない。縁は図形の直線でぼやけない) ----
+  if (data.pitEntry) {
+    const E = data.pitEntry, ux = E.u[0], uz = E.u[1], vx = -uz, vz = ux, pts = [];
+    for (const b of data.buildings) if (['ピットビルA', 'ピットビルB', 'コントロールセンター'].includes(b.name)) pts.push(...b.p);
+    if (pts.length) {
+      const ax = pts.map(([x, z]) => (x - E.O[0]) * ux + (z - E.O[1]) * uz), lane = (a) => [E.O[0] + ux * a + vx * E.outer, E.O[1] + uz * a + vz * E.outer];
+      pts.push(lane(Math.min(...ax)), lane(Math.max(...ax)));
+      const P = pts.map((q) => q.slice()).sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      const lo = [], up = [];
+      for (const q of P) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+      for (const q of P.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+      const hull = lo.slice(0, -1).concat(up.slice(0, -1));   // 建物の辺をつないだ外形
+      const tris = THREE.ShapeUtils.triangulateShape(hull.map(([x, z]) => new THREE.Vector2(x, z)), []).map((t) => t.map((k) => hull[k]));
+      const v = [], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const yy = (q) => groundHeightAt(q[0], q[1]) + 0.06;
+      const split = (a, b, c, depth) => {   // 地面に沿うよう 3m 以下まで細かく割る(外形の線はそのまま)
+        const la = len(b, c), lb = len(a, c), lc = len(a, b), m = Math.max(la, lb, lc);
+        if (m <= 3 || depth > 14) { for (const q of [a, b, c]) v.push(q[0], yy(q), q[1]); return; }
+        if (m === lc) { const d = mid(a, b); split(a, d, c, depth + 1); split(d, b, c, depth + 1); }
+        else if (m === la) { const d = mid(b, c); split(a, b, d, depth + 1); split(a, d, c, depth + 1); }
+        else { const d = mid(a, c); split(a, b, d, depth + 1); split(d, b, c, depth + 1); }
+      };
+      for (const [a, b, c] of tris) split(a, b, c, 0);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x6a6c6f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); m.name = 'fuji-paddock'; scenery.add(m);
+    }
+  }
   return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb, start,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
