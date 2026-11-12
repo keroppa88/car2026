@@ -42,5 +42,25 @@ for g in [None] + gid:   # None: 灰色ぜんぶを 1 つにして、いちば�
         if len(q) < 3: continue
         cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if depth[i] % 2 == 0 else 0, lineType=cv2.LINE_8, shift=SH)
     out[mask > 0] = gid[0] if g is None else g
+# 手で塗った直しは、細かい図でもそのまま(塗った範囲に別の色を混ぜない)
+ovp = ROOT / 'tools/fuji/paint/area_overrides.png'
+if ovp.exists():
+    # 塗った範囲の輪郭を、なめらかな線(前後 7 点の平均でならした折れ線)にして細かい図にくっきり塗る
+    ov = cv2.imread(str(ovp), 0)
+    for k, c in {2: col('grass'), 3: col('paved'), 4: col('parking'), 1: (75, 73, 71)}.items():
+        i = np.where((cols == np.array(c)).all(1))[0]
+        if not len(i): continue
+        m = (ov == k).astype(np.uint8)
+        cs, hier = cv2.findContours(m, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+        if hier is None: continue
+        mask = np.zeros((H2, W2), np.uint8)
+        for j in sorted(range(len(cs)), key=lambda j: hier[0][j][3] >= 0):
+            q = cs[j][:, 0].astype(np.float64)
+            if len(q) < 3: continue
+            if len(q) >= 9 and cv2.contourArea(cs[j]) > 150:
+                w = 5; ker = np.ones(w) / w
+                q = np.stack([np.convolve(np.r_[q[-w:, t], q[:, t], q[:w, t]], ker, 'same')[w:-w] for t in (0, 1)], 1)
+            cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if hier[0][j][3] < 0 else 0, lineType=cv2.LINE_8, shift=SH)
+        out[mask > 0] = i[0]
 cv2.imwrite(str(ROOT / 'map/fuji-landcover-hd.png'), cols[out].astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
 print(W2, H2, '色', len(cols), '灰色', len(gid))

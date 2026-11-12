@@ -31,11 +31,11 @@ for _, e in etree.iterparse(str(ROOT / 'tools/fuji/fuji.osm'), events=('end',)):
     t = {x.get('k'): x.get('v') for x in e.findall('tag')}; nd = [n.get('ref') for n in e.findall('nd')]
     pts = np.round([N[q] for q in nd if q in N]).astype(np.int32)
     if len(pts) < 2: continue
-    if t.get('highway') in WID: cv2.polylines(keep, [pts], False, 1, WID[t['highway']])
+    if t.get('highway') in WID: cv2.polylines(keep, [pts], False, 1, WID[t['highway']] - 2)   # 道の幅ちょうど(はみ出しは残さない)
     if t.get('highway') in WID and t['highway'] != 'track': roads.append((pts, WID[t['highway']] - 2))
     closed = nd[0] == nd[-1] and len(pts) > 3
     if closed and t.get('amenity') in ('parking', 'motorcycle_parking'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 6)
-    if closed and ('building' in t or t.get('leisure') == 'bleachers'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 50)
+    if closed and ('building' in t or t.get('leisure') == 'bleachers'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 30)
 # 4'. 建物を含む広い舗装(パドック・広場): 建物に触れる灰色のかたまりの、太い本体(幅 16m 以上)は残す(細いはみ出しは残さない)
 bldg = keep.copy()
 nc0, cc0 = cv2.connectedComponents(grey.astype(np.uint8), connectivity=8)
@@ -77,9 +77,9 @@ rm = np.zeros((H, W), np.uint8)
 for pts, w in roads: cv2.polylines(rm, [pts], False, 1, w)
 rm = (rm > 0) & (dist > 9.5) & ~isc(ROAD) & ~isc(col('parking')) & ~isc(col('building'))
 img[rm] = col('paved'); print('道路をつなぐ', int(rm.sum()), 'm2')
-# コースのそば(80m 以内)の小さなかたまり・すき間(どの色も 300m2 未満)は、まわりでいちばん多い色に
+# 小さなかたまり・すき間・道のわきの破片(どの色も 300m2 未満、地図全体)は、まわりでいちばん多い色に
 cols_, lab_ = np.unique(img.reshape(-1, 3), axis=0, return_inverse=True); lab_ = lab_.reshape(H, W)
-nearc = dist < 80; done = 0
+nearc = np.ones((H, W), bool); done = 0   # 地図全体
 for it in range(3):
     ch = 0
     for c in range(len(cols_)):

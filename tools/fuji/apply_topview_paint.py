@@ -1,5 +1,5 @@
 """富士スピードウェイ: 真上ビューの画面に塗った絵(手描きの丸・塗りつぶし)を地面に反映する
-python3 tools/fuji/apply_topview_paint.py 絵 カメラ.json [出力フォルダ] [--red 草地|舗装] [--blue 草地|舗装]
+python3 tools/fuji/apply_topview_paint.py 絵 カメラ.json [出力フォルダ] [--red 草地|舗装] [--blue 草地|舗装] [--reset]
 カメラ.json: {"W","H","pos":[x,y,z],"up":[ux,0,uz],"fov"}(tools/shonan/paint/render.mjs で描いたときのもの。真下向き)
 赤・青は、線で囲んでも塗りつぶしてもよい(囲みの中も塗る)。ふつうは 赤 = アスファルト、青 = 草地。--red / --blue で入れかえられる
 → tools/fuji/paint/area_overrides.png に重ねる(3 = 舗装、2 = 草地)
@@ -37,7 +37,16 @@ u, v = to_px(xs, zs, y); u = u.astype(np.float32); v = v.astype(np.float32)
 pick = lambda m: cv2.remap(m * 255, u, v, cv2.INTER_LINEAR, borderValue=0) > 127
 ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)
 rf = cv2.dilate(rf, np.ones((3, 3), np.uint8))
-mr, mb = pick(rf), pick(blue); ov[mr] = RC; ov[mb & ~mr] = BC
+mr, mb = pick(rf), pick(blue)
+# 塗りの中のすき間・となりの塗りとのすき間(15m まで)を埋めて、穴もふさぐ
+fillg = lambda m: ndimage.binary_fill_holes(cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))))
+mr, mb = fillg(mr), fillg(mb)
+ov[mr] = RC; ov[mb & ~mr] = BC
+# 真上ビューの直しは別の層にも残す(あとから塗った絵ほど上)。ほかの手順が area_overrides.png を書き直しても、
+# merge_topview.py でいちばん上に重ね直す
+tvp = ROOT / 'tools/fuji/paint/topview_overrides.png'
+tv = cv2.imread(str(tvp), 0) if tvp.exists() and '--reset' not in sys.argv else np.zeros_like(ov)
+tv[mr] = RC; tv[mb & ~mr] = BC; cv2.imwrite(str(tvp), tv)
 cv2.imwrite(str(ovp), ov); print('赤', int(mr.sum()), 'm2 →', RC, ' 青', int((mb & ~mr).sum()), 'm2 →', BC, '(2 草地 / 3 舗装)')
 if DBG:   # 確かめ: コースの線を絵に重ねる
     R = np.array(d['route']); a = P.copy(); pu, pv = to_px(R[:, 0], R[:, 2], R[:, 1])
