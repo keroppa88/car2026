@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-5';
+import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-6';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-5';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-6';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -2784,7 +2784,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         player.pos.z + wallDir.x * side
       );
       wallCaster.set(wallOrigin, wallDir);
-      const hit = wallCaster.intersectObject(mapRoot, true).find((candidate) => {
+      const hit = (FUJI_COURSE && gunmaCourse?.colliders ? wallCaster.intersectObjects([mapRoot, ...gunmaCourse.colliders], true) : wallCaster.intersectObject(mapRoot, true)).find((candidate) => {
         if (!candidate.face) return false;
         // このマップ群では道路と壁の材質色が必ず異なる。道路色として登録した
         // メッシュは、垂直に見える三角面も坂・バンクの継ぎ目なので壁にしない。
@@ -7120,7 +7120,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         }),
       };
       window.__mapDebug = {
-        camera, scene, renderer, mapRoot, THREE, BOUND_X_MIN, BOUND_X_MAX, BOUND_Z,
+        camera, scene, renderer, mapRoot, THREE, BOUND_X_MIN, BOUND_X_MAX, BOUND_Z, player,
         freeze: () => { __debugFreezeCam = true; },
         unfreeze: () => { __debugFreezeCam = false; },
       };
@@ -9703,7 +9703,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
       if (roadSurface?.face) {
         playerOnSand = sandMeshes.includes(roadSurface.object)
-          || !!(OSM_COURSE && tokyoEkiCity?.isSand?.(player.pos.x, player.pos.z));   // 日本橋・湘南: 砂浜
+          || !!(OSM_COURSE && tokyoEkiCity?.isSand?.(player.pos.x, player.pos.z))   // 日本橋・湘南: 砂浜
+          || !!(FUJI_COURSE && roadSurface.object === gunmaCourse?.ground && gunmaCourse.softGroundAt?.(player.pos.x, player.pos.z));   // 富士: 草地・砂地
+        if (FUJI_COURSE && playerOnSand) {
+          // 富士: 草地・砂地では速さが半分まで落ちる
+          const cap = PLAYER_TOP_SPEED * 0.5, sp = player.vel.length();
+          if (sp > cap) player.vel.multiplyScalar(Math.max(cap / sp, Math.exp(-2.5 * dt)));
+        }
         document.body.dataset.playerSurface = playerOnSand ? 'sand' : 'drivable';
         mapFallVelocity = 0;
         mapMissingSurfaceTime = 0;

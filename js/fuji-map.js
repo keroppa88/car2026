@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261112-fuji-5';
+import { treeBillboards } from './osm-city.js?v=20261112-fuji-6';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -523,7 +523,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     quad(wall, P(i1, cwAt(i1), -0.1), P(i1, pwAt(i1) + 0.3, -0.1), P(i1, pwAt(i1) + 0.3, 1.0), P(i1, cwAt(i1), 1.0));   // 終わりのふた
     const mesh = (arr, mat, uv, parent = scenery) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); parent.add(m); return m; };
     mesh(asp, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }), null, group).name = 'GunmaRoad';   // 走れる路面
-    mesh(wall, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide }));
+    mesh(wall, new THREE.MeshLambertMaterial({ color: 0xc4c5c2, side: THREE.DoubleSide })).name = 'fuji-pitwall';
     mesh(floor, new THREE.MeshLambertMaterial({ color: 0xcfd0cc, side: THREE.DoubleSide })).name = 'pitwall-floor';
     { // コース側の壁の、コースに向いた面に看板(赤・青の板)
       const P2 = [], U2 = []; let u = 0;
@@ -789,7 +789,24 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   const climb = Math.max(...route.map((p) => p.y)) - Math.min(...route.map((p) => p.y));
   const startPoint = route[data.start], startNext = route[ring(data.start + 1)];
   const start = { x: startPoint.x, z: startPoint.z, heading: Math.atan2(startNext.x - startPoint.x, startNext.z - startPoint.z) };
-  return { group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb, start,
+  // 当たり判定のある物: 建物・観客席(押し出し・箱)、ガードレール、ピットの壁
+  const colliders = [];
+  scenery.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && (o.geometry?.type === 'ExtrudeGeometry' || o.geometry?.type === 'BoxGeometry' || ['fuji-guardrail', 'fuji-fence-rail', 'fuji-pitwall'].includes(o.name))) colliders.push(o); });
+  // 地面の種類(塗り分け図): 草地・森・砂地はやわらかい地面(砂埃が出て、速さが半分)
+  let lcData = null, lcW = 0, lcH = 0;
+  if (landcover && data.landcover) {
+    lcW = 2048; lcH = Math.round(2048 * landcover.height / landcover.width);
+    const cv = document.createElement('canvas'); cv.width = lcW; cv.height = lcH; const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(landcover, 0, 0, lcW, lcH); lcData = cx.getImageData(0, 0, lcW, lcH).data;
+  }
+  const softGroundAt = (x, z) => {
+    if (!lcData) return false; const L = data.landcover;
+    const u = Math.floor((x - L.x0) / (L.W * L.px) * lcW), v = Math.floor((z - L.z0) / (L.H * L.px) * lcH);
+    if (u < 0 || v < 0 || u >= lcW || v >= lcH) return true;
+    const k = (v * lcW + u) * 4, r = lcData[k], g = lcData[k + 1], b = lcData[k + 2];
+    return !(Math.abs(r - b) <= 12 && g < 160);   // 灰色(舗装・駐車場・建物の下)以外
+  };
+  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb, start,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
