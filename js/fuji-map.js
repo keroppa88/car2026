@@ -89,6 +89,14 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     }
     return best;
   };
+  // 本コースの路面の高さ(前後の点の間でなめらかに)。路面の外なら null
+  const mainRoadY = (x, z, lim = FUJI_ROAD_HALF + 0.05) => { const k = nearestRoute(x, z); if (k.i < 0) return null; let best = null;
+    for (const [a, b] of [[ring(k.i - 1), k.i], [k.i, ring(k.i + 1)]]) { const A = route[a], B = route[b], dx = B.x - A.x, dz = B.z - A.z, t = THREE.MathUtils.clamp(((x - A.x) * dx + (z - A.z) * dz) / (dx * dx + dz * dz || 1), 0, 1), d = Math.hypot(A.x + dx * t - x, A.z + dz * t - z);
+      if (!best || d < best.d) best = { d, y: A.y + (B.y - A.y) * t }; }
+    return best.d < lim ? best : null; };
+  // 近道の路面: 両端の本コースの高さをまっすぐ結ぶなめらかな坂。本コースのそば(15m まで)は本コースの高さへなめらかにつなぐ
+  const branchRoadY = (x, z) => { const bq = branchNear(x, z), m = mainRoadY(x, z, 40), by = bq ? bq.y : groundHeightAt(x, z);
+    if (!m) return by + 0.06; const w = THREE.MathUtils.smoothstep(m.d, FUJI_ROAD_HALF - 0.5, 15); return (m.y + (by - m.y) * w) + 0.06 - 0.075 * (1 - w); };
   const verts = new Float32Array((cols + 1) * (lines + 1) * 3);
   const colors = new Float32Array(verts.length);
   const grass = [0.20, 0.30, 0.11], dry = [0.30, 0.31, 0.14];
@@ -233,7 +241,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const ctl = [[Q[0][0] + u0[0] * 14, Q[0][1] + u0[1] * 14], ...Q, [Q[n0 - 1][0] + u1[0] * 14, Q[n0 - 1][1] + u1[1] * 14]], line = [];
       for (let k = 0; k + 1 < ctl.length; k++) { const [ax, az] = ctl[k], [bx, bz] = ctl[k + 1], L = Math.hypot(bx - ax, bz - az), c = Math.max(1, Math.ceil(L / 2)); for (let j = 0; j < c; j++) line.push([ax + (bx - ax) * j / c, az + (bz - az) * j / c]); }
       line.push(ctl[ctl.length - 1]);
-      const NS = 8, hw = br.w / 2, v = [], ind = [], onC = [], sideSign = lineCuts.L.length ? 1 : lineCuts.R.length ? -1 : 0, yAt = (x, z) => groundHeightAt(x, z) + 0.075;   // コースの近くでは縁石の帯(+1cm)より上、白線(+2cm)より下
+      const NS = 8, hw = br.w / 2, v = [], ind = [], onC = [], sideSign = lineCuts.L.length ? 1 : lineCuts.R.length ? -1 : 0, yAt = (x, z) => branchRoadY(x, z);   // コースの近くでは縁石の帯(+1cm)より上、白線(+2cm)より下
       line.forEach((q, i) => { const a = line[Math.max(0, i - 1)], c = line[Math.min(line.length - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1;
         for (let j = 0; j <= NS; j++) { const o = -hw + br.w * j / NS, x = q[0] + dz / l * o, z = q[1] - dx / l * o; v.push(x, yAt(x, z), z); const k = nearestRoute(x, z), tn = tangents[k.i]; onC.push(k.d < FUJI_ROAD_HALF - 0.6); }   // のばした所: コースの上と、口の側の縁石の帯の上だけ
         if (i + 1 < line.length) for (let j = 0; j < NS; j++) { const a2 = i * (NS + 1) + j, b2 = a2 + NS + 1; if ((i < 7 || i >= line.length - 8) && !(onC[a2] && onC[a2 + 1])) continue;   // のばした所はコースの上だけ
@@ -303,7 +311,9 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
   }
   // ---- 二股の白線(tools/fuji/make_fork_lines.py): 本コースと近道を合わせた路面のふちから 0.425m 内側の、続いた線 ----
   if (data.forkLines) {
-    const v = [], hy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z) + 0.085, k.i >= 0 && k.d < FUJI_ROAD_HALF + 0.3 ? route[k.i].y + 0.03 : -1e9); };
+    // 白線の高さ = その場所の路面の高さ + 2cm(本コースと近道の高いほう)
+    const v = [], hy = (x, z) => { const m = mainRoadY(x, z), bq = branchNear(x, z), c = [];
+      if (m) c.push(m.y); if (bq && bq.d < bq.half + 0.05) c.push(branchRoadY(x, z)); return (c.length ? Math.max(...c) : branchRoadY(x, z)) + 0.02; };
     for (const L0 of data.forkLines) for (let k = 0; k + 1 < L0.length; k++) {
       const a = L0[k], b = L0[k + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 1e-3) continue;
       const ox = -(b[1] - a[1]) / l * 0.075, oz = (b[0] - a[0]) / l * 0.075, c = [[a[0] - ox, a[1] - oz], [b[0] - ox, b[1] - oz], [b[0] + ox, b[1] + oz], [a[0] + ox, a[1] + oz]];
