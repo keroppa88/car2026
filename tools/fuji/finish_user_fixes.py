@@ -48,7 +48,7 @@ gm = np.zeros((H, W), np.uint8)
 for i in range(1412, 1471):   # 左
     q = [Rr[i] - NRr[i] * 14.5, Rr[i + 1] - NRr[i + 1] * 14.5, Rr[i + 1] - NRr[i + 1] * 26, Rr[i] - NRr[i] * 26]
     cv2.fillPoly(gm, [np.round(np.array(q) * 8).astype(np.int32)], 1, shift=3)
-for i in range(1433, 1513):   # 右
+for i in range(1428, 1513):   # 右(ピットの壁の終わりの角から)
     a1, a2 = outerAt(i) + 0.15, outerAt(i + 1) + 0.15
     q = [Rr[i] + NRr[i] * a1, Rr[i + 1] + NRr[i + 1] * a2, Rr[i + 1] + NRr[i + 1] * 30, Rr[i] + NRr[i] * 30]
     cv2.fillPoly(gm, [np.round(np.array(q) * 8).astype(np.int32)], 1, shift=3)
@@ -59,6 +59,36 @@ PC = {2: col('grass'), 3: col('paved'), 6: col('sand')}
 for pp in d.get('paintPolys', []):
     m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round((np.array(pp['pts']) - [L['x0'], L['z0']]) * 8).astype(np.int32)], 1, shift=3)
     img[m > 0] = PC[pp['cls']]; lo[m > 0] = 0
+# 説明できない破片を消す
+# 1) 路面の色は 3D の路面(本コース・近道・ピットレーン・ピット入口・出口の車線・ピットの壁ぎわ)の下にだけ。そのすぐ外(3m)にはみ出した路面の色はとなりの色に
+rm3 = np.zeros((H, W), np.uint8); px8 = lambda q: np.round(np.array(q) * 8).astype(np.int32)
+for i in range(len(Rr)):
+    j = (i + 1) % len(Rr); cv2.fillPoly(rm3, [px8([Rr[i] + NRr[i] * 7.6, Rr[j] + NRr[j] * 7.6, Rr[j] - NRr[j] * 7.6, Rr[i] - NRr[i] * 7.6])], 1, shift=3)
+for b in d['branches']: cv2.polylines(rm3, [px8(np.array(b['pts']) - [L['x0'], L['z0']])], False, 1, int(round((b['w'] + 0.2) * 8)), shift=3)
+cv2.fillPoly(rm3, [np.round(poly * 8).astype(np.int32)], 1, shift=3)
+for i in range(int(PR[0][0]), min(int(PR[-1][0]), len(Rr) - 1)):
+    a1, a2 = outerAt(i) + 0.1, outerAt(i + 1) + 0.1; cv2.fillPoly(rm3, [px8([Rr[i], Rr[i + 1], Rr[i + 1] + NRr[i + 1] * a2, Rr[i] + NRr[i] * a1])], 1, shift=3)
+pw = d.get('pitWall')
+if pw:
+    for i in range(pw['from'], pw['to']): cv2.fillPoly(rm3, [px8([Rr[i], Rr[i + 1], Rr[i + 1] + NRr[i + 1] * 10.0, Rr[i] + NRr[i] * 10.0])], 1, shift=3)
+isR = (img == ROAD).all(2); near3 = cv2.dilate(rm3, np.ones((7, 7), np.uint8)) > 0
+sl = isR & near3   # 3D の路面のそばの路面の色は全部(下は 3D の路面が描く。ふちに濃い色を残さない)
+_, (iy5, ix5) = ndimage.distance_transform_edt(isR, return_indices=True); img[sl] = img[iy5, ix5][sl]
+lo[sl & (lo == 1)] = 0
+print('路面の外にはみ出した路面の色', int(sl.sum()), 'm2')
+# 2) 小さな破片(どの色も 60m2 未満)は、まわりでいちばん多い色に(塗ってもらった所は除く)
+painted = lo > 0
+for pp in d.get('paintPolys', []):
+    m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round((np.array(pp['pts']) - [L['x0'], L['z0']]) * 8).astype(np.int32)], 1, shift=3); painted |= m > 0
+cols_, lab_ = np.unique(img.reshape(-1, 3), axis=0, return_inverse=True); lab_ = lab_.reshape(H, W); cnt = 0
+for c in range(len(cols_)):
+    nc, cc, st, _ = cv2.connectedComponentsWithStats((lab_ == c).astype(np.uint8), connectivity=4)
+    for i in np.where(st[1:, cv2.CC_STAT_AREA] < 60)[0] + 1:
+        x, y, w, h, a_ = st[i]; sl2 = (slice(max(0, y - 2), y + h + 2), slice(max(0, x - 2), x + w + 2)); msk = cc[sl2] == i
+        if painted[sl2][msk].any() or rm3[sl2][msk].all(): continue
+        ring = cv2.dilate(msk.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~msk; nb = lab_[sl2][ring]; nb = nb[nb != c]
+        if len(nb): o = lab_[sl2]; o[msk] = np.bincount(nb).argmax(); lab_[sl2] = o; cnt += 1
+img = cols_[lab_].astype(np.uint8); print('小さな破片', cnt, 'か所')
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)
 cv2.imwrite(str(P / 'final_overrides.png'), lo)
 print('あとの指示 草地', int((lo == 2).sum()), ' アスファルト', int((lo == 3).sum()), 'm2')

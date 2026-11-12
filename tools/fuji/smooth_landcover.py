@@ -75,7 +75,7 @@ if 'pitEntry' in _d:
     poly = np.array([Wp(pe['xs'], 7.4), Wp(pe['xb'], pe['outer']), Wp(pe['xe'], pe['outer']), Wp(pe['xe'], 7.4)])
     ri = np.where((cols == np.array((75, 73, 71))).all(1))[0]; pi_ = np.where((cols == np.array(col('paved'))).all(1))[0]
     yy, xx = np.mgrid[0:H2, 0:W2]; ax = ((xx + 0.5) / S - Op[0]) * uu[0] + ((yy + 0.5) / S - Op[1]) * uu[1]; sv = ((xx + 0.5) / S - Op[0]) * vv[0] + ((yy + 0.5) / S - Op[1]) * vv[1]
-    zone = (ax > pe['xs'] - 15) & (ax < pe['xe']) & (sv > 7.3) & (sv < 30) & ((out == ri[0]) | (sv < pe['outer'] + 1))
+    zone = (ax > pe['xs'] - 15) & (ax < pe['xe']) & (sv > 7.3) & (sv < 30) & (((out == ri[0]) if len(ri) else False) | (sv < pe['outer'] + 1))
     out[zone] = pi_[0]
     # 路面そのものは js が図形で描く(pitEntry)。地面の絵は下地のコンクリートのまま
 # 直線で区切った多角形の指示は、図形のまま細かい図にくっきり塗る
