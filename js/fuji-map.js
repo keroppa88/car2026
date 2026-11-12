@@ -559,7 +559,8 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const tx = (B[0] - A[0]) / L, tz = (B[1] - A[1]) / L; let nx = -tz, nz = tx;
       const mx = (A[0] + B[0]) / 2, mz = (A[1] + B[1]) / 2;
       if ((mx - cx) * nx + (mz - cz) * nz < 0) { nx = -nx; nz = -nz; }   // 外向き
-      if (distPL(mx + nx * 3, mz + nz * 3) > distPL(mx, mz) || distPL(mx, mz) > 30) continue;   // ピットレーンの方を向いた辺だけ
+      if (distPL(mx + nx * 3, mz + nz * 3) > distPL(mx, mz) || distPL(mx, mz) > 30) continue;
+      const PPl = pitLane.pts, ldx = PPl[PPl.length - 1][0] - PPl[0][0], ldz = PPl[PPl.length - 1][1] - PPl[0][1], parallel = Math.abs((nx * ldx + nz * ldz) / (Math.hypot(ldx, ldz) || 1)) <= 0.5;   // ピットレーンと平行な面か   // ピットレーンの方を向いた辺だけ
       const ang = Math.atan2(nx, nz), W = 5.6, PITCH = 6.4, cnt = Math.floor((L - 1) / PITCH), s0 = (L - cnt * PITCH) / 2;
       for (let j = 0; j < cnt; j++) {   // 開口(暗い奥)
         const s = s0 + (j + 0.5) * PITCH;
@@ -573,7 +574,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       panel(facS.P, facS.U, fa, fb, y0 + 6.95, y0 + 6.95, 0.75, 9, 0);
       panel(facT.P, facT.U, fa, fb, y0 + 7.8, y0 + 7.8, 2.4, 6, 0);
       // 作業スペース: 建物の前からピットレーンの端まで、2m ごと
-      for (let s = 0; s < L - 0.01; s += 2) {
+      for (let s = 0; s < (parallel ? L - 0.01 : 0); s += 2) {   // 作業スペースはピットレーンと平行な面の前だけ
         const e = Math.min(L, s + 2), p0 = [A[0] + tx * s, A[1] + tz * s], p1 = [A[0] + tx * e, A[1] + tz * e];
         const reach = (pt) => Math.max(0, distPL(...pt) - pitLane.w / 2 + 0.3);
         const r0 = reach(p0), r1 = reach(p1), a2 = [p0[0] + nx * r0, p0[1] + nz * r0], b2 = [p1[0] + nx * r1, p1[1] + nz * r1];

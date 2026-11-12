@@ -45,7 +45,7 @@ img[lo == 2] = col('grass'); img[lo == 3] = col('paved'); lo[pm > 0] = 1   # ピ
 Tn = np.roll(Rr, -2, 0) - np.roll(Rr, 2, 0); Tn /= np.linalg.norm(Tn, axis=1)[:, None]; NRr = np.stack([-Tn[:, 1], Tn[:, 0]], 1)
 PR = d['pitExit']['prof']; outerAt = lambda i: float(np.interp(i, [p[0] for p in PR], [p[2] for p in PR]))
 # 直線で区切った多角形の指示(apply_poly_paint.py)。あとのものほど上
-PC = {2: col('grass'), 3: col('paved'), 6: col('sand')}
+PC = {2: col('grass'), 3: col('paved'), 6: col('sand'), 8: (111, 108, 106)}
 for pp in d.get('paintPolys', []):
     m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round((np.array(pp['pts']) - [L['x0'], L['z0']]) * 8).astype(np.int32)], 1, shift=3)
     img[m > 0] = PC[pp['cls']]; lo[m > 0] = 0

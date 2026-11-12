@@ -81,7 +81,7 @@ if 'pitEntry' in _d:
 # 直線で区切った多角形の指示は、図形のまま細かい図にくっきり塗る
 _d2 = __import__('json').loads((ROOT / 'map/fuji-course.json').read_text()); _L = _d2['landcover']
 for pp in _d2.get('paintPolys', []):
-    c = {2: col('grass'), 3: col('paved'), 6: col('sand')}[pp['cls']]; ii = np.where((cols == np.array(c)).all(1))[0]
+    c = {2: col('grass'), 3: col('paved'), 6: col('sand'), 8: (111, 108, 106)}[pp['cls']]; ii = np.where((cols == np.array(c)).all(1))[0]
     if not len(ii): continue
     m = np.zeros((H2, W2), np.uint8); cv2.fillPoly(m, [np.round((np.array(pp['pts']) - [_L['x0'], _L['z0']]) * S * 16).astype(np.int32)], 1, shift=4); out[m > 0] = ii[0]
 cv2.imwrite(str(ROOT / 'map/fuji-landcover-hd.png'), cols[out].astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])

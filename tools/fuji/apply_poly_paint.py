@@ -9,7 +9,7 @@ import numpy as np, cv2
 ROOT = Path(__file__).resolve().parents[2]; F = ROOT / 'map/fuji-course.json'; d = json.loads(F.read_text())
 P = cv2.imread(sys.argv[1]); A = cv2.imread(sys.argv[2]); cam = json.loads(Path(sys.argv[3]).read_text())
 COLS = {'赤': (237, 28, 36), '紫': (163, 73, 164), '水色': (153, 217, 234), '青': (63, 72, 204), '黄': (255, 242, 0), '橙': (255, 127, 39)}
-KIND = {'舗装': 3, '草地': 2, '砂地': 6}
+KIND = {'舗装': 3, '薄いコンクリ': 3, '草地': 2, '砂地': 6, '濃いコンクリ': 8}   # 8 = ピットの作業スペースと同じ濃いめのコンクリート
 jobs = [(COLS[a.split('=')[0]], KIND[a.split('=')[1]]) for a in sys.argv[4:]]
 J = P.astype(int); near = lambda rgb: (np.abs(J - np.array(rgb[::-1])).max(2) <= 22).astype(np.uint8)
 painted = np.zeros(P.shape[:2], np.uint8)
