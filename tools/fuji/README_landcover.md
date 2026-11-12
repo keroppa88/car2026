@@ -1,3 +1,9 @@
+# 富士: 地面の塗り分け
+いまのやり方: sh tools/fuji/apply_user_fixes.sh
+  = 11/12 13:57 の地図(paint/base_landcover_1357.png)+ そのあとの絵の指示だけ。自動のルールは使わない。
+  絵の指示を足すときは apply_user_fixes.sh に 1 行足す。
+
+(以下は古いやり方。もう使わない)
 # 富士: 地面の塗り分けを作り直す
 まとめて: sh tools/fuji/rebuild_landcover.sh 空撮.png 出力フォルダ   (下の順番を全部実行する)
 真上ビューの絵の直しは tools/fuji/paint/topview_overrides.png にたまっている(絵とカメラは paint/ の *_reg.png・cam_*.json)。

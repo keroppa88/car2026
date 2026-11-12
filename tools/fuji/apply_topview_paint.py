@@ -58,7 +58,7 @@ if both.any():
 ov[mb] = BC; ov[mr] = RC
 # 真上ビューの直しは別の層にも残す(あとから塗った絵ほど上)。ほかの手順が area_overrides.png を書き直しても、
 # merge_topview.py でいちばん上に重ね直す
-tvp = ROOT / 'tools/fuji/paint/topview_overrides.png'
+tvp = Path(opt('--out', str(ROOT / 'tools/fuji/paint/topview_overrides.png')))
 tv = cv2.imread(str(tvp), 0) if tvp.exists() and '--reset' not in sys.argv else np.zeros_like(ov)
 tv[mb] = BC; tv[mr] = RC; cv2.imwrite(str(tvp), tv)
 cv2.imwrite(str(ovp), ov); print('赤', int(mr.sum()), 'm2 →', RC, ' 青', int((mb & ~mr).sum()), 'm2 →', BC, '(2 草地 / 3 舗装)')

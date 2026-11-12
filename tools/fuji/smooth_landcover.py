@@ -48,7 +48,7 @@ for g in [None] + gid:   # None: 灰色ぜんぶを 1 つにして、いちば�
         cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if depth[i] % 2 == 0 else 0, lineType=cv2.LINE_8, shift=SH)
     out[mask > 0] = gid[0] if g is None else g
 # 手で塗った直しは、細かい図でもそのまま(塗った範囲に別の色を混ぜない)
-ovp = ROOT / 'tools/fuji/paint/area_overrides.png'
+ovp = ROOT / 'tools/fuji/paint/final_overrides.png'   # あとから塗った絵の範囲(apply_user_fixes.sh)
 if ovp.exists():
     # 塗った範囲の輪郭を、なめらかな線(前後 7 点の平均でならした折れ線)にして細かい図にくっきり塗る
     ov = cv2.imread(str(ovp), 0)
