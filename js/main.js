@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-3';
+import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-4';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-3';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-4';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -10019,7 +10019,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       let lo = 0, hi = path.points.length;
       const d0 = ((ai.gunmaDistance % path.length) + path.length) % path.length;
       while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (path.distances[mid] <= d0) lo = mid; else hi = mid; }
-      const target = Math.min(ai.base, path.fujiSpeed[lo] * (ai.base / (0.9 * PLAYER_TOP_SPEED)));   // 曲がる所も速い車は速く
+      const target = Math.min(ai.base, PLAYER_TOP_SPEED, path.fujiSpeed[lo] * (ai.base / (0.9 * PLAYER_TOP_SPEED)));   // 曲がる所も速い車は速く。直線の上限は自車の最高速まで
       ai.v += THREE.MathUtils.clamp(target - ai.v, -6 * dt, 3.5 * dt);
     }
     ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;

@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261112-fuji-3';
+import { treeBillboards } from './osm-city.js?v=20261112-fuji-4';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
