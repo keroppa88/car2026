@@ -36,6 +36,27 @@ def smooth(m, r=1.5, win=9):
         cv2.fillPoly(out, [np.round(c * 8).astype(np.int32)], 1 if hier[0][k][3] < 0 else 0, shift=3)
     return out > 0
 red, pink, yel = smooth(red), smooth(pink | yel), smooth(yel)
+# コースのそば(45m 以内)のコンクリートは、柵の後ろの通路などの帯: コースに平行で途切れない帯に直す
+def band(m, maxd=45):
+    Rp = R - [L['x0'], L['z0']]; seg = np.linalg.norm(np.roll(Rp, -1, 0) - Rp, axis=1); cum = np.r_[0, np.cumsum(seg)]; M = int(cum[-1])
+    ss = np.arange(M) * cum[-1] / M; Pp = np.stack([np.interp(ss, cum, np.r_[Rp[:, k], Rp[0, k]]) for k in (0, 1)], 1)
+    Tt = np.roll(Pp, -3, 0) - np.roll(Pp, 3, 0); Tt /= np.linalg.norm(Tt, axis=1)[:, None]; Nl = np.stack([Tt[:, 1], -Tt[:, 0]], 1)
+    mk = np.zeros((H, W), np.uint8); ip = np.round(Pp).astype(int); mk[ip[:, 1].clip(0, H - 1), ip[:, 0].clip(0, W - 1)] = 1
+    from scipy import ndimage
+    dist, (iy, ix) = ndimage.distance_transform_edt(1 - mk, return_indices=True)
+    km = np.full((H, W), -1, np.int32); km[ip[:, 1].clip(0, H - 1), ip[:, 0].clip(0, W - 1)] = np.arange(M); kk = km[iy, ix]
+    yy, xx = np.mgrid[0:H, 0:W]; off = (xx - Pp[kk, 0]) * Nl[kk, 0] + (yy - Pp[kk, 1]) * Nl[kk, 1]
+    zone = (dist < maxd) & inside; sel = m & zone; out = m & ~zone
+    for sg in (1, -1):
+        A = sel & (off * sg > 0); k_ = kk[A]; o_ = np.abs(off[A]).round().astype(int)
+        cnt = np.zeros((M, maxd + 2)); np.add.at(cnt, (k_, o_), 1)
+        cnt = ndimage.uniform_filter1d(cnt, 31, axis=0, mode='wrap')                 # 前後 31m で多数決
+        on = cnt > 0.4
+        on = ndimage.binary_closing(on, np.ones((1, 5)))                            # 帯の中のすき間を埋める
+        Z = zone & (off * sg > 0); oo = np.abs(off[Z]).round().astype(int).clip(0, maxd + 1)
+        o2 = out[Z]; o2 |= on[kk[Z], oo]; out[Z] = o2
+    return out
+pink = band(pink & ~red)
 # 塗っていない所は草地(ただし建物・観客席・ピットとパドックの中は残す)
 R2 = R; NR = np.stack([-(np.roll(R2, -2, 0) - np.roll(R2, 2, 0))[:, 1], (np.roll(R2, -2, 0) - np.roll(R2, 2, 0))[:, 0]], 1); NR /= np.linalg.norm(NR, axis=1)[:, None]
 pad = np.zeros((H, W), np.uint8)

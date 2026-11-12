@@ -1,0 +1,38 @@
+"""富士スピードウェイ: 真上ビューの画面に塗った絵(手描きの丸・塗りつぶし)を地面に反映する
+python3 tools/fuji/apply_topview_paint.py 絵 カメラ.json [出力フォルダ]
+カメラ.json: {"W","H","pos":[x,y,z],"up":[ux,0,uz],"fov"}(tools/shonan/paint/render.mjs で描いたときのもの。真下向き)
+赤(線で囲む) = アスファルト(囲みの中を塗る) / 青(塗りつぶし) = 草地
+→ tools/fuji/paint/area_overrides.png に重ねる(3 = 舗装、2 = 草地)
+"""
+import sys, json, math
+from pathlib import Path
+import numpy as np, cv2
+from scipy import ndimage
+ROOT = Path(__file__).resolve().parents[2]; d = json.loads((ROOT / 'map/fuji-course.json').read_text())
+P = cv2.imread(sys.argv[1]); cam = json.loads(Path(sys.argv[2]).read_text()); DBG = Path(sys.argv[3]) if len(sys.argv) > 3 else None
+Wp, Hp = cam['W'], cam['H']; pos = np.array(cam['pos'], float); U = np.array([cam['up'][0], cam['up'][2]]); U /= np.linalg.norm(U)
+Rt = np.array([-U[1], U[0]]); f = Hp / 2 / math.tan(math.radians(cam['fov'] / 2))
+G = d['ground']; gh = (np.array(G['h'], np.float32) / 10).reshape(G['nz'], G['nx'])
+def ground(x, z): return ndimage.map_coordinates(gh, [np.clip((z - G['z0']) / G['cell'], 0, G['nz'] - 1), np.clip((x - G['x0']) / G['cell'], 0, G['nx'] - 1)], order=1)
+def to_px(x, z, y):   # 地図 → 画面
+    k = f / (pos[1] - y); dx, dz = x - pos[0], z - pos[2]
+    return Wp / 2 + (dx * Rt[0] + dz * Rt[1]) * k, Hp / 2 - (dx * U[0] + dz * U[1]) * k
+J = P.astype(int); b, g, r = J[..., 0], J[..., 1], J[..., 2]
+red = ((r > 190) & (g < 120) & (b < 100)).astype(np.uint8); blue = ((b > 150) & (r < 90) & (b - g > 50)).astype(np.uint8)
+# 赤: 囲みの中を塗る(線のすき間は閉じる)。青: 塗りの穴を埋めて少し広げる
+red = cv2.morphologyEx(red, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)); rf = np.zeros_like(red)
+for c in cv2.findContours(red, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0]:
+    if cv2.contourArea(cv2.convexHull(c)) > 20: cv2.fillPoly(rf, [c], 1)
+blue = ndimage.binary_fill_holes(cv2.dilate(cv2.morphologyEx(blue, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8)), np.ones((5, 5), np.uint8))).astype(np.uint8)
+# 地図の升目(1m)ごとに、地面の高さつきで画面の位置を求めて引く
+L = d['landcover']; W, H = L['W'], L['H']
+xs, zs = np.meshgrid(np.arange(W) + L['x0'] + 0.5, np.arange(H) + L['z0'] + 0.5)
+y = ground(xs.ravel(), zs.ravel()).reshape(H, W)
+u, v = to_px(xs, zs, y); u = u.astype(np.float32); v = v.astype(np.float32)
+pick = lambda m: cv2.remap(m * 255, u, v, cv2.INTER_LINEAR, borderValue=0) > 127
+ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)
+mr, mb = pick(rf), pick(blue); ov[mr] = 3; ov[mb & ~mr] = 2
+cv2.imwrite(str(ovp), ov); print('アスファルト', int(mr.sum()), 'm2  草地', int((mb & ~mr).sum()), 'm2')
+if DBG:   # 確かめ: コースの線を絵に重ねる
+    R = np.array(d['route']); a = P.copy(); pu, pv = to_px(R[:, 0], R[:, 2], R[:, 1])
+    cv2.polylines(a, [np.stack([pu, pv], 1).astype(np.int32)], True, (0, 255, 255), 1); cv2.imwrite(str(DBG / 'tv_fit.png'), a)

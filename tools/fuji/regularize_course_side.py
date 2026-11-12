@@ -90,4 +90,33 @@ for it in range(3):
             if len(nb): o = out[sl]; o[msk] = np.bincount(nb).argmax(); out[sl] = o; changed += 1
     print('しみ', it, changed)
     if not changed: break
+# コースから 70m 以内の、灰色の小さなかたまり(1500m2 未満)と、自然の色の小さなかたまり(500m2 未満)は、まわりの色に
+GR = [i for i, c in enumerate(cols) if abs(int(c[0]) - int(c[2])) <= 6 and int(c[1]) < 150 and not (c == np.array([75, 73, 71])).all()]
+nearc = dist < 70
+def absorb(mask_fn, lim):
+    cnt = 0
+    for c in range(len(cols)):
+        mk = mask_fn(c)
+        if mk is None: continue
+        nc, cc, st, _ = cv2.connectedComponentsWithStats(mk.astype(np.uint8), connectivity=8)
+        for i in np.where(st[1:, cv2.CC_STAT_AREA] < lim)[0] + 1:
+            x, y, w, h, a = st[i]; sl = (slice(max(0, y - 2), y + h + 2), slice(max(0, x - 2), x + w + 2))
+            msk = cc[sl] == i
+            if not nearc[sl][msk].mean() > 0.5: continue
+            ring = cv2.dilate(msk.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~msk
+            nb = out[sl][ring]; nb = nb[~np.isin(nb, GR + [c])]
+            if len(nb): o = out[sl]; o[msk] = np.bincount(nb).argmax(); out[sl] = o; cnt += 1
+    return cnt
+greyall = np.isin(out, GR)
+print('灰色のしみ', absorb(lambda c: (np.isin(out, GR)) if c == GR[0] else None, 1500))
+print('自然の色のしみ', absorb(lambda c: (out == c) if c not in GR else None, 500))
+# 手で塗った直し(area_overrides.png)は、いちばん最後に必ず重ねる
+ovp = ROOT / 'tools/fuji/paint/area_overrides.png'
+if ovp.exists():
+    ov = cv2.imread(str(ovp), 0)
+    srcm = (ROOT / 'tools/fuji/make_landcover_mosaic.py').read_text(); colm = lambda key: tuple(int(q) for q in srcm.split(f"'{key}': (")[1].split(')')[0].split(','))
+    ci = lambda bgr: int(np.where((cols == np.array(bgr)).all(1))[0][0]) if (cols == np.array(bgr)).all(1).any() else None
+    for k, bgr in {1: (75, 73, 71), 2: colm('grass'), 3: colm('paved'), 4: colm('parking')}.items():
+        i = ci(bgr)
+        if i is not None: out[ov == k] = i
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), cols[out].astype(np.uint8))
