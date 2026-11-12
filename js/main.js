@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-2';
+import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-3';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-2';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-3';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -4291,6 +4291,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const SEA_ONCOMING_RATIO = 0.7;
   const SEA_ONCOMING_SPEED_SCALE = 0.5;
   const GUNMA_CPU_SAME = 6;
+  const FUJI_CPU_FACTORS = [0.9, 0.8, 1.0, 0.85, 1.1, 0.9, 0.95, 1.05, 0.9];   // 富士の CPU 車の速さ(自車の何倍か)。0.9倍を中心に
   const GUNMA_CPU_ONCOMING = 6;
 
   function spawnGunmaTrafficCpuCars(vehicles) {
@@ -4306,7 +4307,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     let created = 0;
     // 街並みも二車線の対面通行。左車線が自分と同じ向き、右車線が対向車。
     const trafficPlan = FUJI_COURSE
-      ? [['same', GUNMA_CPU_SAME, [110, 125, 140]]]   // サーキットは同じ向きだけ
+      ? [['same', Math.round(GUNMA_CPU_SAME * 1.5), FUJI_CPU_FACTORS.map((f) => f * PLAYER_TOP_SPEED_KMH)]]   // サーキットは同じ向きだけ。台数 1.5倍、自車の最高速の 0.8〜1.1倍
       : [
         ['same', GUNMA_CPU_SAME, [65, 75, 85]],
         ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
@@ -4349,7 +4350,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         created++;
       }
     }
-    document.body.dataset.gunmaCpuSameDirection = String(GUNMA_CPU_SAME);
+    document.body.dataset.gunmaCpuSameDirection = String(FUJI_COURSE ? created : GUNMA_CPU_SAME);
+    document.body.dataset.gunmaCpuSpeedsKmh = aiCars.filter((a) => a.gunmaTraffic).map((a) => Math.round(a.speedKmh)).join(',');
     document.body.dataset.gunmaCpuOncoming = String(GUNMA_CPU_ONCOMING);
     document.body.dataset.gunmaCpuLaneOffsetMeters = '2.05';
     document.body.dataset.gunmaCpuRouteLengthMeters = paths.same.length.toFixed(0);
@@ -10001,7 +10003,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const turn = Math.abs(Math.atan2(Math.sin(h2 - h1), Math.cos(h2 - h1)));
       const len = Math.hypot(c.x - a.x, c.z - a.z) / 2 || 1;
       const radius = turn > 1e-4 ? len / turn : 1e6;
-      v[i] = Math.min(90, Math.sqrt(9 * radius));
+      v[i] = Math.min(90, Math.sqrt(11 * radius));   // 自車と同じくらいの速さで曲がる(横 11m/s²)
     }
     for (let k = 0; k < 2; k++) for (let i = n - 1; i >= 0; i--) {   // 手前から減速(輪なので2周)
       const j = (i + 1) % n, ds = path.distances[i + 1] - path.distances[i];
@@ -10017,7 +10019,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       let lo = 0, hi = path.points.length;
       const d0 = ((ai.gunmaDistance % path.length) + path.length) % path.length;
       while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (path.distances[mid] <= d0) lo = mid; else hi = mid; }
-      const target = Math.min(ai.base, path.fujiSpeed[lo]);
+      const target = Math.min(ai.base, path.fujiSpeed[lo] * (ai.base / (0.9 * PLAYER_TOP_SPEED)));   // 曲がる所も速い車は速く
       ai.v += THREE.MathUtils.clamp(target - ai.v, -6 * dt, 3.5 * dt);
     }
     ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
