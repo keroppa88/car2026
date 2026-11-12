@@ -210,7 +210,8 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
           const E = data.pitExit, ri = ring(extIndices[i]);
           if ((band.from + band.to) / 2 * E.side > 0 && ri >= E.dash && ri < E.prof[E.prof.length - 1][0]) continue;
         }
-        if (band.name === 'GunmaEdgeLine') {   // 近道の口を横切る白線は引かない
+        if (band.name === 'GunmaEdgeLine' && data.forkRange && ring(extIndices[i]) >= data.forkRange[0] && ring(extIndices[i]) < data.forkRange[1]) continue;   // 二股の所は forkLines で引く
+        if (band.name === 'GunmaEdgeLine' && !data.forkLines) {   // 近道の口を横切る白線は引かない
           const q = ext[i + 1], n2 = extTangents[i + 1], ac = (band.from + band.to) / 2, bm = branchNear((p.x + nn.x * ac + q.x + n2.x * ac) / 2, (p.z + nn.z * ac + q.z + n2.z * ac) / 2);
           if (bm && bm.d < bm.half + 2.5) { lineCuts[ac > 0 ? 'L' : 'R'].push(i); continue; }
         }
@@ -276,7 +277,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const ya = route[br.from].y, yb = route[br.to].y;
     let total = 0; const acc = [0];
     for (let i = 1; i < m; i++) { total += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); acc.push(total); }
-    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]].filter((q) => !(br.w > 9 && (!q[3] || Math.sign(q[0]) === outerSign)))) {
+    for (const [o0, o1, col, dy] of [[-half, half, 0x47494b, 0.0], [-half + 0.3, -half + 0.45, 0xe6e6e0, 0.02], [half - 0.45, half - 0.3, 0xe6e6e0, 0.02]].filter((q) => !(br.w > 9 && (!q[3] || data.forkLines || Math.sign(q[0]) === outerSign)))) {
       const v = [], ind = [];
       for (let i = 0; i < m; i++) {
         const a = P[Math.max(0, i - 1)], c = P[Math.min(m - 1, i + 1)], dx = c[0] - a[0], dz = c[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = dz / l, nz = -dx / l;
@@ -290,6 +291,17 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: dy ? 'GunmaEdgeLine' : 'GunmaRoad', color: col, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
       mesh.name = dy ? 'GunmaEdgeLine' : 'GunmaRoad'; group.add(mesh);
     }
+  }
+  // ---- 二股の白線(tools/fuji/make_fork_lines.py): 本コースと近道を合わせた路面のふちから 0.425m 内側の、続いた線 ----
+  if (data.forkLines) {
+    const v = [], hy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z) + 0.085, k.i >= 0 && k.d < FUJI_ROAD_HALF + 0.3 ? route[k.i].y + 0.03 : -1e9); };
+    for (const L0 of data.forkLines) for (let k = 0; k + 1 < L0.length; k++) {
+      const a = L0[k], b = L0[k + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < 1e-3) continue;
+      const ox = -(b[1] - a[1]) / l * 0.075, oz = (b[0] - a[0]) / l * 0.075, c = [[a[0] - ox, a[1] - oz], [b[0] - ox, b[1] - oz], [b[0] + ox, b[1] + oz], [a[0] + ox, a[1] + oz]];
+      for (const j of [0, 1, 2, 0, 2, 3]) v.push(c[j][0], hy(c[j][0], c[j][1]), c[j][1]);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaEdgeLine', color: 0xe6e6e0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 })); m.name = 'GunmaEdgeLine'; group.add(m);
   }
   // ---- ピット出口の合流(tools/fuji/edit_pit_exit.py)。本コースの横に並ぶ車線・縞の下の路面・白線(外側、縞のふち、破線、終わりの横線) ----
   if (data.pitExit) {

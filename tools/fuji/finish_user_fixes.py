@@ -14,9 +14,19 @@ br = np.zeros((H, W), np.uint8)
 for b in d['branches']:
     if b['w'] > 9: cv2.polylines(br, [np.round(np.array(b['pts']) - [L['x0'], L['z0']]).astype(np.int32)], False, 1, 1)
 db = cv2.distanceTransform(1 - br, cv2.DIST_L2, 5)
-spill = road & (db < 25) & (db > 6.8)
+Rr = np.array([[p[0] - L['x0'], p[2] - L['z0']] for p in d['route']])
+mk = np.ones((H, W), np.uint8); cv2.polylines(mk, [np.round(Rr).astype(np.int32)], True, 0, 1); dm = cv2.distanceTransform(mk, cv2.DIST_L2, 5)
+mk2 = np.ones((H, W), np.uint8); cv2.polylines(mk2, [np.round(Rr[685:790]).astype(np.int32)], False, 0, 1); dz = cv2.distanceTransform(mk2, cv2.DIST_L2, 5)
+spill = road & (((db < 25) & (db > 6.3)) | (dz < 45)) & (dm > 7.4) & (db > 6.3)   # 近道・二股のまわりで、路面(本コース 7.5m・近道 6.5m)の外にある路面の色
 _, (iy, ix) = ndimage.distance_transform_edt(road, return_indices=True); img[spill] = img[iy, ix][spill]
 print('近道わきの路面の色のはみ出し', int(spill.sum()), 'm2')
+# 二股: 近道の外側(島と反対側)の、近道のふちから 9m までは、すき間なくアスファルト(指示: ピンクの3か所をコンクリで埋める)
+bb = next(b for b in d['branches'] if b['w'] > 9); A = np.array(bb['pts'][0]) - [L['x0'], L['z0']]; B = np.array(bb['pts'][-1]) - [L['x0'], L['z0']]
+u = (B - A) / np.linalg.norm(B - A); nv = np.array([-u[1], u[0]]); Lb = np.linalg.norm(B - A)
+i0_, i1_ = sorted((bb['from'], bb['to'])); isl = Rr[i0_:i1_ + 1].mean(0); sgn = -np.sign((isl - A) @ nv)
+yy, xx = np.mgrid[0:H, 0:W]; tt = (xx - A[0]) * u[0] + (yy - A[1]) * u[1]; ss = ((xx - A[0]) * nv[0] + (yy - A[1]) * nv[1]) * sgn
+fill = (ss > bb['w'] / 2 - 0.5) & (ss < bb['w'] / 2 + 9) & (tt > -45) & (tt < Lb + 45) & (dm > 7.0)
+img[fill] = col('paved'); print('近道の外側をアスファルトで埋める', int(fill.sum()), 'm2')
 lo = cv2.imread(str(P / 'later_overrides.png'), 0)
 img[lo == 2] = col('grass'); img[lo == 3] = col('paved')
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)
