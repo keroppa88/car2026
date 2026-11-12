@@ -292,6 +292,15 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       mesh.name = dy ? 'GunmaEdgeLine' : 'GunmaRoad'; group.add(mesh);
     }
   }
+  // ---- ピット入口の路面(tools/fuji/edit_pit_lane.py の pitEntry): ホームストレートの右、コースの縁からまっすぐ外へ開く ----
+  if (data.pitEntry) {
+    const E = data.pitEntry, ux = E.u[0], uz = E.u[1], vx = -uz, vz = ux, v = [];
+    const at = (x, o) => { const px = E.O[0] + ux * x + vx * o, pz = E.O[1] + uz * x + vz * o, k = nearestRoute(px, pz); return [px, (k.i >= 0 ? route[k.i].y : groundHeightAt(px, pz)) - 0.025, pz]; };
+    const outer = (x) => x >= E.xb ? E.outer : 7.4 + (E.outer - 7.4) * (x - E.xs) / (E.xb - E.xs);
+    for (let x = E.xs; x < E.xe - 1e-6; x += 2) { const x2 = Math.min(E.xe, x + 2), a = at(x, FUJI_ROAD_HALF - 0.05), b = at(x2, FUJI_ROAD_HALF - 0.05), c = at(x2, outer(x2)), e = at(x, outer(x)); v.push(...a, ...b, ...c, ...a, ...c, ...e); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 })); m.name = 'GunmaRoad'; group.add(m);
+  }
   // ---- 二股の白線(tools/fuji/make_fork_lines.py): 本コースと近道を合わせた路面のふちから 0.425m 内側の、続いた線 ----
   if (data.forkLines) {
     const v = [], hy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z) + 0.085, k.i >= 0 && k.d < FUJI_ROAD_HALF + 0.3 ? route[k.i].y + 0.03 : -1e9); };

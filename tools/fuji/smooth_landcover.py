@@ -66,5 +66,17 @@ if ovp.exists():
             if len(q) < 3: continue
             cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if hier[0][j][3] < 0 else 0, lineType=cv2.LINE_8, shift=SH)
         out[mask > 0] = i[0]
+# ピット入口の路面の形は、図形のまま細かい図に塗る(ふちをまっすぐに)
+import json as _j
+_d = _j.loads((ROOT / 'map/fuji-course.json').read_text())
+if 'pitEntry' in _d:
+    pe, Lc = _d['pitEntry'], _d['landcover']; Op = np.array(pe['O']) - [Lc['x0'], Lc['z0']]; uu = np.array(pe['u']); vv = np.array([-uu[1], uu[0]])
+    Wp = lambda x, v: Op + uu * x + vv * v
+    poly = np.array([Wp(pe['xs'], 7.4), Wp(pe['xb'], pe['outer']), Wp(pe['xe'], pe['outer']), Wp(pe['xe'], 7.4)])
+    ri = np.where((cols == np.array((75, 73, 71))).all(1))[0]; pi_ = np.where((cols == np.array(col('paved'))).all(1))[0]
+    yy, xx = np.mgrid[0:H2, 0:W2]; ax = ((xx + 0.5) / S - Op[0]) * uu[0] + ((yy + 0.5) / S - Op[1]) * uu[1]; sv = ((xx + 0.5) / S - Op[0]) * vv[0] + ((yy + 0.5) / S - Op[1]) * vv[1]
+    zone = (ax > pe['xs'] - 15) & (ax < pe['xe']) & (sv > 7.3) & (sv < 30) & ((out == ri[0]) | (sv < pe['outer'] + 1))
+    out[zone] = pi_[0]
+    # 路面そのものは js が図形で描く(pitEntry)。地面の絵は下地のコンクリートのまま
 cv2.imwrite(str(ROOT / 'map/fuji-landcover-hd.png'), cols[out].astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
 print(W2, H2, '色', len(cols), '灰色', len(gid))

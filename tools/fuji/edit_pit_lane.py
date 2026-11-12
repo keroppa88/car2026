@@ -14,15 +14,17 @@ R = np.array([[p[0], p[2]] for p in d['route']]); n = len(R); st = d['start']
 u = R[st + 20] - R[st - 20]; u /= np.linalg.norm(u); v = np.array([-u[1], u[0]]); O = R[1200]
 W = lambda x, vv: [round(float(c), 2) for c in O + u * x + v * vv]
 xOf = lambda i: float((R[i] - O) @ u)
-X0, XA, XB, XE = 60.0, 75.0, 142.0, xOf(1434)
+XS = -175.0                                  # ピット入口の路面の始まり(コースの縁から、まっすぐ外へ開く)
+X0, XA, XB, XE = 0.0, 0.0, 142.0, xOf(1434)    # ピットレーン(幅 6m)は x 0 から、まっすぐ開いて x 142 で平行に
 EDGE0, EDGE1, PW = 7.5, 12.3, 6.0
 edge = lambda x: EDGE0 if x <= XA else EDGE1 if x >= XB else EDGE0 + (EDGE1 - EDGE0) * (x - XA) / (XB - XA)
-xs = [XE] + list(np.arange(np.floor(XE / 20) * 20, XB, -20)) + [XB, XA, X0]
+xs = [XE] + list(np.arange(np.floor(XE / 20) * 20, XB, -20)) + [XB, X0]
 pit = next(b for b in d['branches'] if b['w'] <= 9)
 pit.update({'w': PW, 'from': 1434, 'to': int(round(1200 + X0 / 3)), 'pts': [W(x, edge(x) + PW / 2) for x in xs]})
 d['chevrons'][0] = {'p': [W(XA, EDGE0 + 0.05), W(XB, EDGE0 + 0.05), W(XB - 6.5, 9.9), W(XB, EDGE1 - 0.05)], 'dir': [round(float(u[0]), 4), round(float(u[1]), 4)]}
 d['pitWall'] = {'from': int(round(1200 + XB / 3)), 'to': 1433, 'side': -1, 'cw': 10.0, 'pw': 12.0, 'apex': 8}
 d['pitExit']['prof'][0] = [1433, EDGE1, EDGE1 + PW]
+d['pitEntry'] = {'O': [round(float(c), 3) for c in O], 'u': [round(float(c), 5) for c in u], 'xs': XS, 'xb': XB, 'xe': XE, 'outer': EDGE1 + PW}
 d.pop('pitIsland', None)
 # 地面: 縞の下と、ピットレーンのまわり(コースとの間)を路面の色に
 L = d['landcover']; ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)

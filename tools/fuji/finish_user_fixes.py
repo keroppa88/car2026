@@ -28,7 +28,16 @@ yy, xx = np.mgrid[0:H, 0:W]; tt = (xx - A[0]) * u[0] + (yy - A[1]) * u[1]; ss = 
 fill = (ss > bb['w'] / 2 - 0.5) & (ss < bb['w'] / 2 + 9) & (tt > -45) & (tt < Lb + 45) & (dm > 7.0)
 img[fill] = col('paved'); print('近道の外側をアスファルトで埋める', int(fill.sum()), 'm2')
 lo = cv2.imread(str(P / 'later_overrides.png'), 0)
-img[lo == 2] = col('grass'); img[lo == 3] = col('paved')
+# ピット入口: ホームストレートの右の路面の色は、まっすぐな形(コースの縁 → 外へまっすぐ開く線 → ピットレーンの外の縁)だけにする
+pe = d['pitEntry']; Op = np.array(pe['O']) - [L['x0'], L['z0']]; uu = np.array(pe['u']); vv = np.array([-uu[1], uu[0]])
+yy2, xx2 = np.mgrid[0:H, 0:W]; ax = (xx2 - Op[0]) * uu[0] + (yy2 - Op[1]) * uu[1]; sv = (xx2 - Op[0]) * vv[0] + (yy2 - Op[1]) * vv[1]
+zone = (ax > pe['xs'] - 15) & (ax < pe['xe']) & (sv > 7.3) & (sv < 45)
+img[zone & (img == ROAD).all(2)] = col('paved')
+Wp = lambda x, v: Op + uu * x + vv * v
+poly = np.array([Wp(pe['xs'], 7.4), Wp(pe['xb'], pe['outer']), Wp(pe['xe'], pe['outer']), Wp(pe['xe'], 7.4)])
+pm = np.zeros((H, W), np.uint8); cv2.fillPoly(pm, [np.round(poly * 8).astype(np.int32)], 1, shift=3)
+img[pm > 0] = ROAD
+img[lo == 2] = col('grass'); img[lo == 3] = col('paved'); lo[pm > 0] = 1   # ピット入口の形は細かい図でもくっきり
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)
 cv2.imwrite(str(P / 'final_overrides.png'), lo)
 print('あとの指示 草地', int((lo == 2).sum()), ' アスファルト', int((lo == 3).sum()), 'm2')

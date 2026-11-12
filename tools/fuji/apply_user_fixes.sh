@@ -10,6 +10,7 @@ python3 tools/fuji/apply_topview_paint.py $P/t2_paint_reg.png $P/cam_t12.json --
 python3 tools/fuji/apply_topview_paint.py $P/t12_paint_reg.png $P/cam_t12.json --red 草地 --blue なし --out $F        # 第1・第2コーナー: 赤 = 草地
 python3 tools/fuji/apply_topview_paint.py $P/t1_blob_reg.png $P/cam_t12.json --red 草地 --blue なし --out $F         # 第1コーナー外側の灰色: 草地
 python3 tools/fuji/apply_topview_paint.py $P/t1_sand_paint.png $P/cam_t12.json --red 草地 --blue なし --out $F       # 第1コーナー外側: 赤 = 草地
+python3 tools/fuji/edit_pit_lane.py > /dev/null
 python3 tools/fuji/make_fork_lines.py
 python3 tools/fuji/finish_user_fixes.py
 python3 tools/fuji/make_trees_cars.py
