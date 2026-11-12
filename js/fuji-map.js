@@ -212,7 +212,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         }
         if (band.name === 'GunmaEdgeLine') {   // 近道の口を横切る白線は引かない
           const q = ext[i + 1], n2 = extTangents[i + 1], ac = (band.from + band.to) / 2, bm = branchNear((p.x + nn.x * ac + q.x + n2.x * ac) / 2, (p.z + nn.z * ac + q.z + n2.z * ac) / 2);
-          if (bm && bm.d < bm.half - 0.1) { lineCuts[ac > 0 ? 'L' : 'R'].push(i); continue; }
+          if (bm && bm.d < bm.half + 2.5) { lineCuts[ac > 0 ? 'L' : 'R'].push(i); continue; }
         }
         ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
       }
@@ -240,7 +240,8 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x47494b, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); mesh.name = 'GunmaRoad'; group.add(mesh);
     }
-    const P = br.pts, m = P.length, half = br.w / 2;
+    const dense = (Q) => { const o = []; for (let k = 0; k + 1 < Q.length; k++) { const c = Math.max(1, Math.ceil(Math.hypot(Q[k + 1][0] - Q[k][0], Q[k + 1][1] - Q[k][1]))); for (let j = 0; j < c; j++) o.push([Q[k][0] + (Q[k + 1][0] - Q[k][0]) * j / c, Q[k][1] + (Q[k + 1][1] - Q[k][1]) * j / c]); } o.push(Q[Q.length - 1]); return o; };
+    const P = br.w > 9 ? dense(br.pts) : br.pts, m = P.length, half = br.w / 2;   // 近道は 1m ごと(白線が地面の起伏で路面の下にもぐらない)
     let outerSign = 0;
     if (br.w > 9) {   // 島(本コースとの間)と反対の側 = 外側。外側の白線は、本コースの白線から途切れずにつなぐ
       const A = P[0], Bq = P[m - 1], L = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]) || 1, dx = (Bq[0] - A[0]) / L, dz = (Bq[1] - A[1]) / L, nx = dz, nz = -dx;
@@ -253,10 +254,13 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         // 本コースの白線が近道の外側の線(まっすぐ)と交わる点を探し、そこで折ってまっすぐつなぐ(斜めのつなぎを作らない)
         const oo = outerSign * (half - 0.375), lat = (q) => ((q[0] - A[0]) * nx + (q[1] - A[1]) * nz) * outerSign - (half - 0.375);
         const cross = (i0, step) => { for (let k = 0; k < 12; k++) { const a = lp(i0 + k * step), b = lp(i0 + (k + 1) * step), la = lat(a), lb = lat(b); if (la >= 0 && lb < 0) { const t = la / (la - lb); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; } } return null; };
-        let ends = [[lp(ia), cross(ia, 1)], [lp(ib), cross(ib, -1)]]; if (sOf(ends[0][0]) > sOf(ends[1][0])) ends.reverse();
-        const [[e0, c0], [e1, c1]] = ends, ctl = [e0]; if (c0) ctl.push(c0);
-        for (let t = (c0 ? sOf(c0) + 1 : sOf(e0) + 6); t < (c1 ? sOf(c1) - 1 : sOf(e1) - 6); t += 2) ctl.push([A[0] + dx * t + nx * oo, A[1] + dz * t + nz * oo]);
-        if (c1) ctl.push(c1); ctl.push(e1);
+        // 本コースの白線から近道の外側の線へ、横の位置を 25m かけてなめらかに移す(段差・すき間を作らない)
+        const ML = []; for (let k = ia - 8; k <= ib + 8; k++) { const q = lp(k); ML.push([sOf(q), (q[0] - A[0]) * nx + (q[1] - A[1]) * nz]); }
+        ML.sort((p2, q2) => p2[0] - q2[0]);
+        const latM = (t) => { let k = 0; while (k + 2 < ML.length && ML[k + 1][0] < t) k++; const [s0, l0] = ML[k], [s1, l1] = ML[k + 1]; return l0 + (l1 - l0) * THREE.MathUtils.clamp((t - s0) / ((s1 - s0) || 1), 0, 1); };
+        const sA = Math.min(sOf(lp(ia)), sOf(lp(ib))), sB = Math.max(sOf(lp(ia)), sOf(lp(ib)));
+        const ctl = [];
+        for (let t = sA; t <= sB + 1e-6; t += 1) { const w = THREE.MathUtils.smoothstep(t, sA, sA + 25) * (1 - THREE.MathUtils.smoothstep(t, sB - 25, sB)), l = latM(t) + (oo - latM(t)) * w; ctl.push([A[0] + dx * t + nx * l, A[1] + dz * t + nz * l]); }
         const v = [], yy = (x, z) => { const k = nearestRoute(x, z); return Math.max(groundHeightAt(x, z) + 0.085, k.i >= 0 && k.d < R + 1.5 ? route[k.i].y + 0.035 : -1e9); };
         const pts = []; for (let k = 0; k + 1 < ctl.length; k++) { const [ax, az] = ctl[k], [bx, bz] = ctl[k + 1], c = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az))); for (let j = 0; j < c; j++) pts.push([ax + (bx - ax) * j / c, az + (bz - az) * j / c]); }
         pts.push(ctl[ctl.length - 1]);
@@ -279,7 +283,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
         const y = Math.max(THREE.MathUtils.lerp(ya, yb, acc[i] / (total || 1)), groundHeightAt(P[i][0], P[i][1]) + 0.04) - 0.01 + dy;
         for (const o of [o0, o1]) v.push(P[i][0] + nx * o, br.w > 9 ? groundHeightAt(P[i][0] + nx * o, P[i][1] + nz * o) + 0.085 : y, P[i][1] + nz * o);
         // 白線は本コースの路面の上には引かない(分かれ目・合流の所)
-        const onCourse = (k) => { const a2 = P[Math.max(0, k - 1)], c2 = P[Math.min(m - 1, k + 1)], ex = c2[0] - a2[0], ez = c2[1] - a2[1], el = Math.hypot(ex, ez) || 1, om = (o0 + o1) / 2; return nearestRoute(P[k][0] + ez / el * om, P[k][1] - ex / el * om).d < FUJI_ROAD_HALF + 2.2; };   // 線そのものの位置で見る(縁石の帯の上にも引かない)
+        const onCourse = (k) => { const a2 = P[Math.max(0, k - 1)], c2 = P[Math.min(m - 1, k + 1)], ex = c2[0] - a2[0], ez = c2[1] - a2[1], el = Math.hypot(ex, ez) || 1, om = (o0 + o1) / 2; return nearestRoute(P[k][0] + ez / el * om, P[k][1] - ex / el * om).d < (br.w > 9 ? FUJI_ROAD_HALF - 0.42 : FUJI_ROAD_HALF + 2.2); };   // 近道は本コースの白線にぶつかるまで引く   // 線そのものの位置で見る(縁石の帯の上にも引かない)
         if (i + 1 < m && !(dy && (onCourse(i) || onCourse(i + 1)))) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
       }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();

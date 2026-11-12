@@ -18,7 +18,7 @@ for b in d['branches']:
     if b['w'] > 9:
         A, B = np.array(b['pts'][0]), np.array(b['pts'][-1]); u = (B - A) / np.linalg.norm(B - A); n = np.array([u[1], -u[0]]) * b['w'] / 2
         m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round(np.array([A - u * 12 + n, B + u * 12 + n, B + u * 12 - n, A - u * 12 - n]) - [L['x0'], L['z0']]).astype(np.int32)], 1)
-        ov[(m > 0) & (dist < 9.2)] = 1
+        pass   # (やめた: 口の所を路面の色にすると、コースの色が白線の外へはみ出す)
 cv2.imwrite(str(ovp), ov)
 src = (ROOT / 'tools/fuji/make_landcover_mosaic.py').read_text(); col = lambda k: tuple(int(v) for v in src.split(f"'{k}': (")[1].split(')')[0].split(','))
 lc = cv2.imread(str(ROOT / 'map/fuji-landcover.png')); lc[ov == 2] = col('grass'); lc[ov == 1] = (75, 73, 71); cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), lc)

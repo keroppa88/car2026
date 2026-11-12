@@ -116,6 +116,23 @@ far = dist >= 11
 _, (iy2, ix2) = ndimage.distance_transform_edt(~far, return_indices=True)
 edge = (dist < 11) & (ov == 0) & ~isc(ROAD)
 img[edge] = img[iy2, ix2][edge]
+# コース・近道のわきの細長いアスファルト(幅 7m 未満の帯・はみ出し)は草地などに(道路・駐車場・建物・手の直しは除く)
+for b in d.get('branches', []): cv2.polylines(rl, [np.round(np.array(b['pts']) - [x0, z0]).astype(np.int32)], False, 0, 1)
+dist2 = cv2.distanceTransform(rl, cv2.DIST_L2, 5)
+pv = isc(col('paved')).astype(np.uint8)
+thinp = (pv > 0) & (cv2.morphologyEx(pv, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))) == 0) & (dist2 < 25) & ~rm & ~np.isin(ov, [1, 3, 4])
+nat_ = ~(isc(col('paved')) | isc(col('parking')) | isc(col('building')) | isc(ROAD))
+_, (iy4, ix4) = ndimage.distance_transform_edt(~nat_, return_indices=True)
+img[thinp] = img[iy4, ix4][thinp]; print('コースわきの細長いアスファルト → 自然の色', int(thinp.sum()), 'm2')
+# コース・近道とアスファルトの間の細長い草地(幅 5m 未満)はアスファルトに
+for b in d.get('branches', []): cv2.polylines(rl, [np.round(np.array(b['pts']) - [x0, z0]).astype(np.int32)], False, 0, 1)
+dist2 = cv2.distanceTransform(rl, cv2.DIST_L2, 5)
+gm = isc(col('grass')).astype(np.uint8)
+thin = (gm > 0) & (cv2.morphologyEx(gm, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) == 0) & (dist2 < 16) & (dist2 > 7)
+greyn = np.zeros((H, W), bool)
+for c in GREYS: greyn |= isc(c)
+thin &= cv2.dilate(greyn.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+img[thin & (ov != 2)] = col('paved'); print('コースとアスファルトの間の細い草地 → アスファルト', int(thin.sum()), 'm2')
 # 手で塗った直しを最後に重ねる
 for k, c in {1: ROAD, 2: col('grass'), 3: col('paved'), 4: col('parking')}.items(): img[ov == k] = c
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)

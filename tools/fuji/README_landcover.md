@@ -1,4 +1,7 @@
-# 富士: 地面の塗り分けを作り直す順番
+# 富士: 地面の塗り分けを作り直す
+まとめて: sh tools/fuji/rebuild_landcover.sh 空撮.png 出力フォルダ   (下の順番を全部実行する)
+真上ビューの絵の直しは tools/fuji/paint/topview_overrides.png にたまっている(絵とカメラは paint/ の *_reg.png・cam_*.json)。
+
 空撮(scratchpad の mosaic.png)はリポジトリに入れていない。手で塗った直しは tools/fuji/paint/area_overrides.png に残る。
 
 1. python3 tools/fuji/make_landcover_mosaic.py mosaic.png 出力フォルダ

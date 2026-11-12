@@ -11,8 +11,8 @@ from scipy import ndimage
 ROOT = Path(__file__).resolve().parents[2]; d = json.loads((ROOT / 'map/fuji-course.json').read_text())
 P = cv2.imread(sys.argv[1]); cam = json.loads(Path(sys.argv[2]).read_text()); args = sys.argv[1:]; opt = lambda k, dflt: args[args.index(k) + 1] if k in args else dflt
 DBG = Path(sys.argv[3]) if len(sys.argv) > 3 and not sys.argv[3].startswith('--') else None
-CLS = {'草地': 2, 'grass': 2, '舗装': 3, 'paved': 3}; RC, BC = CLS[opt('--red', '舗装')], CLS[opt('--blue', '草地')]
-Wp, Hp = cam['W'], cam['H']; pos = np.array(cam['pos'], float); U = np.array([cam['up'][0], cam['up'][2]]); U /= np.linalg.norm(U)
+CLS = {'草地': 2, 'grass': 2, '舗装': 3, 'paved': 3, 'なし': 0}; RC, BC = CLS[opt('--red', '舗装')], CLS[opt('--blue', '草地')]
+Wp, Hp = cam['W'], cam['H']; pos = np.array(cam['pos'], float); U = np.array([cam['up'][0], cam['up'][2]], float); U /= np.linalg.norm(U)
 Rt = np.array([-U[1], U[0]]); f = Hp / 2 / math.tan(math.radians(cam['fov'] / 2))
 G = d['ground']; gh = (np.array(G['h'], np.float32) / 10).reshape(G['nz'], G['nx'])
 def ground(x, z): return ndimage.map_coordinates(gh, [np.clip((z - G['z0']) / G['cell'], 0, G['nz'] - 1), np.clip((x - G['x0']) / G['cell'], 0, G['nx'] - 1)], order=1)
@@ -26,6 +26,7 @@ loose = (r > 190) & (g < 120) & (b < 100); nl, cl, sl, _ = cv2.connectedComponen
 red = (tight | np.isin(cl, np.where(sl[:, cv2.CC_STAT_AREA] >= 15)[0][1:])).astype(np.uint8)
 red_raw = red.copy(); blue = ((b > 150) & (r < 90) & (b - g > 50)).astype(np.uint8)
 if '--lblue' in args: blue = ((np.abs(r - 150) < 18) & (np.abs(g - 216) < 16) & (np.abs(b - 234) < 16)).astype(np.uint8); BC = CLS[opt('--lblue', '舗装')]   # 水色を青の代わりに
+if opt('--blue', '') == 'なし': blue = np.zeros_like(blue)   # 青を使わない絵(画面の青い車を拾わない)
 blue_raw = blue.copy()
 # 赤: 囲みの中を塗る(線のすき間は閉じる)。青: 塗りの穴を埋めて少し広げる
 red = cv2.morphologyEx(red, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)); rf = np.zeros_like(red)
