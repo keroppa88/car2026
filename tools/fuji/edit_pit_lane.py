@@ -14,7 +14,7 @@ R = np.array([[p[0], p[2]] for p in d['route']]); n = len(R); st = d['start']
 u = R[st + 20] - R[st - 20]; u /= np.linalg.norm(u); v = np.array([-u[1], u[0]]); O = R[1200]
 W = lambda x, vv: [round(float(c), 2) for c in O + u * x + v * vv]
 xOf = lambda i: float((R[i] - O) @ u)
-X0, XA, XB, XE = xOf(1190), 75.0, 142.0, xOf(1434)
+X0, XA, XB, XE = 60.0, 75.0, 142.0, xOf(1434)
 EDGE0, EDGE1, PW = 7.5, 12.3, 6.0
 edge = lambda x: EDGE0 if x <= XA else EDGE1 if x >= XB else EDGE0 + (EDGE1 - EDGE0) * (x - XA) / (XB - XA)
 xs = [XE] + list(np.arange(np.floor(XE / 20) * 20, XB, -20)) + [XB, XA, X0]

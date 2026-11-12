@@ -31,11 +31,11 @@ for _, e in etree.iterparse(str(ROOT / 'tools/fuji/fuji.osm'), events=('end',)):
     t = {x.get('k'): x.get('v') for x in e.findall('tag')}; nd = [n.get('ref') for n in e.findall('nd')]
     pts = np.round([N[q] for q in nd if q in N]).astype(np.int32)
     if len(pts) < 2: continue
-    if t.get('highway') in WID: cv2.polylines(keep, [pts], False, 1, WID[t['highway']] - 2)   # 道の幅ちょうど(はみ出しは残さない)
+    if t.get('highway') in WID and t['highway'] != 'track': cv2.polylines(keep, [pts], False, 1, WID[t['highway']] - 2)   # 道の幅ちょうど(はみ出しは残さない)
     if t.get('highway') in WID and t['highway'] != 'track': roads.append((pts, WID[t['highway']] - 2))
     closed = nd[0] == nd[-1] and len(pts) > 3
     if closed and t.get('amenity') in ('parking', 'motorcycle_parking'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 6)
-    if closed and ('building' in t or t.get('leisure') == 'bleachers'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 30)
+    if closed and ('building' in t or t.get('leisure') == 'bleachers'): cv2.fillPoly(keep, [pts], 1); cv2.polylines(keep, [pts], True, 1, 30 if cv2.contourArea(pts.astype(np.float32)) > 1000 else 12)
 # 4'. 建物を含む広い舗装(パドック・広場): 建物に触れる灰色のかたまりの、太い本体(幅 16m 以上)は残す(細いはみ出しは残さない)
 bldg = keep.copy()
 nc0, cc0 = cv2.connectedComponents(grey.astype(np.uint8), connectivity=8)
@@ -46,7 +46,9 @@ keep |= body
 R = np.array([[p[0] - x0, p[2] - z0] for p in d['route']])
 rl = np.ones((H, W), np.uint8); cv2.polylines(rl, [np.round(R).astype(np.int32)], True, 0, 1); dist = cv2.distanceTransform(rl, cv2.DIST_L2, 5)
 for b in d.get('branches', []): cv2.polylines(keep, [np.round(np.array(b['pts']) - [x0, z0]).astype(np.int32)], False, 1, int(b['w']) + 6)
-zone = (grey | isc(ROAD)) & (dist < 60)
+roadz = np.zeros((H, W), np.uint8)
+for pts, w in roads: cv2.polylines(roadz, [pts], False, 1, w + 2)
+zone = (grey | isc(ROAD)) & (dist < 45) & (roadz == 0)   # 道を通ってつながった所は退避エリアにしない
 nc, cc = cv2.connectedComponents(zone.astype(np.uint8), connectivity=4)
 edge = np.unique(cc[(dist > 8.5) & (dist < 10.5) & zone]); edge = edge[edge > 0]
 run = np.isin(cc, edge).astype(np.uint8)
@@ -95,6 +97,25 @@ for it in range(3):
     done += ch
     if not ch: break
 img = cols_[lab_].astype(np.uint8); print('コースのそばの小さなかたまり・すき間', done)
+# 離れ小島の灰色(どの道・駐車場・建物・コースの縁にもつながっていない、または 600m2 未満)は、まわりの自然の色に
+g3 = np.zeros((H, W), bool)
+for c in GREYS: g3 |= isc(c)
+anchor = (cv2.dilate(rm.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) | isc(col('parking')) | isc(col('building')) | (dist < 11) | np.isin(ov, [1, 3, 4])
+for pts in [p for p, w in roads]: pass
+nc4, cc4, st4, _ = cv2.connectedComponentsWithStats(g3.astype(np.uint8), connectivity=8)
+ok_ids = set(np.unique(cc4[anchor & g3]).tolist())
+iso = np.zeros((H, W), bool)
+for i in range(1, nc4):
+    if (i not in ok_ids) or st4[i, cv2.CC_STAT_AREA] < 600: iso |= False
+ids_bad = [i for i in range(1, nc4) if (i not in ok_ids) or st4[i, cv2.CC_STAT_AREA] < 600]
+iso = np.isin(cc4, ids_bad) & ~np.isin(ov, [1, 3, 4])
+_, (iy3, ix3) = ndimage.distance_transform_edt(g3 | isc(ROAD), return_indices=True)
+nat3 = img[iy3, ix3]; img[iso] = nat3[iso]; print('離れ小島の灰色', int(iso.sum()), 'm2', len(ids_bad), 'か所')
+# コースの縁石のすぐ外(コースの中心から 11m まで)は、そのすぐ外(11〜13m)と同じ色にする → 縁にしみ・点が残らない
+far = dist >= 11
+_, (iy2, ix2) = ndimage.distance_transform_edt(~far, return_indices=True)
+edge = (dist < 11) & (ov == 0) & ~isc(ROAD)
+img[edge] = img[iy2, ix2][edge]
 # 手で塗った直しを最後に重ねる
 for k, c in {1: ROAD, 2: col('grass'), 3: col('paved'), 4: col('parking')}.items(): img[ov == k] = c
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)

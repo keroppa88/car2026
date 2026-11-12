@@ -38,8 +38,8 @@ pick = lambda m: cv2.remap(m * 255, u, v, cv2.INTER_LINEAR, borderValue=0) > 127
 ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0)
 rf = cv2.dilate(rf, np.ones((3, 3), np.uint8))
 mr, mb = pick(rf), pick(blue)
-# 塗りの中のすき間・となりの塗りとのすき間(15m まで)を埋めて、穴もふさぐ
-fillg = lambda m: ndimage.binary_fill_holes(cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))))
+# 塗った形のまま(線のかすれ・小さな穴だけふさぐ)
+fillg = lambda m: ndimage.binary_fill_holes(cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
 mr, mb = fillg(mr), fillg(mb)
 ov[mr] = RC; ov[mb & ~mr] = BC
 # 真上ビューの直しは別の層にも残す(あとから塗った絵ほど上)。ほかの手順が area_overrides.png を書き直しても、

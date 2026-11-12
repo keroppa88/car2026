@@ -70,7 +70,7 @@ road = np.ones((H, W), np.uint8); cv2.polylines(road, [np.round(R2 - [L['x0'], L
 oncourse = cv2.distanceTransform(road, cv2.DIST_L2, 5) < 9
 toGrass = cv2.erode(inside.astype(np.uint8), np.ones((9, 9), np.uint8)).astype(bool) & ~red & ~pink & grey & (pad == 0) & ~oncourse
 ov[toGrass] = 2; print('塗っていない舗装 → 草地', int(toGrass.sum()), 'm2')
-ov[pink & ~red & inside] = 3; ov[red & inside] = 1
+ov[(pink | red) & inside] = 3   # 赤(路面)もコンクリートの色で。路面そのものはコース・ピットレーンの形(まっすぐ)で描く
 cv2.imwrite(str(ovp), ov)
 lc = cv2.imread(str(ROOT / 'map/fuji-landcover.png'))
 src = (ROOT / 'tools/fuji/make_landcover_mosaic.py').read_text(); col = lambda key: tuple(int(q) for q in src.split(f"'{key}': (")[1].split(')')[0].split(','))

@@ -24,6 +24,12 @@ for k in np.unique(nat):
     sel = f > best; best[sel] = f[sel]; out[sel] = k
 # 2. 人が作ったもの: かたまりの輪郭を折れ線にして、くっきり塗る(穴は木の形の順に、塗る・抜くを交互に)
 SH = 4; sc = S * (1 << SH)
+def smooth_line(q, w):
+    # 輪郭(1m の階段)を前後 w 点の平均でならしてから、まっすぐな所は 1 本の直線にまとめる → ギザギザ・うねりを残さない
+    if len(q) >= 2 * w + 3:
+        ker = np.ones(w) / w
+        q = np.stack([np.convolve(np.r_[q[-w:, t], q[:, t], q[:w, t]], ker, 'same')[w:-w] for t in (0, 1)], 1)
+    return cv2.approxPolyDP(q.astype(np.float32).reshape(-1, 1, 2), 0.6, True)[:, 0].astype(np.float64)
 for g in [None] + gid:   # None: 灰色ぜんぶを 1 つにして、いちばん下に舗装の色で塗る(灰色どうしのすき間に草が出ない)
     m = (np.isin(lab, gid) if g is None else (lab == g)).astype(np.uint8)
     m = cv2.morphologyEx(cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8)), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -37,8 +43,7 @@ for g in [None] + gid:   # None: 灰色ぜんぶを 1 つにして、いちば�
     for i in np.argsort(depth, kind='stable'):
         a = cv2.contourArea(cs[i])
         if a < 30: continue
-        eps = 3.0 if a > 3000 else 2.0 if a > 400 else 1.5
-        q = cv2.approxPolyDP(cs[i], eps, True)[:, 0].astype(np.float64)
+        q = smooth_line(cs[i][:, 0].astype(np.float64), 15 if a > 3000 else 9 if a > 400 else 5)
         if len(q) < 3: continue
         cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if depth[i] % 2 == 0 else 0, lineType=cv2.LINE_8, shift=SH)
     out[mask > 0] = gid[0] if g is None else g
@@ -57,9 +62,8 @@ if ovp.exists():
         for j in sorted(range(len(cs)), key=lambda j: hier[0][j][3] >= 0):
             q = cs[j][:, 0].astype(np.float64)
             if len(q) < 3: continue
-            if len(q) >= 9 and cv2.contourArea(cs[j]) > 150:
-                w = 5; ker = np.ones(w) / w
-                q = np.stack([np.convolve(np.r_[q[-w:, t], q[:, t], q[:w, t]], ker, 'same')[w:-w] for t in (0, 1)], 1)
+            q = smooth_line(q, 9 if cv2.contourArea(cs[j]) > 400 else 5)
+            if len(q) < 3: continue
             cv2.fillPoly(mask, [np.round((q + 0.5) * sc - 0.5 * (1 << SH)).astype(np.int32)], 1 if hier[0][j][3] < 0 else 0, lineType=cv2.LINE_8, shift=SH)
         out[mask > 0] = i[0]
 cv2.imwrite(str(ROOT / 'map/fuji-landcover-hd.png'), cols[out].astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
