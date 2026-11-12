@@ -435,14 +435,21 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     slab(conc, 0.4, 0.8, WALL + 0.3, y0);
     const red1 = new THREE.MeshLambertMaterial({ color: 0xb04a44 }), red2 = new THREE.MeshLambertMaterial({ color: 0x9c3d38 });
     for (let k = 0; k < rows; k++) slab(k >= rows * 0.62 ? (k % 2 ? red1 : red2) : (k % 2 ? seat : seat2), 0.8 + (k + 0.5) * STEP, STEP + 0.02, WALL + (k + 1) * RISE, y0);   // 上の方は赤い席
-    { // 観客: 各段に座った人(胴は服の色いろいろ、頭は肌色・髪色)。満席に近い賑わい
+    { // 観客: 各段に座った人(胴は服の色いろいろ、頭は肌色・髪色)
       const SHIRT = [0xd71e28, 0x1d4f9c, 0xf2f2f0, 0x2a2c2f, 0xf2c400, 0x2b7a4b, 0xe07020, 0x7a4fb0, 0x5aa0d8, 0xc8c8c8, 0xd94f8c, 0x8a5a2b];
       const HEAD = [0xe8c4a0, 0xd9a878, 0x2a221c, 0x3a2e24, 0x1c1814, 0xc9a07a];
       const spots = []; let seed = Math.abs(Math.round(A[0] * 13 + A[1] * 7)) + 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      for (let k = 0; k < rows; k++) for (let sx = 0.4; sx < L - 0.3; sx += 0.62) {
-        if (rnd() > 0.82) continue;
-        const off = 0.8 + (k + 0.5) * STEP + (rnd() - 0.5) * 0.12, s2 = sx + (rnd() - 0.5) * 0.18;
-        spots.push([A[0] + tx * s2 + ox * off, y0 + WALL + (k + 1) * RISE, A[1] + tz * s2 + oz * off, rnd(), rnd(), rnd()]);
+      // 客入りは 3 割ほど。2人・3人・5人の連れが大半で、ときどき 1人。連れの間は空席
+      for (let k = 0; k < rows; k++) {
+        let seat = Math.floor(rnd() * 8); const nSeat = Math.floor((L - 0.7) / 0.62);
+        while (seat < nSeat) {
+          const r = rnd(), size = r < 0.12 ? 1 : r < 0.42 ? 2 : r < 0.72 ? 3 : 5;
+          for (let j = 0; j < size && seat < nSeat; j++, seat++) {
+            const off = 0.8 + (k + 0.5) * STEP + (rnd() - 0.5) * 0.08, s2 = 0.4 + seat * 0.62 + (rnd() - 0.5) * 0.1;
+            spots.push([A[0] + tx * s2 + ox * off, y0 + WALL + (k + 1) * RISE, A[1] + tz * s2 + oz * off, rnd(), rnd(), rnd()]);
+          }
+          seat += 2 + Math.floor(rnd() * size * 4.5);   // 空席(平均で 3 割の客入りになる)
+        }
       }
       const body = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42, 0.62, 0.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), spots.length);
       const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), new THREE.MeshLambertMaterial({ color: 0xffffff }), spots.length);
