@@ -49,7 +49,12 @@ for b in d.get('branches', []): cv2.polylines(keep, [np.round(np.array(b['pts'])
 zone = (grey | isc(ROAD)) & (dist < 60)
 nc, cc = cv2.connectedComponents(zone.astype(np.uint8), connectivity=4)
 edge = np.unique(cc[(dist > 8.5) & (dist < 10.5) & zone]); edge = edge[edge > 0]
-keep |= np.isin(cc, edge).astype(np.uint8)
+run = np.isin(cc, edge).astype(np.uint8)
+# 退避エリアは、ある程度の広さのあるものだけ: 幅 6m 未満の細い帯・はみ出しと、600m2 未満のかけらは残さない
+run = cv2.morphologyEx(run, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+n2, c2, st2, _ = cv2.connectedComponentsWithStats(run, connectivity=8)
+run = np.isin(c2, np.where(st2[:, cv2.CC_STAT_AREA] >= 600)[0][1:]).astype(np.uint8)
+keep |= run
 # 5. 手で塗った直し
 ovp = ROOT / 'tools/fuji/paint/area_overrides.png'; ov = cv2.imread(str(ovp), 0) if ovp.exists() else np.zeros((H, W), np.uint8)
 keep |= np.isin(ov, [1, 3, 4]).astype(np.uint8)
@@ -72,6 +77,24 @@ rm = np.zeros((H, W), np.uint8)
 for pts, w in roads: cv2.polylines(rm, [pts], False, 1, w)
 rm = (rm > 0) & (dist > 9.5) & ~isc(ROAD) & ~isc(col('parking')) & ~isc(col('building'))
 img[rm] = col('paved'); print('道路をつなぐ', int(rm.sum()), 'm2')
+# コースのそば(80m 以内)の小さなかたまり・すき間(どの色も 300m2 未満)は、まわりでいちばん多い色に
+cols_, lab_ = np.unique(img.reshape(-1, 3), axis=0, return_inverse=True); lab_ = lab_.reshape(H, W)
+nearc = dist < 80; done = 0
+for it in range(3):
+    ch = 0
+    for c in range(len(cols_)):
+        if (cols_[c] == np.array(ROAD)).all(): continue
+        nc3, cc3, st3, _ = cv2.connectedComponentsWithStats((lab_ == c).astype(np.uint8), connectivity=4)
+        for i in np.where(st3[1:, cv2.CC_STAT_AREA] < 300)[0] + 1:
+            x, y, w, h, a = st3[i]; sl = (slice(max(0, y - 2), y + h + 2), slice(max(0, x - 2), x + w + 2))
+            msk = cc3[sl] == i
+            if nearc[sl][msk].mean() < 0.5 or np.isin(ov[sl][msk], [1, 2, 3, 4]).mean() > 0.5: continue
+            ring = cv2.dilate(msk.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~msk
+            nb = lab_[sl][ring]; nb = nb[(nb != c) & ~(cols_[nb] == np.array(ROAD)).all(1)]
+            if len(nb): o = lab_[sl]; o[msk] = np.bincount(nb).argmax(); lab_[sl] = o; ch += 1
+    done += ch
+    if not ch: break
+img = cols_[lab_].astype(np.uint8); print('コースのそばの小さなかたまり・すき間', done)
 # 手で塗った直しを最後に重ねる
 for k, c in {1: ROAD, 2: col('grass'), 3: col('paved'), 4: col('parking')}.items(): img[ov == k] = c
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)
