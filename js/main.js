@@ -8,12 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-4';
+import { decorateOsmCity } from './osm-city.js?v=20261112-fuji-5';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-4';
+import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-5';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
@@ -10003,7 +10003,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const turn = Math.abs(Math.atan2(Math.sin(h2 - h1), Math.cos(h2 - h1)));
       const len = Math.hypot(c.x - a.x, c.z - a.z) / 2 || 1;
       const radius = turn > 1e-4 ? len / turn : 1e6;
-      v[i] = Math.min(90, Math.sqrt(11 * radius));   // 自車と同じくらいの速さで曲がる(横 11m/s²)
+      v[i] = Math.min(90, Math.sqrt(8 * radius));   // カーブはドリフトで曲がるので自車より少し遅い(横 8m/s²)。カーブで追い抜ける
     }
     for (let k = 0; k < 2; k++) for (let i = n - 1; i >= 0; i--) {   // 手前から減速(輪なので2周)
       const j = (i + 1) % n, ds = path.distances[i + 1] - path.distances[i];
@@ -10019,7 +10019,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       let lo = 0, hi = path.points.length;
       const d0 = ((ai.gunmaDistance % path.length) + path.length) % path.length;
       while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (path.distances[mid] <= d0) lo = mid; else hi = mid; }
-      const target = Math.min(ai.base, PLAYER_TOP_SPEED, path.fujiSpeed[lo] * (ai.base / (0.9 * PLAYER_TOP_SPEED)));   // 曲がる所も速い車は速く。直線の上限は自車の最高速まで
+      const target = Math.min(ai.base, PLAYER_TOP_SPEED, path.fujiSpeed[lo]);   // 直線の上限は自車の最高速まで
       ai.v += THREE.MathUtils.clamp(target - ai.v, -6 * dt, 3.5 * dt);
     }
     ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
@@ -10042,6 +10042,36 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     ai.group.position.copy(ai.pos);
     ai.group.rotation.y = ai.heading;
     ai.tilt.rotation.x = -Math.atan2(ahead.y - behind.y, 8);
+    if (FUJI_COURSE) {
+      // 首都高と同じく、曲がり角が20度より大きいカーブはドリフトで回る:
+      // 車体を曲がる向きへ先に振り(横滑り角)、直線で素早く戻す。ドリフト中はリアからタイヤスモーク
+      const far = sampleGunmaTrafficPath(path, ai.gunmaDistance + 30);
+      let turn = Math.atan2(far.x - ahead.x, far.z - ahead.z) - ai.heading;
+      while (turn > Math.PI) turn -= Math.PI * 2;
+      while (turn < -Math.PI) turn += Math.PI * 2;
+      const sharp = Math.abs(turn) > 0.35 && ai.v > 12;
+      let slip = ai.slip || 0;
+      const targetSlip = sharp ? Math.sign(turn) * Math.min(0.5, 0.18 + Math.abs(turn) * 0.42) : 0;
+      slip += (targetSlip - slip) * Math.min(1, dt * (sharp ? 3.2 : 4.5));
+      ai.slip = slip;
+      ai.group.rotation.y = ai.heading + slip;
+      if (Math.abs(slip) > 0.15) document.body.dataset.fujiCpuDriftSeen = String(Number(document.body.dataset.fujiCpuDriftSeen || 0) + 1);
+      ai.tilt.rotation.z = clamp(-slip * 0.18, -0.1, 0.1);
+      if (Math.abs(slip) > 0.15 && smokePool.length) {
+        ai.smokeIn = (ai.smokeIn ?? 0) - dt;
+        const dpx = ai.pos.x - player.pos.x, dpz = ai.pos.z - player.pos.z;
+        if (ai.smokeIn <= 0 && dpx * dpx + dpz * dpz < 130 * 130) {
+          ai.smokeIn = 0.09;
+          const sm = smokePool[smokeIdx]; smokeIdx = (smokeIdx + 1) % SMOKE_MAX;
+          const bodyH = ai.heading + slip, rearX = ai.pos.x - Math.sin(bodyH) * 1.5, rearZ = ai.pos.z - Math.cos(bodyH) * 1.5;
+          sm.position.set(rearX + (Math.random() - 0.5) * 0.6, ai.pos.y + 0.25, rearZ + (Math.random() - 0.5) * 0.6);
+          sm.scale.setScalar(0.6);
+          const sd = sm.userData; sd.life = 0; sd.max = 0.6 + Math.random() * 0.3;
+          sd.vx = (Math.random() - 0.5) * 1.2; sd.vy = 1.0 + Math.random(); sd.vz = (Math.random() - 0.5) * 1.2;
+          sm.visible = true;
+        }
+      }
+    }
   }
 
   function updateAI(dt, sigStates) {
