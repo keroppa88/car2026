@@ -135,4 +135,9 @@ thin &= cv2.dilate(greyn.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
 img[thin & (ov != 2)] = col('paved'); print('コースとアスファルトの間の細い草地 → アスファルト', int(thin.sum()), 'm2')
 # 手で塗った直しを最後に重ねる
 for k, c in {1: ROAD, 2: col('grass'), 3: col('paved'), 4: col('parking')}.items(): img[ov == k] = c
+# 7 = 消す: まわりの自然の色(草地・砂地・森)で埋める
+er = ov == 7
+if er.any():
+    natm = ~(isc(col('paved')) | isc(col('parking')) | isc(col('building')) | isc(ROAD)) & ~er
+    _, (iy7, ix7) = ndimage.distance_transform_edt(~natm, return_indices=True); img[er] = img[iy7, ix7][er]
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)

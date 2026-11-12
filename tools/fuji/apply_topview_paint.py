@@ -11,7 +11,8 @@ from scipy import ndimage
 ROOT = Path(__file__).resolve().parents[2]; d = json.loads((ROOT / 'map/fuji-course.json').read_text())
 P = cv2.imread(sys.argv[1]); cam = json.loads(Path(sys.argv[2]).read_text()); args = sys.argv[1:]; opt = lambda k, dflt: args[args.index(k) + 1] if k in args else dflt
 DBG = Path(sys.argv[3]) if len(sys.argv) > 3 and not sys.argv[3].startswith('--') else None
-CLS = {'草地': 2, 'grass': 2, '舗装': 3, 'paved': 3, 'なし': 0}; RC, BC = CLS[opt('--red', '舗装')], CLS[opt('--blue', '草地')]
+CLS = {'草地': 2, 'grass': 2, '舗装': 3, 'paved': 3, 'なし': 0, '消す': 7}   # 消す = まわりの自然の色(草地・砂地・森)に戻す
+RC, BC = CLS[opt('--red', '舗装')], CLS[opt('--blue', '草地')]; RC, BC = CLS[opt('--red', '舗装')], CLS[opt('--blue', '草地')]
 Wp, Hp = cam['W'], cam['H']; pos = np.array(cam['pos'], float); U = np.array([cam['up'][0], cam['up'][2]], float); U /= np.linalg.norm(U)
 Rt = np.array([-U[1], U[0]]); f = Hp / 2 / math.tan(math.radians(cam['fov'] / 2))
 G = d['ground']; gh = (np.array(G['h'], np.float32) / 10).reshape(G['nz'], G['nx'])
