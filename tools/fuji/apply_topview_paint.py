@@ -1,5 +1,5 @@
 """富士スピードウェイ: 真上ビューの画面に塗った絵(手描きの丸・塗りつぶし)を地面に反映する
-python3 tools/fuji/apply_topview_paint.py 絵 カメラ.json [出力フォルダ] [--red 草地|舗装] [--blue 草地|舗装] [--reset]
+python3 tools/fuji/apply_topview_paint.py 絵 カメラ.json [出力フォルダ] [--red 草地|舗装] [--blue 草地|舗装] [--lblue 草地|舗装(水色を使う絵)] [--reset]
 カメラ.json: {"W","H","pos":[x,y,z],"up":[ux,0,uz],"fov"}(tools/shonan/paint/render.mjs で描いたときのもの。真下向き)
 赤・青は、線で囲んでも塗りつぶしてもよい(囲みの中も塗る)。ふつうは 赤 = アスファルト、青 = 草地。--red / --blue で入れかえられる
 → tools/fuji/paint/area_overrides.png に重ねる(3 = 舗装、2 = 草地)
@@ -20,7 +20,13 @@ def to_px(x, z, y):   # 地図 → 画面
     k = f / (pos[1] - y); dx, dz = x - pos[0], z - pos[2]
     return Wp / 2 + (dx * Rt[0] + dz * Rt[1]) * k, Hp / 2 - (dx * U[0] + dz * U[1]) * k
 J = P.astype(int); b, g, r = J[..., 0], J[..., 1], J[..., 2]
-red = ((r > 190) & (g < 120) & (b < 100)).astype(np.uint8); blue = ((b > 150) & (r < 90) & (b - g > 50)).astype(np.uint8)
+# 赤: ペイントの赤(237,28,36)ちょうどの所は小さくても全部。色がにじんだ赤(jpg)は 15 画素以上のかたまりだけ(画面の赤い車・屋根・縁石を拾わない)
+tight = (np.abs(r - 237) < 14) & (np.abs(g - 28) < 16) & (np.abs(b - 36) < 16)
+loose = (r > 190) & (g < 120) & (b < 100); nl, cl, sl, _ = cv2.connectedComponentsWithStats(loose.astype(np.uint8), connectivity=8)
+red = (tight | np.isin(cl, np.where(sl[:, cv2.CC_STAT_AREA] >= 15)[0][1:])).astype(np.uint8)
+red_raw = red.copy(); blue = ((b > 150) & (r < 90) & (b - g > 50)).astype(np.uint8)
+if '--lblue' in args: blue = ((np.abs(r - 150) < 18) & (np.abs(g - 216) < 16) & (np.abs(b - 234) < 16)).astype(np.uint8); BC = CLS[opt('--lblue', '舗装')]   # 水色を青の代わりに
+blue_raw = blue.copy()
 # 赤: 囲みの中を塗る(線のすき間は閉じる)。青: 塗りの穴を埋めて少し広げる
 red = cv2.morphologyEx(red, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)); rf = np.zeros_like(red)
 for c in cv2.findContours(red, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0]:
@@ -41,12 +47,18 @@ mr, mb = pick(rf), pick(blue)
 # 塗った形のまま(線のかすれ・小さな穴だけふさぐ)
 fillg = lambda m: ndimage.binary_fill_holes(cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
 mr, mb = fillg(mr), fillg(mb)
-ov[mr] = RC; ov[mb & ~mr] = BC
+# 赤と青が重なった所は、絵でより近いほうの色(塗った線そのものを優先)
+both = mr & mb
+if both.any():
+    dr = cv2.remap(ndimage.distance_transform_edt(red_raw == 0).astype(np.float32), u, v, cv2.INTER_LINEAR, borderValue=1e6)
+    db = cv2.remap(ndimage.distance_transform_edt(blue_raw == 0).astype(np.float32), u, v, cv2.INTER_LINEAR, borderValue=1e6)
+    mr = mr & ~(both & (db < dr))
+ov[mb] = BC; ov[mr] = RC
 # 真上ビューの直しは別の層にも残す(あとから塗った絵ほど上)。ほかの手順が area_overrides.png を書き直しても、
 # merge_topview.py でいちばん上に重ね直す
 tvp = ROOT / 'tools/fuji/paint/topview_overrides.png'
 tv = cv2.imread(str(tvp), 0) if tvp.exists() and '--reset' not in sys.argv else np.zeros_like(ov)
-tv[mr] = RC; tv[mb & ~mr] = BC; cv2.imwrite(str(tvp), tv)
+tv[mb] = BC; tv[mr] = RC; cv2.imwrite(str(tvp), tv)
 cv2.imwrite(str(ovp), ov); print('赤', int(mr.sum()), 'm2 →', RC, ' 青', int((mb & ~mr).sum()), 'm2 →', BC, '(2 草地 / 3 舗装)')
 if DBG:   # 確かめ: コースの線を絵に重ねる
     R = np.array(d['route']); a = P.copy(); pu, pv = to_px(R[:, 0], R[:, 2], R[:, 1])
