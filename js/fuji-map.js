@@ -674,17 +674,19 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
             float gul = fbm(vec2(a * 13.0, h * 0.0045));                    // 谷すじ(上下に長い)
             float fine = fbm(vec2(a * 48.0, h * 0.02));                   // 細かい岩と雪のまだら
             float ridge = abs(fbm(vec2(a * 9.0, h * 0.004 + 3.0)) - 0.5) * 2.0;
-            float line = 330.0 + 120.0 * (fbm(vec2(a * 6.0, 1.7)) - 0.5);   // 雪の下の端(方角でゆれる)
-            float sv = h + (gul - 0.5) * 330.0 + (fine - 0.5) * 110.0;       // 谷には雪が下まで残る
+            float line = 615.0 + 70.0 * (fbm(vec2(a * 6.0, 1.7)) - 0.5);   // 雪の下の端(山頂から今の半分ほど。方角でゆれる)
+            float sv = h + (gul - 0.5) * 200.0 + (fine - 0.5) * 70.0;       // 谷には雪が下まで残る
             float snow = smoothstep(line - 14.0, line + 14.0, sv);
-            snow *= 1.0 - smoothstep(0.44, 0.34, fine + (h - 480.0) * 0.0009) * 0.85;   // 雪の中に岩が顔を出す
+            snow *= 1.0 - smoothstep(0.44, 0.34, fine + (h - 700.0) * 0.0009) * 0.85;   // 雪の中に岩が顔を出す
             float lit = 0.5 + 0.5 * cos(a - 6.1);                            // 南東から日が当たる
             float shade = clamp(0.35 + 0.65 * lit + (gul - 0.5) * 0.9 + (ridge - 0.5) * 0.35, 0.0, 1.0);
-            vec3 snowC = mix(vec3(0.50, 0.60, 0.86), vec3(1.0, 1.0, 1.0), shade);
-            vec3 rock = mix(vec3(0.055, 0.085, 0.22), vec3(0.13, 0.18, 0.38), clamp(0.25 + 0.6 * lit + (fine - 0.5) * 0.7 + (gul - 0.5) * 0.5, 0.0, 1.0));
+            vec3 snowC = mix(vec3(0.58, 0.63, 0.74), vec3(0.95, 0.95, 0.95), shade);
+            vec3 rock = mix(vec3(0.22, 0.16, 0.10), vec3(0.44, 0.34, 0.22), clamp(0.25 + 0.6 * lit + (fine - 0.5) * 0.7 + (gul - 0.5) * 0.5, 0.0, 1.0));
+            rock = mix(rock, vec3(0.18, 0.30, 0.14), smoothstep(470.0, 150.0, h) * 0.9);   // すそは緑(森)、上は茶色の岩肌
             vec3 c = mix(rock, snowC, snow);
-            c = mix(c, vec3(0.34, 0.45, 0.70), 0.22);                         // 遠くの青み
-            float haze = smoothstep(380.0, 40.0, h + (fbm(vec2(a * 9.0, 0.3)) - 0.5) * 90.0);
+            c = mix(c, vec3(0.45, 0.50, 0.58), 0.18);                         // 遠くのかすみ(鮮やかさを落とす)
+            c = mix(c, vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.12);
+            float haze = smoothstep(240.0, -10.0, h + (fbm(vec2(a * 9.0, 0.3)) - 0.5) * 90.0);
             c = mix(c, vec3(0.70, 0.79, 0.90), haze * 0.92);                  // すそのもや
             gl_FragColor = vec4(c, 1.0);
           }` }));
@@ -694,7 +696,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     const RR = 5200, N2 = 180, hh = (a) => 150 + 110 * Math.sin(a * 3 + 1) + 70 * Math.sin(a * 7 + 2) + 40 * Math.sin(a * 17) + 120 * Math.max(0, -Math.sin(a));
     for (let j = 0; j < N2; j++) {
       const a0 = j / N2 * Math.PI * 2, a1 = (j + 1) / N2 * Math.PI * 2, q = (a, y, r = RR) => [Math.cos(a) * r, y, Math.sin(a) * r];
-      for (const pt of [q(a0, -80), q(a1, -80), q(a1, hh(a1), RR + 500), q(a0, -80), q(a1, hh(a1), RR + 500), q(a0, hh(a0), RR + 500)]) { P.push(...pt); C.push(0.50, 0.57, 0.54); }   // もやの向こう: 淡いグレーに少し緑
+      for (const pt of [q(a0, -80), q(a1, -80), q(a1, hh(a1), RR + 500), q(a0, -80), q(a1, hh(a1), RR + 500), q(a0, hh(a0), RR + 500)]) { P.push(...pt); C.push(0.05, 0.10, 0.06); }   // もやの向こうの暗い緑(頂点の色は明るく出るので暗めの値)
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false })); m.name = 'fuji-mountains'; scenery.add(m);
