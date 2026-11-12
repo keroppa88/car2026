@@ -33,11 +33,32 @@ pe = d['pitEntry']; Op = np.array(pe['O']) - [L['x0'], L['z0']]; uu = np.array(p
 yy2, xx2 = np.mgrid[0:H, 0:W]; ax = (xx2 - Op[0]) * uu[0] + (yy2 - Op[1]) * uu[1]; sv = (xx2 - Op[0]) * vv[0] + (yy2 - Op[1]) * vv[1]
 zone = (ax > pe['xs'] - 15) & (ax < pe['xe']) & (sv > 7.3) & (sv < 45)
 img[zone & (img == ROAD).all(2)] = col('paved')
+# ホームストレートの左(観客席の側): コースの縁から 8.5m までは草地の帯(指示: 紫 = 草地)
+gz = (ax > pe['xs'] - 15) & (ax < pe['xe'] + 10) & (sv < -7.3) & (sv > -16.0)
+img[gz] = col('grass'); print('ホームストレート左の草地の帯', int(gz.sum()), 'm2')
 Wp = lambda x, v: Op + uu * x + vv * v
 poly = np.array([Wp(pe['xs'], 7.4), Wp(pe['xb'], pe['outer']), Wp(pe['xe'], pe['outer']), Wp(pe['xe'], 7.4)])
 pm = np.zeros((H, W), np.uint8); cv2.fillPoly(pm, [np.round(poly * 8).astype(np.int32)], 1, shift=3)
 img[pm > 0] = ROAD
 img[lo == 2] = col('grass'); img[lo == 3] = col('paved'); lo[pm > 0] = 1   # ピット入口の形は細かい図でもくっきり
+# ピット出口のあたり(指示: 紫 = 草地): 左は草地の帯の外の灰色の帯、右は出口の車線の外の灰色を草地に
+Tn = np.roll(Rr, -2, 0) - np.roll(Rr, 2, 0); Tn /= np.linalg.norm(Tn, axis=1)[:, None]; NRr = np.stack([-Tn[:, 1], Tn[:, 0]], 1)
+PR = d['pitExit']['prof']; outerAt = lambda i: float(np.interp(i, [p[0] for p in PR], [p[2] for p in PR]))
+gm = np.zeros((H, W), np.uint8)
+for i in range(1412, 1471):   # 左
+    q = [Rr[i] - NRr[i] * 14.5, Rr[i + 1] - NRr[i + 1] * 14.5, Rr[i + 1] - NRr[i + 1] * 26, Rr[i] - NRr[i] * 26]
+    cv2.fillPoly(gm, [np.round(np.array(q) * 8).astype(np.int32)], 1, shift=3)
+for i in range(1433, 1513):   # 右
+    a1, a2 = outerAt(i) + 0.15, outerAt(i + 1) + 0.15
+    q = [Rr[i] + NRr[i] * a1, Rr[i + 1] + NRr[i + 1] * a2, Rr[i + 1] + NRr[i + 1] * 30, Rr[i] + NRr[i] * 30]
+    cv2.fillPoly(gm, [np.round(np.array(q) * 8).astype(np.int32)], 1, shift=3)
+sel = (gm > 0) & ((img == np.array(col('paved'), np.uint8)).all(2) | (img == ROAD).all(2))   # 車線の白線の外の路面の色も
+img[sel] = col('grass'); print('ピット出口のあたりの灰色 → 草地', int(sel.sum()), 'm2')
+# 直線で区切った多角形の指示(apply_poly_paint.py)。あとのものほど上
+PC = {2: col('grass'), 3: col('paved'), 6: col('sand')}
+for pp in d.get('paintPolys', []):
+    m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round((np.array(pp['pts']) - [L['x0'], L['z0']]) * 8).astype(np.int32)], 1, shift=3)
+    img[m > 0] = PC[pp['cls']]; lo[m > 0] = 0
 cv2.imwrite(str(ROOT / 'map/fuji-landcover.png'), img)
 cv2.imwrite(str(P / 'final_overrides.png'), lo)
 print('あとの指示 草地', int((lo == 2).sum()), ' アスファルト', int((lo == 3).sum()), 'm2')

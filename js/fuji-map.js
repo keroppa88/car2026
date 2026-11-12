@@ -458,7 +458,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
       const s1 = Math.min(L, s0 + 2), at = (s, o) => [A[0] + tx * s - ox * o, A[1] + tz * s - oz * o];
       flat(path, at(s0, 0.1), at(s1, 0.1), at(s1, FENCE - 0.1), at(s0, FENCE - 0.1));
       // 芝生: 柵からコースの縁石の外まで
-      const reach = (s) => { const pt = at(s, FENCE), k = nearestRoute(...pt); return Math.max(FENCE, FENCE + k.d - (FUJI_ROAD_HALF + 1.25)); };
+      const reach = (s) => { const pt = at(s, FENCE), k = nearestRoute(...pt); return Math.max(FENCE, FENCE + k.d - FUJI_ROAD_HALF); };   // 芝生はコースの縁まで(すき間を作らない)
       flat(lawn, at(s0, FENCE), at(s1, FENCE), at(s1, reach(s1)), at(s0, reach(s0)));
       const fa = at(s0, FENCE), fb = at(s1, FENCE), ya = gy(...fa) - 0.05, yb = gy(...fb) - 0.05;
       wallQ(rail, railUv, fa, fb, ya, yb, 1.5, s0 / 4, s1 / 4, 1);
@@ -467,7 +467,7 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     }
     const mesh = (P, mat, U) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); if (U) g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); scenery.add(m); return m; };
     mesh(path, new THREE.MeshLambertMaterial({ color: 0x55575a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
-    mesh(lawn, new THREE.MeshLambertMaterial({ color: 0x8fb35e, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+    mesh(lawn, new THREE.MeshLambertMaterial({ color: 0xa6dc87, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
     // 白いガードレール(3段の波板)
     const rc = document.createElement('canvas'); rc.width = 64; rc.height = 64; const r2 = rc.getContext('2d');
     for (let k = 0; k < 3; k++) { const y = k * 21, gr = r2.createLinearGradient(0, y, 0, y + 21); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.45, '#eef0ef'); gr.addColorStop(0.55, '#c9cccb'); gr.addColorStop(1, '#f7f8f7'); r2.fillStyle = gr; r2.fillRect(0, y, 64, 21); }
