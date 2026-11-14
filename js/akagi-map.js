@@ -421,8 +421,33 @@ export function buildAkagiMap(data) {
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
-  const start = data.start ?? 0;
-  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal: data.goal ?? n - 1,
+  const start = data.start ?? 0, goal = data.goal ?? n - 1;
+  // 姫百合駐車場側の発進位置: ゴール地点に最も近い駐車場の道路側の縁から、場内へ約3m入った位置。
+  const parkingStart = (() => {
+    if (!parkings.length) return null;
+    const target = route[goal];
+    let best = null;
+    for (const P of parkings) {
+      for (let j = 0; j < P.pts.length; j++) {
+        const a = P.pts[j], b = P.pts[(j + 1) % P.pts.length];
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const t = THREE.MathUtils.clamp(((target.x - a[0]) * dx + (target.z - a[1]) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+        const x = a[0] + dx * t, z = a[1] + dz * t, d = Math.hypot(x - target.x, z - target.z);
+        if (!best || d < best.d) best = { P, x, z, d };
+      }
+    }
+    if (!best) return null;
+    const cx = best.P.pts.reduce((v, q) => v + q[0], 0) / best.P.pts.length;
+    const cz = best.P.pts.reduce((v, q) => v + q[1], 0) / best.P.pts.length;
+    const dx = cx - best.x, dz = cz - best.z, len = Math.hypot(dx, dz) || 1;
+    let x = best.x, z = best.z;
+    for (const step of [3.2, 2.5, 1.8, 1.0, 0.4]) {
+      const tx = best.x + dx / len * step, tz = best.z + dz / len * step;
+      if (inPoly(best.P, tx, tz)) { x = tx; z = tz; break; }
+    }
+    return { x, y: best.P.y, z };
+  })();
+  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
