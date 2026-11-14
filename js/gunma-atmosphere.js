@@ -42,10 +42,12 @@ export function createCanopyShade(seam, opts = {}) {
         shader.uniforms.canopyTime = time;
         shader.uniforms.canopyStrength = strength;
         shader.uniforms.canopySeam = { value: new THREE.Vector4(seam.startX, seam.endX, seam.offset.x, seam.offset.z) };
-        shader.vertexShader = 'varying vec3 canopyWorld;\n' + shader.vertexShader;
+        // canopyMask(頂点ごと、0〜1): 木陰をかける強さ。持たない形は 1(どこでも木陰の模様)
+        const masked = !!opts.masked;
+        shader.vertexShader = 'varying vec3 canopyWorld;\nvarying float vCanopyMask;\n' + (masked ? 'attribute float canopyMask;\n' : '') + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace('#include <worldpos_vertex>',
-          '#include <worldpos_vertex>\ncanopyWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-        shader.fragmentShader = 'uniform sampler2D canopyMap;\nuniform float canopyTime, canopyStrength;\nuniform vec4 canopySeam;\nvarying vec3 canopyWorld;\n' + shader.fragmentShader;
+          '#include <worldpos_vertex>\ncanopyWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvCanopyMask = ' + (masked ? 'canopyMask' : '1.0') + ';');
+        shader.fragmentShader = 'uniform sampler2D canopyMap;\nuniform float canopyTime, canopyStrength;\nuniform vec4 canopySeam;\nvarying vec3 canopyWorld;\nvarying float vCanopyMask;\n' + shader.fragmentShader;
         shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
           #include <color_fragment>
           // Road copies beyond either end repeat the shadows of the other end.
@@ -56,10 +58,10 @@ export function createCanopyShade(seam, opts = {}) {
           shadeUV.x += sin(canopyTime*0.35+canopyRing.z*0.08)*0.012;
           float shade = texture2D(canopyMap, shadeUV).r;
           float grove = smoothstep(-0.4,0.65,sin(canopyRing.x*0.035+sin(canopyRing.z*0.048)));
-          diffuseColor.rgb *= 1.0 - (1.0-shade)*${opts.depth ?? 0.72}*grove*canopyStrength;
+          diffuseColor.rgb *= 1.0 - (1.0-shade)*${opts.depth ?? 0.72}*grove*canopyStrength*vCanopyMask;
         `);
       };
-      material.customProgramCacheKey = () => `gunma-canopy-v2-${opts.depth ?? 0.72}-${opts.scale ?? 0.055}`;
+      material.customProgramCacheKey = () => `gunma-canopy-v3-${opts.depth ?? 0.72}-${opts.scale ?? 0.055}-${!!opts.masked}`;
       materials.set(source, material);
       return material;
     },

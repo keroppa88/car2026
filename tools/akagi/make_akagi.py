@@ -84,5 +84,9 @@ data = {'origin': [float(lat0), float(lon0)], 'base': BASE, 'start': int(round(c
         'route': [[round(float(q[0]), 2), round(float(y[i] - BASE), 3), round(float(q[1]), 2)] for i, q in enumerate(Q)],
         'ground': {'x0': round(float(x0), 2), 'z0': round(float(z0), 2), 'cell': CELL, 'nx': nx, 'nz': nz,
                    'h': [round(float(v), 1) for v in gh.ravel()]}}
+if OUT.exists():   # 塗って決めた場所(apply_top_paint.py)は残す
+    old = json.loads(OUT.read_text())
+    for key in ('meadows', 'bushes', 'parkings', 'toilets'):
+        if key in old: data[key] = old[key]
 OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
 print('のばした長さ', round(cs), round(L - ce), ' スタート', data['start'], 'ゴール', data['goal'], ' 長さ', round(L), 'm  点', n, ' 高さ', round(y[0]), '→', round(y[-1]), ' 基準', BASE, ' 地面', nx, 'x', nz, OUT.stat().st_size // 1024, 'KB')
