@@ -9,13 +9,54 @@ const RADIUS = 260;
 const CELL = 30;
 const PUFFS = 10;
 
-export function createMoorFog(scene, course) {
+export function createMoorFog(scene, course, options = {}) {
   const { groundHeightAt } = course;
   const texture = makePuffTexture();
   const time = { value: 0 };
   const tint = { value: new THREE.Color(0xc9cdc6) };
+  const hash = (a, b, salt) => {
+    let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ salt;
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+  };
+
+  // 赤城用: 道路沿いの一部区間だけ、左右どちらかの路肩に柔らかい霧の塊を固定配置。
+  // ルート距離で約125mごとに候補を置き、一定間隔の帯に見えないよう間引く。
+  const roadPuffs = [];
+  if (options.roadside && course.route?.length > 1) {
+    const route = course.route;
+    let travelled = 0, nextAt = 85, patch = 0;
+    for (let i = 0; i + 1 < route.length; i++) {
+      const a = route[i], b = route[i + 1];
+      const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
+      if (length < 0.001) continue;
+      while (travelled + length >= nextAt) {
+        if (hash(patch, 0, 0x51) > 0.34) {
+          const t = (nextAt - travelled) / length;
+          const px = a.x + dx * t, pz = a.z + dz * t;
+          const nx = dz / length, nz = -dx / length;
+          const side = hash(patch, 0, 0x91) < 0.5 ? -1 : 1;
+          const offset = 8 + hash(patch, 1, 31) * 12;
+          const cx = px + nx * side * offset, cz = pz + nz * side * offset;
+          for (let k = 0; k < 5; k++) {
+            const angle = hash(patch, k, 13) * Math.PI * 2;
+            const spread = Math.sqrt(hash(patch, k, 29)) * 14;
+            const x = cx + Math.cos(angle) * spread;
+            const z = cz + Math.sin(angle) * spread;
+            const width = 20 + hash(patch, k, 47) * 22;
+            const height = width * (0.28 + hash(patch, k, 53) * 0.16);
+            const y = groundHeightAt(x, z) + height * (0.22 + hash(patch, k, 61) * 0.12);
+            roadPuffs.push({ x, y, z, width, height, depth: 0.55 + hash(patch, k, 67) * 0.35 });
+          }
+        }
+        nextAt += 125;
+        patch++;
+      }
+      travelled += length;
+    }
+  }
   const cells = Math.ceil(RADIUS / CELL);
-  const capacity = Math.ceil(Math.PI * cells * cells) * PUFFS;
+  const capacity = Math.ceil(Math.PI * cells * cells) * PUFFS + roadPuffs.length;
   const material = new THREE.ShaderMaterial({
     uniforms: { fogMap: { value: texture }, time, tint },
     vertexShader: `
@@ -56,11 +97,6 @@ export function createMoorFog(scene, course) {
   mesh.renderOrder = 2;
   scene.add(mesh);
 
-  const hash = (a, b, salt) => {
-    let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ salt;
-    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
-    return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
-  };
   // How far a spot sits below the ground around it, 0 (not a hollow) to 1.
   // Cached per cell: the terrain never changes.
   const hollowCache = new Map();
@@ -105,6 +141,13 @@ export function createMoorFog(scene, course) {
           mesh.setMatrixAt(n++, matrix);
         }
       }
+    }
+    // 道沿いの霧も、カメラから遠すぎない塊だけ追加。塊自体はワールド座標に固定。
+    for (const puff of roadPuffs) {
+      if (Math.hypot(puff.x - cx, puff.z - cz) > RADIUS + 45) continue;
+      matrix.makeScale(puff.width, puff.height, puff.depth);
+      matrix.setPosition(puff.x, puff.y, puff.z);
+      mesh.setMatrixAt(n++, matrix);
     }
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
