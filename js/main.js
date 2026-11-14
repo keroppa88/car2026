@@ -5821,8 +5821,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           MAP_CONFIG.spawnReferenceZ = anchor ? anchor.z : p.z;
           // 指定座標は道路センターライン。日本の左側通行なので、進行方向の左車線中央へ1.8m寄せる。
           MAP_CONFIG.spawnOffsetRight = isHimeyuri ? -1.8 : 0;
-          // 道路上の実際の路面高をレイキャストで取得する。駐車場の高さは使わない。
-          MAP_CONFIG.spawnSurfaceY = null;
+          // 発進地点は道路センターライン上の route[index] を基準にしている。
+          // 車線オフセット後も同じ道路断面上なので、路面高はその地点のコース標高を使う。
+          // 地形格子へのフォールバックで地表下/空中になるのを防ぐ。
+          MAP_CONFIG.spawnSurfaceY = p.y;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
           MAP_CONFIG.startKey = selected.key;
