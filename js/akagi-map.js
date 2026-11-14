@@ -308,6 +308,50 @@ export function buildAkagiMap(data) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x55585a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); m.name = 'akagi-parking'; scenery.add(m);
   }
+  // ---- 終着点の駐車場に、まばらに駐車した車を8台配置 ----
+  if (parkings.length && data.goal != null) {
+    const goal = route[data.goal];
+    const P = parkings.reduce((best, q) => {
+      const cx = q.pts.reduce((s, v) => s + v[0], 0) / q.pts.length;
+      const cz = q.pts.reduce((s, v) => s + v[1], 0) / q.pts.length;
+      const d = (cx - goal.x) ** 2 + (cz - goal.z) ** 2;
+      return !best || d < best.d ? { P: q, d } : best;
+    }, null).P;
+    let longest = 0, baseAngle = 0;
+    for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) {
+      const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], len = Math.hypot(dx, dz);
+      if (len > longest) { longest = len; baseAngle = Math.atan2(-dz, dx); }
+    }
+    let seed = 20261114;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const xs = P.pts.map(v => v[0]), zs = P.pts.map(v => v[1]);
+    const cars = [];
+    // 車体の長さ・幅を確保し、互いに距離を空けて候補位置を探す
+    for (let tries = 0; tries < 12000 && cars.length < 8; tries++) {
+      const x = Math.min(...xs) + rnd() * (Math.max(...xs) - Math.min(...xs));
+      const z = Math.min(...zs) + rnd() * (Math.max(...zs) - Math.min(...zs));
+      if (!inPoly(P, x, z) || edgeDist(P, x, z) < 2.7) continue;
+      if (cars.some(c => Math.hypot(c[0] - x, c[1] - z) < 5.8)) continue;
+      cars.push([x, z, baseAngle + (rnd() - 0.5) * 0.28]);
+    }
+    if (cars.length) {
+      const palette = [0xf4f4f2, 0xc9ccce, 0x2a2c2f, 0x7d8286, 0xc8232c, 0x1f4fa8, 0x2b7a4b, 0xe0e0d8];
+      const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1.75, 0.85, 4.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), cars.length);
+      const cab = new THREE.InstancedMesh(new THREE.BoxGeometry(1.6, 0.6, 2.3), new THREE.MeshLambertMaterial({ color: 0x30363c }), cars.length);
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+      cars.forEach(([x, z, angle], i) => {
+        const y = P.y + 0.02, tall = i === 3 ? 1.18 : 1;
+        Q.setFromAxisAngle(Y, angle);
+        body.setMatrixAt(i, M.compose(V.set(x, y + 0.6, z), Q, S.set(1, tall, 1)));
+        body.setColorAt(i, C.setHex(palette[i]));
+        cab.setMatrixAt(i, M.compose(V.set(x, y + 1.025 * tall, z), Q, S.set(1, 1, tall > 1 ? 1.4 : 1)));
+      });
+      body.frustumCulled = cab.frustumCulled = false;
+      body.name = cab.name = 'akagi-parked-cars';
+      scenery.add(body, cab);
+    }
+  }
+
   for (const [tx, tz] of data.toilets || []) {
     const P = parkings.find((q) => inPoly(q, tx, tz) || edgeDist(q, tx, tz) < 6);
     let ang = 0;   // 向き: 駐車場のいちばん長い辺にそろえる
