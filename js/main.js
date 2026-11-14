@@ -4315,15 +4315,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const trafficPlan = FUJI_COURSE
       ? [['same', Math.round(GUNMA_CPU_SAME * 1.5), FUJI_CPU_FACTORS.map((f) => f * PLAYER_TOP_SPEED_KMH)]]   // サーキットは同じ向きだけ。台数 1.5倍、自車の最高速の 0.8〜1.1倍
       : [
-        ['same', GUNMA_CPU_SAME, [65, 75, 85]],
-        ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
+        ['same', AKAGI_COURSE ? 3 : GUNMA_CPU_SAME, [65, 75, 85]],
+        ['oncoming', AKAGI_COURSE ? 3 : GUNMA_CPU_ONCOMING, [55, 65, 75]],
       ];
     for (const [direction, count, speeds] of trafficPlan) {
       const path = paths[direction];
       for (let i = 0; i < count; i++) {
-        const distance = starts[direction] + i * path.length / count;
+        const endDistance = path.distances[path.points.length - 1];
+        const distance = AKAGI_COURSE
+          ? clamp(starts[direction] + i * 110, 8, Math.max(8, endDistance - 12))
+          : starts[direction] + i * path.length / count;
         const at = sampleGunmaTrafficPath(path, distance);
-        const ahead = sampleGunmaTrafficPath(path, distance + 4);
+        const ahead = sampleGunmaTrafficPath(path, Math.min(distance + 4, endDistance));
         const vehicle = vehicles[created % vehicles.length];
         const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
@@ -10097,10 +10100,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const target = Math.min(ai.base, PLAYER_TOP_SPEED, path.fujiSpeed[lo]);   // 直線の上限は自車の最高速まで
       ai.v += THREE.MathUtils.clamp(target - ai.v, -6 * dt, 3.5 * dt);
     }
-    ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
+    const endDistance = path.distances[path.points.length - 1];
+    if (AKAGI_COURSE) {
+      ai.gunmaDistance += ai.v * dt;
+      if (ai.gunmaDistance >= endDistance - 1) {
+        ai.group.visible = false;
+        ai.active = false;
+        return;
+      }
+    } else {
+      ai.gunmaDistance = (ai.gunmaDistance + ai.v * dt) % path.length;
+    }
     const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
-    const ahead = sampleGunmaTrafficPath(path, ai.gunmaDistance + 4);
-    const behind = sampleGunmaTrafficPath(path, ai.gunmaDistance - 4);
+    const ahead = sampleGunmaTrafficPath(path, Math.min(ai.gunmaDistance + 4, endDistance));
+    const behind = sampleGunmaTrafficPath(path, Math.max(0, ai.gunmaDistance - 4));
     // Near the seam, draw each car on whichever copy of the endless road is
     // nearest the player, so traffic carries straight across it. The copies
     // only reach about 160 m past each end; farther out the shifted spot has
