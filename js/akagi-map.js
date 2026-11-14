@@ -488,10 +488,13 @@ export function buildAkagiMap(data) {
     const diffuserMat = new THREE.MeshBasicMaterial({ color: 0x665b42 });
     const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
     diffuser.position.set(x, ly + 5.31, z); diffuser.name = name + '-diffuser'; scenery.add(diffuser);
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), haloMat);
+    // 光だまりの拡散範囲は従来の5倍。PointLightも強度5・照射距離27.5mで追加する。
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(27.5, 27.5), haloMat);
     halo.rotation.x = -Math.PI / 2; halo.position.set(x, ly + 0.035, z); halo.name = name + '-pool'; scenery.add(halo);
-    akagiNightLights.push({ diffuserMat, haloMat });
+    const light = new THREE.PointLight(0xffd98a, 5, 27.5, 2);
+    light.position.set(x, ly + 5.25, z); light.visible = false; light.name = name + '-point-light'; scenery.add(light);
+    akagiNightLights.push({ diffuserMat, haloMat, light });
   };
   const toiletPts = (data.toilets || []);
   if (toiletPts.length >= 2) {
@@ -580,7 +583,7 @@ export function buildAkagiMap(data) {
     }
     return { x, y: best.P.y, z };
   })();
-  const setNight = (on) => { for (const { diffuserMat, haloMat } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 0.24 : 0; } };
+  const setNight = (on) => { for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
   return { setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
