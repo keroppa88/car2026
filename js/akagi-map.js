@@ -125,7 +125,7 @@ export function buildAkagiMap(data) {
     }
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
   }
-  const PARK_ENTRANCE_HALF_LENGTH = 8; // 出入口の幅は道路沿い約16m
+  const PARK_ENTRANCE_HALF_LENGTH = 18; // 黄色指定の出入口。道路沿い約36mを開放
   const nearParkingEntrance = (x, z) => {
     const r = roadAt(x, z);
     return !!r && parkings.some((P) => Math.abs(routeS[r.i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH);
