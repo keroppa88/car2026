@@ -100,32 +100,21 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  const PARK_DROP = 0.0;       // 駐車場は道路と同じ高さ(地面側に5cmの排水勾配差のみ)
-  const PARK_RAMP = 1.5;       // 道路脇から駐車場へつなぐ短いコンクリート接続帯
-  for (const P of parkings) {
-    let best = null;
-    for (const q of P.pts) {
-      const r = roadAt(q[0], q[1]);
-      if (r && (!best || r.d < best.d)) best = r;
-    }
-    const roadY = best ? best.y : route[nearestRoute(P.pts[0][0], P.pts[0][1]).i].y;
-    P.roadY = roadY;
-    P.y = roadY - PARK_DROP;
-  }
-  const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
-  const parkingRampHeight = (P, x, z) => {
+  // 駐車場は一定高さにせず、道路中心線の縦断勾配をそのまま延長した舗装面にする。
+  // 道路そのもの(路面・路肩)の高さは変更しない。
+  const PARK_BLEND = 8;
+  const parkingHeightAt = (x, z) => {
     const r = roadAt(x, z);
-    if (!r || r.d < EDGE || r.d > EDGE + PARK_RAMP) return null;
-    const t = THREE.MathUtils.smoothstep(r.d, EDGE, EDGE + PARK_RAMP);
-    return THREE.MathUtils.lerp(r.y - 0.05, P.y - 0.05, t);
+    return r ? r.y - 0.05 : H0(x, z);
   };
   const H = (x, z) => {
     let h = H0(x, z);
-    const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
+    const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;
     for (const P of parkings) {
       if (x < P.x0 - PARK_BLEND || x > P.x1 + PARK_BLEND || z < P.z0 - PARK_BLEND || z > P.z1 + PARK_BLEND) continue;
-      if (inPoly(P, x, z)) return parkingRampHeight(P, x, z) ?? (P.y - 0.05);
-      const d = edgeDist(P, x, z); if (d < PARK_BLEND) h = THREE.MathUtils.lerp(P.y - 0.05, h, THREE.MathUtils.smoothstep(d, 0, PARK_BLEND));
+      if (inPoly(P, x, z)) return parkingHeightAt(x, z);
+      const d = edgeDist(P, x, z);
+      if (d < PARK_BLEND) h = THREE.MathUtils.lerp(parkingHeightAt(x, z), h, THREE.MathUtils.smoothstep(d, 0, PARK_BLEND));
     }
     return h;
   };
@@ -413,7 +402,7 @@ export function buildAkagiMap(data) {
       const tx = best.x + dx / len * step, tz = best.z + dz / len * step;
       if (inPoly(best.P, tx, tz)) { x = tx; z = tz; break; }
     }
-    return { x, y: best.P.y, z };
+    return { x, y: H(x, z), z };
   })();
   return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
