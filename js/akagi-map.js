@@ -238,20 +238,21 @@ export function buildAkagiMap(data) {
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
+    const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
       const p = route[i], nn = tangents[i], g = akagiGrove(p.x, p.z);
       if (rnd() > 0.12 + 0.55 * g) continue;
       const off = g > 0.5 ? RAIL + 1.2 + rnd() * 5 : RAIL + 7 + rnd() * 10;
       const x = p.x + nn.x * side * off + (rnd() - 0.5) * 2, z = p.z + nn.z * side * off + (rnd() - 0.5) * 2;
-      const r = roadAt(x, z); if (!r || r.d < RAIL + 1 || T(x, z) - H(x, z) > 0.5) continue;   // 崖(削った面)には立てない
+      const r = roadAt(x, z); if (!r || r.d < RAIL + 1 || T(x, z) - H(x, z) > 0.5 || tooSteep(x, z)) continue;   // 崖(削った面)には立てない
       trees.push([x, groundHeightAt(x, z) - 0.3, z, g > 0.5 ? 15 + rnd() * 7 : 10 + rnd() * 6]);
     }
     // 奥の森(道から 15m〜100m)
     for (let k = 0; k < 30000 && trees.length < 6000; k++) {
       const i = Math.floor(rnd() * n), side = rnd() < 0.5 ? -1 : 1, off = RAIL + 15 + rnd() ** 1.4 * 85, p = route[i], nn = tangents[i];
       const x = p.x + nn.x * side * off + (rnd() - 0.5) * 6, z = p.z + nn.z * side * off + (rnd() - 0.5) * 6;
-      const r = roadAt(x, z); if (!r || r.d < RAIL + 10) continue;
+      const r = roadAt(x, z); if (!r || r.d < RAIL + 10 || tooSteep(x, z)) continue;
       trees.push([x, groundHeightAt(x, z) - 0.3, z, 11 + rnd() * 8]);
     }
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
