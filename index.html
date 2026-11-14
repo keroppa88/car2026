@@ -416,6 +416,9 @@
   .dq-window .dq-title { margin-bottom: 10px; }
   .dq-window .dq-item { padding: 5px 0 5px 1.6em; position: relative; cursor: pointer; }
   .dq-window .dq-item.active::before { content: '→'; position: absolute; left: 0; }
+  /* 開始位置メニューだけ横幅を広げ、地点名を1行で表示する。 */
+  #start-grid { width: min(500px, calc(100vw - 32px)); box-sizing: border-box; }
+  #start-grid .dq-item { white-space: nowrap; }
   .select-card {
     min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
     gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
@@ -887,7 +890,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261115-akagi-lamps-D-4');
+    import('./js/main.js?v=20261115-akagi-cpu-light-menu-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
