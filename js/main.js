@@ -5817,13 +5817,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const q = gunmaCourse.route[isHimeyuri ? Math.max(0, index - 1) : Math.min(gunmaCourse.route.length - 1, index + 1)];
           const dx = q.x - p.x, dz = q.z - p.z;
           const heading = Math.atan2(dx, dz);
-          MAP_CONFIG.spawnReferenceX = anchor ? anchor.x : p.x;
-          MAP_CONFIG.spawnReferenceZ = anchor ? anchor.z : p.z;
+          // 指定座標は最近傍の道路センターラインを探すためだけに使う。
+          // 実際の発進基準点は必ずセンターライン上の route[index] に置く。
+          MAP_CONFIG.spawnReferenceX = p.x;
+          MAP_CONFIG.spawnReferenceZ = p.z;
           // 指定座標は道路センターライン。日本の左側通行なので、進行方向の左車線中央へ1.8m寄せる。
           MAP_CONFIG.spawnOffsetRight = isHimeyuri ? -1.8 : 0;
-          // 発進地点は道路センターライン上の route[index] を基準にしている。
-          // 車線オフセット後も同じ道路断面上なので、路面高はその地点のコース標高を使う。
-          // 地形格子へのフォールバックで地表下/空中になるのを防ぐ。
+          // route[index].y は路面高の検索基準値。実際の発進Yは、
+          // 車線オフセット後のX/Zで道路メッシュをレイキャストして取得する。
           MAP_CONFIG.spawnSurfaceY = p.y;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
@@ -6412,16 +6413,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : MAP_CONFIG.spawnReference === 'fixed' ? MAP_CONFIG.spawnReferenceZ : 0;
     if (MAP_CONFIG.spawnExactReference) {
       const exactPosition = applySpawnXZOffsets(referenceX, referenceZ, spawnHeading);
+      const referenceSurfaceY = Number.isFinite(MAP_CONFIG.spawnSurfaceY)
+        ? MAP_CONFIG.spawnSurfaceY
+        : MAP_CONFIG.positionOffsetY;
       const roadY = MAP_CONFIG.spawnSurfaceMode === 'topDrivable'
         ? getTopDrivableHeightAt(exactPosition.x, exactPosition.z)
         : MAP_CONFIG.spawnSurfaceMode === 'mapSurface'
           ? (getMapSurfacesAt(exactPosition.x, exactPosition.z)[0]?.point.y ?? null)
           : MAP_CONFIG.spawnSurfaceMode === 'roadSurface'
-            ? getRoadHeightNear(exactPosition.x, exactPosition.z, MAP_CONFIG.positionOffsetY)
+            ? getRoadHeightNear(exactPosition.x, exactPosition.z, referenceSurfaceY)
             : getRoadHeightAt(exactPosition.x, exactPosition.z);
-      const surfaceY = Number.isFinite(MAP_CONFIG.spawnSurfaceY)
-        ? MAP_CONFIG.spawnSurfaceY
-        : roadY ?? groundHeightAt(exactPosition.x, mapRayTop, exactPosition.z);
+      // 路面レイキャストを優先。routeのYはレイキャスト不能時だけ使い、
+      // 地形メッシュの別レイヤーを拾って車体が埋まる/浮くのを防ぐ。
+      const surfaceY = roadY ?? referenceSurfaceY;
       return {
         x: exactPosition.x,
         y: surfaceY + MAP_CONFIG.spawnOffsetY + CAR_CONFIGS[PLAYER_CAR_KEY].groundOffset,
