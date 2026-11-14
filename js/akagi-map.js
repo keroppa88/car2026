@@ -485,10 +485,13 @@ export function buildAkagiMap(data) {
     const vx = toiletPts[1][0] - toiletPts[0][0], vz = toiletPts[1][1] - toiletPts[0][1];
     const vl = Math.hypot(vx, vz) || 1;
     let between = null;
-    for (const side of [-1, 1]) {
-      const x = mx + (-vz / vl) * side * 4.8, z = mz + (vx / vl) * side * 4.8;
-      if (parkings.some(P => inPoly(P, x, z)) &&
-          toiletPts.every(([tx,tz]) => Math.hypot(x-tx,z-tz) >= 5.2)) { between = {x,z}; break; }
+    // まず建物2棟の正確な中間点を使う。屋根の外に出る距離が取れない場合だけ横へ逃がす。
+    const candidates = [{x:mx,z:mz}, ...[-1,1].map(side => ({
+      x:mx + (-vz / vl) * side * 4.8, z:mz + (vx / vl) * side * 4.8
+    }))];
+    for (const p of candidates) {
+      if (parkings.some(P => inPoly(P, p.x, p.z)) &&
+          toiletPts.every(([tx,tz]) => Math.hypot(p.x-tx,p.z-tz) >= 4.2)) { between = p; break; }
     }
     if (between) addAkagiLamp(between.x, between.z, 'akagi-lamp-between-toilets');
   }
