@@ -517,6 +517,17 @@ export function buildAkagiMap(data) {
       if(inPoly(P,x,z) && toiletPts.every(([tx,tz])=>Math.hypot(x-tx,z-tz)>=5.2)) { best={x,z}; break; }
     }
     if(best) addAkagiLamp(best.x,best.z,'akagi-lamp-ramp-side');
+
+    // 赤印の位置：駐車場スロープの脇、道路から駐車場側へ少し入った場所にもう1基。
+    // 既存の2基は動かさず、この位置に追加する。
+    const rampPoint = route[ri], rampNormal = tangents[ri];
+    let markedSide = null;
+    for (const side of [-1, 1]) {
+      const x = rampPoint.x + rampNormal.x * side * (R + 2.2);
+      const z = rampPoint.z + rampNormal.z * side * (R + 2.2);
+      if (inPoly(P, x, z)) { markedSide = {x,z}; break; }
+    }
+    if (markedSide) addAkagiLamp(markedSide.x, markedSide.z, 'akagi-lamp-marked-ramp-side');
   }
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
