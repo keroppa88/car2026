@@ -514,39 +514,8 @@ export function buildAkagiMap(data) {
   // C：今回追加したスロープ脇の街灯。
   addAkagiLamp(-1493, 1771, 'akagi-lamp-ramp-side');
 
-  // B：以前からあった駐車場内の街灯を復活。
-  // 駐車場入口から道路沿いに約30m戻った地点の境界から、場内へ1.2m入れた位置。
-  // 元の配置ロジックを復元し、駐車場基準点そのものには置かない。
-  if (parkings.length) {
-    const P = parkings.reduce((best, q) =>
-      !best || Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0], q.pts[0][1]).i] || 0)) < best.score
-        ? { q, score: Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0], q.pts[0][1]).i] || 0)) }
-        : best, null)?.q || parkings[0];
-    const targetS = Math.max(0, P.rampS - 30);
-    const targetI = routeS.reduce((bestI, s, i) =>
-      Math.abs(s - targetS) < Math.abs(routeS[bestI] - targetS) ? i : bestI, 0);
-    const targetRoad = route[targetI], targetNormal = tangents[targetI];
-    let restoredLampB = null;
-    for (const side of [-1, 1]) {
-      const ex = targetRoad.x + targetNormal.x * side * (R + 0.2);
-      const ez = targetRoad.z + targetNormal.z * side * (R + 0.2);
-      let edge = null;
-      for (let i = 0; i < P.pts.length; i++) {
-        const a = P.pts[i], b = P.pts[(i + 1) % P.pts.length];
-        const dx = b[0] - a[0], dz = b[1] - a[1];
-        const t = THREE.MathUtils.clamp(((ex - a[0]) * dx + (ez - a[1]) * dz) / (dx * dx + dz * dz || 1), 0, 1);
-        const x = a[0] + dx * t, z = a[1] + dz * t, d = Math.hypot(x - ex, z - ez);
-        if (!edge || d < edge.d) edge = { x, z, d };
-      }
-      if (!edge) continue;
-      const cx = P.pts.reduce((s, q) => s + q[0], 0) / P.pts.length;
-      const cz = P.pts.reduce((s, q) => s + q[1], 0) / P.pts.length;
-      const dx = cx - edge.x, dz = cz - edge.z, dl = Math.hypot(dx, dz) || 1;
-      const x = edge.x + dx / dl * 1.2, z = edge.z + dz / dl * 1.2;
-      if (inPoly(P, x, z)) { restoredLampB = { x, z }; break; }
-    }
-    if (restoredLampB) addAkagiLamp(restoredLampB.x, restoredLampB.z, 'akagi-lamp-parking-existing');
-  }
+  // B：以前からあった街灯。指定座標に固定して復活。
+  addAkagiLamp(1475, -1795, 'akagi-lamp-parking-existing');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
