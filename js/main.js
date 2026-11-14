@@ -984,6 +984,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       streetLampHeads.material =
         allLampsVisible ? streetLampHeadNightMat : streetLampHeadDayMat;
     }
+    // 赤城の街灯も、全マップ共通の街灯点灯状態(N/Pキー・自動判定)に同期。
+    if (AKAGI_COURSE) gunmaCourse?.setNight?.(allLampsVisible);
     document.body.dataset.manualLampMode = String(lampOverride);
     document.body.dataset.streetLightsVisible = String(allLampsVisible);
   }
@@ -1350,7 +1352,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 夕暮れや曇天に見えないため。0=昼のまま / 1=夜間モードと同じ暗さ。
     const dusk = weatherDuskLevel();
     const nightLike = dusk >= 1;
-    if (AKAGI_COURSE) gunmaCourse?.setNight?.(nightLike);
     if (nightLike) {
       hemi.intensity = 0.13;
       hemi.color.copy(NIGHT_HEMI_SKY);
