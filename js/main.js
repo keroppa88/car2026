@@ -25,7 +25,7 @@ import { buildAkagiMap } from './akagi-map.js?v=20261115-akagi-cpu-light-menu-1'
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
-import { createMoorFog } from './moor-fog.js?v=20260927-moor-4';
+import { createMoorFog } from './moor-fog.js?v=20261115-akagi-road-mist-1';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
 
 (function () {
@@ -2321,30 +2321,41 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     renderer.domElement.setPointerCapture(e.pointerId);
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-  // 日本橋・湘南: マウスで指している地面の座標(x=東、z=南、m)を画面の下の中央に出す。修正の指示に使う
+  // U: 空撮中だけ、指している地面の座標を表示する。
+  let aerialView = false;
+  let syncAerialCoordinateDisplay = () => {};
   if (MAP_VIEW_COURSE) {
     const coordEl = document.createElement('div');
     coordEl.id = 'cursor-coord';
-    coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;';
-    coordEl.textContent = 'x -, z -';
+    coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;display:none;';
+    coordEl.textContent = '';
     document.body.appendChild(coordEl);
-    setInterval(() => { coordEl.style.display = bonnetView === 0 ? 'block' : 'none'; }, 200);   // 客観視点の時だけ出す
+    syncAerialCoordinateDisplay = () => {
+      const visible = aerialView && bonnetView === 0;
+      coordEl.style.display = visible ? 'block' : 'none';
+      if (!visible) coordEl.textContent = '';
+      else if (!coordEl.textContent) coordEl.textContent = 'x -, z -';
+    };
+    syncAerialCoordinateDisplay();
+    setInterval(syncAerialCoordinateDisplay, 200);
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
     let pending = null;
     window.addEventListener('pointermove', (e) => {   // 画面の上に重なった表示の上でも拾う
+      if (!aerialView || bonnetView !== 0) { coordEl.textContent = ''; return; }
       if (pending) { pending = e; return; }
       pending = e;
       requestAnimationFrame(() => {
         const ev = pending; pending = null;
+        if (!aerialView || bonnetView !== 0) { coordEl.textContent = ''; return; }
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
-        ground.constant = FUJI_COURSE || AKAGI_COURSE ? -player.pos.y : 0;   // 富士は起伏があるので、車の高さの平面で読む
+        ground.constant = FUJI_COURSE || AKAGI_COURSE ? -player.pos.y : 0;
         coordEl.textContent = ray.ray.intersectPlane(ground, hit) ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
       });
     });
   }
-  let aerialView = false;
+  
   function toggleAerialView() {
     aerialView = !aerialView;
     bonnetView = 0;
@@ -2362,6 +2373,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       cam.yaw = 0; cam.pitch = 0.34; cam.dist = 10; cam.panX = cam.panZ = 0;
     }
     document.body.dataset.aerialView = String(aerialView);
+    syncAerialCoordinateDisplay();
   }
   // ダブルクリックで視点の中心を車に戻す
   renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
@@ -6765,6 +6777,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         applyWeatherSky();
         scene.add(gunmaCourse.ground);
         scene.add(gunmaCourse.scenery);
+        // 道沿いの一部区間に、嵐が丘と同じ低い地表霧＋路肩の霧の塊を配置。
+        moorFog = createMoorFog(scene, gunmaCourse, { roadside: true });
         for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
@@ -6788,7 +6802,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         });
         gunmaCourse.ground.material = gunmaCanopy.material(gunmaCourse.ground.material);   // 地面にも同じ木陰
         gunmaCourse.scenery.traverse((mesh) => { if (mesh.name === 'akagi-roadside') mesh.material = gunmaCanopy.material(mesh.material); });   // 道わきの崖・斜面にも
-        document.body.dataset.mapFog = 'akagi-clear';
+        document.body.dataset.mapFog = 'akagi-roadside-mist';
       }
       if (COURSE_KEY === 'gunma') {
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
@@ -11469,7 +11483,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         gunmaCanopy?.update(dt, weatherDuskLevel());
         gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
         if (moorScenery) moorScenery.visible = !topView;
-        moorFog?.update(dt, camera, gunmaCourse.mistColor, topView);
         if (gunmaRoadsideForest) {
           gunmaRoadsideForest.visible = !topView;
           // Distant mountains move with the camera, so they do not jump at the seam.
@@ -11478,6 +11491,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
             camera.position.z - gunmaRoadsideForest.userData.farCenter.z);
         }
       }
+      moorFog?.update(dt, camera, gunmaCourse?.mistColor, topView || aerialView);
       renderer.render(scene, camera);
       renderMirror();
       drawMiniMap();
