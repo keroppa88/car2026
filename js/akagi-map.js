@@ -461,9 +461,25 @@ export function buildAkagiMap(data) {
 
   }
 
-  // 街灯の支柱基部は各地点の地形高 H(x,z) に合わせる。駐車場の高さを流用しない。
+  // 実際に描画される地面メッシュ(地形・道わき・駐車場舗装)へ上からRaycastし、
+  // いちばん上の面に支柱の根元を合わせる。H() の補間値だけで決めない。
+  const lampGroundMeshes = [ground, ...scenery.children.filter(o =>
+    o.isMesh && (o.name === 'akagi-roadside' || o.name === 'akagi-parking')
+  )];
+  for (const mesh of lampGroundMeshes) mesh.updateMatrixWorld(true);
+  const lampRaycaster = new THREE.Raycaster();
+  const lampRayOrigin = new THREE.Vector3();
+  const lampRayDown = new THREE.Vector3(0, -1, 0);
+  const lampSurfaceY = (x, z) => {
+    const terrainY = H(x, z);
+    lampRayOrigin.set(x, terrainY + 10000, z);
+    lampRaycaster.set(lampRayOrigin, lampRayDown);
+    const hit = lampRaycaster.intersectObjects(lampGroundMeshes, false)[0];
+    // 地面から 1.5cm 上げ、埋没と地面とのちらつきを防ぐ。
+    return (hit ? hit.point.y : terrainY) + 0.015;
+  };
   const addAkagiLamp = (x, z, name) => {
-    const ly = H(x, z);
+    const ly = lampSurfaceY(x, z);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.4, 10), poleMat);
     pole.position.set(x, ly + 2.7, z); pole.name = name + '-pole'; scenery.add(pole);
