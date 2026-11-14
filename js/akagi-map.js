@@ -125,23 +125,26 @@ export function buildAkagiMap(data) {
     }
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
   }
-  const PARK_ENTRANCE_HALF_LENGTH = 18; // 黄色指定の出入口。道路沿い約36mを開放
-  const nearParkingEntrance = (x, z) => {
+  const PARK_ENTRANCE_HALF_LENGTH = 18; // 姫百合側の駐車場に面した道路終端付近
+  const PARK_MAX_STEP = 0.45; // この高低差以下の区間だけスロープ化。それ以上は崖・段差を残してガードレール
+  const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
-    // 道路沿いの距離だけで両側を開けない。駐車場ポリゴンに面した側(黄色線側)だけ開放する。
-    return !!r && parkings.some((P) =>
-      Math.abs(routeS[r.i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH &&
-      edgeDist(P, x, z) <= 2.0
-    );
+    if (!r || Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
+    // 駐車場に面した側だけを対象にし、道路と駐車場の高低差が小さい区間に限定。
+    if (edgeDist(P, x, z) > 2.0) return null;
+    const rise = Math.abs(r.y - P.y);
+    if (rise > PARK_MAX_STEP) return null;
+    const length = rise / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180);
+    return { r, length };
   };
+  const nearParkingEntrance = (x, z) => parkings.some((P) => !!rampInfo(P, x, z));
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
   const parkingRampHeight = (P, x, z) => {
-    const r = roadAt(x, z);
-    if (!r || r.d < EDGE || r.d > EDGE + PARK_RAMP) return null;
-    if (Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
-    // 黄色指定の出入口だけ、道路端から駐車場へ15度で一定勾配。道路側の高さは変更しない。
-    const t = THREE.MathUtils.clamp((r.d - EDGE) / PARK_RAMP, 0, 1);
-    return THREE.MathUtils.lerp(r.y - 0.05, P.y - 0.05, t);
+    const info = rampInfo(P, x, z);
+    if (!info || info.length < 0.02 || info.r.d < EDGE || info.r.d > EDGE + info.length) return null;
+    // 低い段差だけ、実際の高低差に応じた15度スロープで接続。
+    const t = THREE.MathUtils.clamp((info.r.d - EDGE) / info.length, 0, 1);
+    return THREE.MathUtils.lerp(info.r.y - 0.05, P.y - 0.05, t);
   };
   const H = (x, z) => {
     let h = H0(x, z);
