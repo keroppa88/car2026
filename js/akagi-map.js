@@ -100,9 +100,9 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  for (const P of parkings) {   // 駐車場の高さ: いちばん近い道の高さ(平ら)
+  for (const P of parkings) {   // 駐車場の高さ: いちばん近い道より 0.5m 下げ、路面との段差を抑える
     let best = null; for (const q of P.pts) { const k = nearestRoute(q[0], q[1]); if (!best || k.d < best.d) best = k; }
-    P.y = route[best.i].y;
+    P.y = route[best.i].y - 0.5;
   }
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
   const H = (x, z) => {
