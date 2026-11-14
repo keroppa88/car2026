@@ -125,13 +125,12 @@ export function buildAkagiMap(data) {
     }
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
   }
-  const PARK_ENTRANCE_HALF_LENGTH = 18; // 姫百合側の駐車場に面した道路終端付近
+  const PARK_ENTRANCE_HALF_LENGTH = 55; // 姫百合駐車場に面した黄色指定区間を長めに開放(全長約110m)
   const PARK_MAX_STEP = 0.75; // 姫百合駐車場の黄色指定区間。ここより段差が大きい箇所は閉鎖
   const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
-    if (!r) return null;
-    // 駐車場に面した側だけを対象にする。終端側の低い区間は高低差で選別し、
-    // 駐車場から離れた区間・反対側の道路は対象外。
+    if (!r || Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
+    // 姫百合駐車場に面した黄色指定区間だけ。反対側・離れた道路は対象外。
     if (edgeDist(P, x, z) > 2.5) return null;
     const rise = Math.abs(r.y - P.y);
     if (rise > PARK_MAX_STEP) return null;
