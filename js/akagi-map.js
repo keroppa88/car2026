@@ -129,9 +129,10 @@ export function buildAkagiMap(data) {
   const PARK_MAX_STEP = 0.45; // この高低差以下の区間だけスロープ化。それ以上は崖・段差を残してガードレール
   const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
-    if (!r || Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
-    // 駐車場に面した側だけを対象にし、道路と駐車場の高低差が小さい区間に限定。
-    if (edgeDist(P, x, z) > 2.0) return null;
+    if (!r) return null;
+    // 駐車場に面した側だけを対象にする。終端側の低い区間は高低差で選別し、
+    // 駐車場から離れた区間・反対側の道路は対象外。
+    if (edgeDist(P, x, z) > 2.5) return null;
     const rise = Math.abs(r.y - P.y);
     if (rise > PARK_MAX_STEP) return null;
     const length = rise / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180);
