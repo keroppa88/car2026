@@ -1350,6 +1350,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 夕暮れや曇天に見えないため。0=昼のまま / 1=夜間モードと同じ暗さ。
     const dusk = weatherDuskLevel();
     const nightLike = dusk >= 1;
+    if (AKAGI_COURSE) gunmaCourse?.setNight?.(nightLike);
     if (nightLike) {
       hemi.intensity = 0.13;
       hemi.color.copy(NIGHT_HEMI_SKY);
