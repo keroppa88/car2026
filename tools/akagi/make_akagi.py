@@ -12,7 +12,7 @@ from scipy import ndimage
 ROOT = Path(__file__).resolve().parents[2]
 OSM, DEM, OUT = ROOT / 'tools/akagi/akagi.osm', ROOT / 'tools/akagi/akagi_dem.npz', ROOT / 'map/akagi-course.json'
 STEP, CELL, PAD = 3.0, 6.0, 600.0
-EXT = 100.0   # スタートの手前・ゴールの先にのばす長さ(m)
+EXT, EXT_GOAL = 100.0, 200.0   # スタートの手前・ゴールの先にのばす長さ(m)
 N, W = {}, {}
 for _, e in etree.iterparse(str(OSM), events=('end',)):
     if e.tag == 'node': N[e.get('id')] = (float(e.get('lat')), float(e.get('lon')))
@@ -46,7 +46,7 @@ def walk(end, back, need=EXT):
         if not nxt: break
         v, w = nxt[0]; out.append(v); d += w; prv, cur = cur, v
     return out
-pre, post = walk(path[0], path[1])[::-1], walk(path[-1], path[-2])
+pre, post = walk(path[0], path[1])[::-1], walk(path[-1], path[-2], EXT_GOAL)
 ll = np.array([N[i] for i in pre + path + post])
 lat0, lon0 = N[path[0]]
 KX = math.cos(math.radians(lat0)) * 111320.0; KZ = 110574.0
@@ -63,7 +63,7 @@ lat_of = lambda zz: lat0 - zz / KZ; lon_of = lambda xx: lon0 + xx / KX
 # コース: 3m ごとに置き直す(はじめと終わりがある1本道)
 seg = np.linalg.norm(np.diff(P, axis=0), axis=1); cum = np.concatenate([[0], np.cumsum(seg)]); L = cum[-1]
 cs = cum[len(pre)]; ce = cum[len(pre) + len(path) - 1]            # スタート・ゴールの位置(道にそった長さ)
-a0, a1 = max(0.0, cs - EXT), min(L, ce + EXT)                        # ちょうど 100m ずつに切る
+a0, a1 = max(0.0, cs - EXT), min(L, ce + EXT_GOAL)                   # ちょうどの長さに切る
 keep = (cum > a0) & (cum < a1)
 P = np.vstack([[np.interp(a0, cum, P[:, k]) for k in (0, 1)], P[keep], [np.interp(a1, cum, P[:, k]) for k in (0, 1)]])
 cs, ce = cs - a0, ce - a0
