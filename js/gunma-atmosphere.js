@@ -1,14 +1,23 @@
 import * as THREE from '../lib/three.module.js';
 
 // A single small repeating canopy mask replaces actual trees and shadow passes.
-export function createCanopyShade(seam) {
+// opts.flecks: 木もれ日(暗い木陰の中に明るい日だまりの斑点)。赤城山で使う
+export function createCanopyShade(seam, opts = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = opts.flecks ? '#2a2a2a' : '#fff';
   ctx.fillRect(0, 0, 128, 128);
   let seed = 20260924;
   const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  if (opts.flecks) {
+    ctx.filter = 'blur(1.2px)';
+    for (let i = 0; i < 120; i++) {
+      const x = random()*128, y = random()*128, rx = 1.5+random()*7, ry = 1+random()*4, angle = random()*Math.PI;
+      ctx.fillStyle = `rgba(255,255,255,${0.55+random()*0.45})`;
+      for (const dx of [-128, 0, 128]) for (const dy of [-128, 0, 128]) { ctx.beginPath(); ctx.ellipse(x+dx, y+dy, rx, ry, angle, 0, Math.PI*2); ctx.fill(); }
+    }
+  } else
   // Wrap each leaf cluster across tile boundaries for seamless shadows.
   for (let i = 0; i < 65; i++) {
     const x = random()*128, y = random()*128;
@@ -43,14 +52,14 @@ export function createCanopyShade(seam) {
           vec3 canopyRing = canopyWorld;
           canopyRing.xz -= canopyWorld.x > canopySeam.y ? canopySeam.zw
             : canopyWorld.x < canopySeam.x ? -canopySeam.zw : vec2(0.0);
-          vec2 shadeUV = canopyRing.xz * 0.055;
+          vec2 shadeUV = canopyRing.xz * ${opts.scale ?? 0.055};
           shadeUV.x += sin(canopyTime*0.35+canopyRing.z*0.08)*0.012;
           float shade = texture2D(canopyMap, shadeUV).r;
           float grove = smoothstep(-0.4,0.65,sin(canopyRing.x*0.035+sin(canopyRing.z*0.048)));
-          diffuseColor.rgb *= 1.0 - (1.0-shade)*0.72*grove*canopyStrength;
+          diffuseColor.rgb *= 1.0 - (1.0-shade)*${opts.depth ?? 0.72}*grove*canopyStrength;
         `);
       };
-      material.customProgramCacheKey = () => 'gunma-canopy-v2';
+      material.customProgramCacheKey = () => `gunma-canopy-v2-${opts.depth ?? 0.72}-${opts.scale ?? 0.055}`;
       materials.set(source, material);
       return material;
     },

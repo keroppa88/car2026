@@ -8,6 +8,9 @@ export const AKAGI_ROAD_HALF = 3.6;     // 片側1車線ずつ、幅 7.2m
 const SHOULDER = 0.9;                    // 白線の外の路肩(舗装)
 const RAIL = AKAGI_ROAD_HALF + SHOULDER + 0.35;   // ガードレールの位置(道の中心から)
 
+// 木陰のある所(1)とない所(0)。道の木陰の模様(createCanopyShade の grove)と同じ式で、木の並びもこれに合わせる
+export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.035 + Math.sin(z * 0.048)), -0.4, 0.65);
+
 export function buildAkagiMap(data) {
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   const n = route.length;
@@ -55,7 +58,7 @@ export function buildAkagiMap(data) {
   const minX = G.x0, minZ = G.z0, maxX = G.x0 + cols * G.cell, maxZ = G.z0 + lines * G.cell;
   const verts = new Float32Array((cols + 1) * (lines + 1) * 3), colors = new Float32Array(verts.length);
   const flatW = RAIL + 1.0 + 2 * G.cell;    // ここまでは路面と同じ高さ(升目の斜めの三角が路面へかぶらない)
-  const forest = [0.16, 0.24, 0.12], bush = [0.30, 0.33, 0.17], bank = [0.27, 0.30, 0.16];
+  const forest = [0.09, 0.15, 0.06], bush = [0.15, 0.22, 0.08], bank = [0.14, 0.20, 0.08];   // 森の下の地面(暗い緑)
   for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
     const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix;
     let h = G.h[k];
@@ -133,7 +136,7 @@ export function buildAkagiMap(data) {
       if (i + 1 < n) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: 0x56603a, side: THREE.DoubleSide })); mesh.name = 'GunmaGrass'; group.add(mesh);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: 0x3c4a26, side: THREE.DoubleSide })); mesh.name = 'GunmaGrass'; group.add(mesh);
   }
 
   // ---- スタート・ゴールの線(道を横切る白い帯 0.6m) ----
@@ -173,17 +176,55 @@ export function buildAkagiMap(data) {
     posts.count = c; posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
   }
 
-  // ---- 森(2D の木)。道から 7m〜90m に、場所ごとに決まった乱数で ----
+  // ---- 森(2D の木)と草むら。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
+  //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    for (let k = 0; k < 26000 && trees.length < 9000; k++) {
-      const i = Math.floor(rnd() * n), side = rnd() < 0.5 ? -1 : 1, off = RAIL + 3 + rnd() ** 1.6 * 90, p = route[i], nn = tangents[i];
+    // 道ぞいの木(3m ごとに両側を見る)
+    for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
+      const p = route[i], nn = tangents[i], g = akagiGrove(p.x, p.z);
+      if (rnd() > 0.12 + 0.55 * g) continue;
+      const off = g > 0.5 ? RAIL + 1.2 + rnd() * 5 : RAIL + 7 + rnd() * 10;
+      const x = p.x + nn.x * side * off + (rnd() - 0.5) * 2, z = p.z + nn.z * side * off + (rnd() - 0.5) * 2;
+      const r = roadAt(x, z); if (!r || r.d < RAIL + 1) continue;
+      trees.push([x, groundHeightAt(x, z) - 0.3, z, g > 0.5 ? 15 + rnd() * 7 : 10 + rnd() * 6]);
+    }
+    // 奥の森(道から 15m〜100m)
+    for (let k = 0; k < 30000 && trees.length < 11000; k++) {
+      const i = Math.floor(rnd() * n), side = rnd() < 0.5 ? -1 : 1, off = RAIL + 15 + rnd() ** 1.4 * 85, p = route[i], nn = tangents[i];
       const x = p.x + nn.x * side * off + (rnd() - 0.5) * 6, z = p.z + nn.z * side * off + (rnd() - 0.5) * 6;
-      const r = roadAt(x, z); if (!r || r.d < RAIL + 2.5) continue;
-      trees.push([x, groundHeightAt(x, z) - 0.3, z, 8 + rnd() * 6]);
+      const r = roadAt(x, z); if (!r || r.d < RAIL + 10) continue;
+      trees.push([x, groundHeightAt(x, z) - 0.3, z, 11 + rnd() * 8]);
     }
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
+    // 草むら: 十字に組んだ板 2 枚(幅 1.6〜2.6m、高さ 0.6〜1.5m)。ガードレールの外と、路肩のすぐ外に
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64; const cx = cv.getContext('2d');
+    for (let k = 0; k < 140; k++) {
+      const x0 = 4 + rnd() * 120, h = 20 + rnd() * 42, lean = (rnd() - 0.5) * 26, w = 2 + rnd() * 3;
+      cx.fillStyle = `hsl(${78 + rnd() * 30}, ${40 + rnd() * 25}%, ${20 + rnd() * 22}%)`;
+      cx.beginPath(); cx.moveTo(x0 - w, 64); cx.quadraticCurveTo(x0 + lean * 0.3, 64 - h * 0.6, x0 + lean, 64 - h); cx.lineTo(x0 + w, 64); cx.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const tuftGeo = new THREE.PlaneGeometry(1, 1); tuftGeo.translate(0, 0.5, 0);
+    const cross = new THREE.BufferGeometry().copy(tuftGeo); const g2 = tuftGeo.clone().rotateY(Math.PI / 2);
+    const merged = new THREE.BufferGeometry();
+    for (const key of ['position', 'normal', 'uv']) merged.setAttribute(key, new THREE.Float32BufferAttribute([...cross.getAttribute(key).array, ...g2.getAttribute(key).array], cross.getAttribute(key).itemSize));
+    merged.setIndex([...cross.index.array, ...Array.from(g2.index.array, (q) => q + 4)]);
+    const tufts = [];
+    for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
+      if (rnd() < 0.25) continue;
+      const p = route[i], nn = tangents[i];
+      for (const off of [R + SHOULDER + 0.15 + rnd() * 0.15, RAIL + 0.6 + rnd() * 2.5]) {
+        if (rnd() < 0.3) continue;
+        const x = p.x + nn.x * side * off + (rnd() - 0.5) * 1.5, z = p.z + nn.z * side * off + (rnd() - 0.5) * 1.5;
+        tufts.push([x, (off < RAIL ? p.y - 0.05 : groundHeightAt(x, z) - 0.1), z, 1.6 + rnd(), off < RAIL ? 0.5 + rnd() * 0.4 : 0.8 + rnd() * 0.8, rnd() * Math.PI]);
+      }
+    }
+    const tm = new THREE.InstancedMesh(merged, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), tufts.length);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), P3 = new THREE.Vector3(), S3 = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    tufts.forEach(([x, y, z, w, h, a], k) => tm.setMatrixAt(k, M.compose(P3.set(x, y, z), Q.setFromAxisAngle(Y, a), S3.set(w, h, w))));
+    tm.name = 'akagi-grass'; tm.frustumCulled = false; scenery.add(tm);
   }
 
   // 道(路肩まで)の外: 草地・森(走ると砂煙、速さが落ちる)

@@ -16,12 +16,12 @@ import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
 import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261112-fuji-6';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
-import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20260927-moor-2';
+import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-1';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261114-1';
+import { buildAkagiMap } from './akagi-map.js?v=20261114-3';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -6732,6 +6732,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
         }
+        // 木もれ日: 道に木の影の模様。木陰のある所とない所がある(js/akagi-map.js の akagiGrove と同じ式)
+        gunmaCanopy = createCanopyShade(gunmaCourse.seam, { flecks: true, depth: 0.62, scale: 0.07 });
+        const shadedBands = new Set(['GunmaRoad', 'GunmaShoulder', 'GunmaCenterLine', 'GunmaEdgeLine', 'GunmaGrass']);
+        gunmaCourse.group.traverse((mesh) => {
+          if (mesh.isMesh && shadedBands.has(mesh.material?.name)) mesh.material = gunmaCanopy.material(mesh.material);
+        });
         document.body.dataset.mapFog = 'akagi-clear';
       }
       if (COURSE_KEY === 'gunma') {
