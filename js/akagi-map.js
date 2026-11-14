@@ -261,14 +261,7 @@ export function buildAkagiMap(data) {
     mesh.name = 'akagi-roadside'; scenery.add(mesh);
   }
 
-  // ---- スタート・ゴールの線(道を横切る白い帯 0.6m) ----
-  for (const i of [data.start, data.goal]) {
-    if (i == null) continue;
-    const p = route[i], nn = tangents[i], f = { x: -nn.z, z: nn.x }, v = [];
-    for (const [a, b] of [[-R, -0.3], [R, -0.3], [R, 0.3], [-R, -0.3], [R, 0.3], [-R, 0.3]]) v.push(p.x + nn.x * a + f.x * b, p.y + 0.03, p.z + nn.z * a + f.z * b);
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaEdgeLine', color: 0xf2f2ee, side: THREE.DoubleSide })); mesh.name = 'GunmaEdgeLine'; group.add(mesh);
-  }
+  // スタート・ゴール位置を示す横断白線は描画しない。
 
   // ---- ガードレール(白、高さ 0.8m、両側)。見えない壁(高さ 1.2m)で当たり判定 ----
   const railMat = new THREE.MeshLambertMaterial({ name: 'GunmaGuardrail', color: 0xf0f0e8, emissive: 0x303030, side: THREE.DoubleSide });
