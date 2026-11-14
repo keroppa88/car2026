@@ -100,22 +100,31 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  for (const P of parkings) {   // 駐車場舗装面は、接続する道路の路面高に合わせる(ルート点の段差を拾わず線形補間)
+  const PARK_DROP = 1.0;       // 駐車場全体を道路面より 1m 下げる
+  const PARK_RAMP = 5.0;       // 道路から駐車場へ下るコンクリートの接続斜面
+  for (const P of parkings) {
     let best = null;
     for (const q of P.pts) {
       const r = roadAt(q[0], q[1]);
       if (r && (!best || r.d < best.d)) best = r;
     }
-    // 舗装メッシュは P.y + 0.02 に描画するため、道路面と同じ高さになるよう基準値を 2cm 下げる。
-    P.y = best ? best.y - 0.02 : route[nearestRoute(P.pts[0][0], P.pts[0][1]).i].y - 0.02;
+    const roadY = best ? best.y : route[nearestRoute(P.pts[0][0], P.pts[0][1]).i].y;
+    P.roadY = roadY;
+    P.y = roadY - PARK_DROP;
   }
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
+  const parkingRampHeight = (P, x, z) => {
+    const r = roadAt(x, z);
+    if (!r || r.d < EDGE || r.d > EDGE + PARK_RAMP) return null;
+    const t = THREE.MathUtils.smoothstep(r.d, EDGE, EDGE + PARK_RAMP);
+    return THREE.MathUtils.lerp(r.y - 0.05, P.y - 0.05, t);
+  };
   const H = (x, z) => {
     let h = H0(x, z);
-    const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道の上は道の高さ
+    const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
     for (const P of parkings) {
       if (x < P.x0 - PARK_BLEND || x > P.x1 + PARK_BLEND || z < P.z0 - PARK_BLEND || z > P.z1 + PARK_BLEND) continue;
-      if (inPoly(P, x, z)) return P.y - 0.05;
+      if (inPoly(P, x, z)) return parkingRampHeight(P, x, z) ?? (P.y - 0.05);
       const d = edgeDist(P, x, z); if (d < PARK_BLEND) h = THREE.MathUtils.lerp(P.y - 0.05, h, THREE.MathUtils.smoothstep(d, 0, PARK_BLEND));
     }
     return h;
@@ -320,6 +329,28 @@ export function buildAkagiMap(data) {
       posts.setMatrixAt(c++, M.makeTranslation(p.x + nn.x * side * (RAIL + 0.08), p.y + 0.4, p.z + nn.z * side * (RAIL + 0.08)));
     }
     posts.count = c; posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
+  }
+
+  // ---- 駐車場と道路をつなぐコンクリート ramp (道路側の段差を斜面で吸収) ----
+  {
+    const step = 0.75, v = [], indices = [];
+    for (const P of parkings) {
+      const x0 = Math.floor(P.x0 / step) * step, z0 = Math.floor(P.z0 / step) * step;
+      for (let x = x0; x < P.x1; x += step) for (let z = z0; z < P.z1; z += step) {
+        const cx = x + step * 0.5, cz = z + step * 0.5, r = roadAt(cx, cz);
+        if (!inPoly(P, cx, cz) || !r || r.d < EDGE - 0.25 || r.d > EDGE + PARK_RAMP + 0.25) continue;
+        const base = v.length / 3;
+        for (const [px, pz] of [[x,z],[x+step,z],[x,z+step],[x+step,z+step]]) v.push(px, H(px,pz) + 0.025, pz);
+        indices.push(base,base+2,base+1, base+1,base+2,base+3);
+      }
+    }
+    if (v.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+      g.setIndex(indices); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x77797a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
+      m.name = 'akagi-parking-ramp'; scenery.add(m);
+    }
   }
 
   // ---- 駐車場(平らな舗装の板)と、トイレ(白い平屋の小さな建物) ----
