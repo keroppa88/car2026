@@ -100,8 +100,8 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
-  const PARK_RAMP = 3.0;       // 道路から駐車場へ下るコンクリートの接続斜面
+  const PARK_DROP = 0.0;       // 駐車場は道路と同じ高さ(地面側に5cmの排水勾配差のみ)
+  const PARK_RAMP = 1.5;       // 道路脇から駐車場へつなぐ短いコンクリート接続帯
   for (const P of parkings) {
     let best = null;
     for (const q of P.pts) {
