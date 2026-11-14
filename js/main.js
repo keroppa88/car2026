@@ -4302,7 +4302,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
-    if (AKAGI_COURSE) return;   // 赤城山: CPU車はまだ走らせない
     // 街並みは車線が広い(中央線から車線中央まで2.8m)。
     const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
       NEO_COURSE || FUJI_COURSE ? MAP_CONFIG.laneOffset : 2.05, gunmaCourse.seam.offset);
@@ -8094,6 +8093,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 街並み(neo)は既定の曲なし。
   const GUNMA_THEME_LABEL = {
     gunma: 'NIKO,Night of Fire (1997)',
+    akagi: 'NIKO,Night of Fire (1997)',
     moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
     route66: 'David Ferguson,The Housebuilding Song (2021)',
   }[COURSE_KEY] ?? null;
