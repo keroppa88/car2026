@@ -331,34 +331,26 @@ export function buildAkagiMap(data) {
     posts.count = c; posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
   }
 
-  // ---- 駐車場と道路をつなぐコンクリート ramp (道路側の段差を斜面で吸収) ----
+  // ---- 駐車場舗装。道路側は H() の高さを使ってコンクリート斜面に連続させる ----
   {
-    const step = 0.75, v = [], indices = [];
+    const step = 0.75;
     for (const P of parkings) {
+      const v = [], indices = [];
       const x0 = Math.floor(P.x0 / step) * step, z0 = Math.floor(P.z0 / step) * step;
       for (let x = x0; x < P.x1; x += step) for (let z = z0; z < P.z1; z += step) {
-        const cx = x + step * 0.5, cz = z + step * 0.5, r = roadAt(cx, cz);
-        if (!inPoly(P, cx, cz) || !r || r.d < EDGE - 0.25 || r.d > EDGE + PARK_RAMP + 0.25) continue;
+        const cx = x + step * 0.5, cz = z + step * 0.5;
+        if (!inPoly(P, cx, cz)) continue;
         const base = v.length / 3;
-        for (const [px, pz] of [[x,z],[x+step,z],[x,z+step],[x+step,z+step]]) v.push(px, H(px,pz) + 0.025, pz);
+        for (const [px, pz] of [[x,z],[x+step,z],[x,z+step],[x+step,z+step]]) v.push(px, H(px,pz) + 0.02, pz);
         indices.push(base,base+2,base+1, base+1,base+2,base+3);
       }
-    }
-    if (v.length) {
+      if (!v.length) continue;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
       g.setIndex(indices); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x77797a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }));
-      m.name = 'akagi-parking-ramp'; scenery.add(m);
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x77797a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+      m.name = 'akagi-parking'; scenery.add(m);
     }
-  }
-
-  // ---- 駐車場(平らな舗装の板)と、トイレ(白い平屋の小さな建物) ----
-  for (const P of parkings) {
-    const tris = THREE.ShapeUtils.triangulateShape(P.pts.map(([x, z]) => new THREE.Vector2(x, z)), []), v = [];
-    for (const t of tris) for (const k of t) v.push(P.pts[k][0], P.y + 0.02, P.pts[k][1]);
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x55585a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); m.name = 'akagi-parking'; scenery.add(m);
   }
   // ---- 終着点の駐車場に、まばらに駐車した車を8台配置 ----
   if (parkings.length && data.goal != null) {
