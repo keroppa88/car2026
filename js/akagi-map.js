@@ -13,6 +13,7 @@ export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.03
 
 export function buildAkagiMap(data) {
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+  const akagiNightLights = []; // [発光材質, 光だまり]
   const n = route.length;
   const clampI = (i) => Math.max(0, Math.min(n - 1, i));
   const at = (i) => route[clampI(i)].clone();
@@ -471,13 +472,14 @@ export function buildAkagiMap(data) {
       pole.position.set(lx, ly + 2.7, lz); pole.name = 'akagi-streetlight-pole'; scenery.add(pole);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.13, 20), poleMat);
       cap.position.set(lx, ly + 5.43, lz); cap.name = 'akagi-streetlight-head'; scenery.add(cap);
-      const diffuserMat = new THREE.MeshBasicMaterial({ color: 0xffe7a6 });
+      const diffuserMat = new THREE.MeshBasicMaterial({ color: 0x665b42 });
       const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
       diffuser.position.set(lx, ly + 5.31, lz); diffuser.name = 'akagi-streetlight-diffuser'; scenery.add(diffuser);
       // 夜間に見える照明の光だまり。点光源の負荷を避け、発光表現で再現。
       const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide });
       const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), haloMat);
       halo.rotation.x = -Math.PI / 2; halo.position.set(lx, ly + 0.035, lz); halo.name = 'akagi-streetlight-pool'; scenery.add(halo);
+      akagiNightLights.push({ diffuserMat, haloMat });
     }
   }
 
@@ -542,7 +544,9 @@ export function buildAkagiMap(data) {
     }
     return { x, y: best.P.y, z };
   })();
-  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  const setNight = (on) => { for (const { diffuserMat, haloMat } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 0.24 : 0; } };
+  setNight(false);
+  return { setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
