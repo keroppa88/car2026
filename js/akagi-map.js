@@ -516,6 +516,8 @@ export function buildAkagiMap(data) {
 
   // B：以前からあった街灯。指定座標に固定して復活。
   addAkagiLamp(-1475, 1795, 'akagi-lamp-parking-existing');
+  // D：ユーザー指定座標（X=-265, Z=162）。符号を保持して固定配置。
+  addAkagiLamp(-265, 162, 'akagi-lamp-D');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
