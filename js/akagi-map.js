@@ -100,24 +100,8 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  // 駐車場は一定高さにせず、道路中心線の縦断勾配をそのまま延長した舗装面にする。
-  // 道路そのもの(路面・路肩)の高さは変更しない。
-  const PARK_BLEND = 8;
-  const parkingHeightAt = (x, z) => {
-    const r = roadAt(x, z);
-    return r ? r.y - 0.05 : H0(x, z);
-  };
-  const H = (x, z) => {
-    let h = H0(x, z);
-    const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;
-    for (const P of parkings) {
-      if (x < P.x0 - PARK_BLEND || x > P.x1 + PARK_BLEND || z < P.z0 - PARK_BLEND || z > P.z1 + PARK_BLEND) continue;
-      if (inPoly(P, x, z)) return parkingHeightAt(x, z);
-      const d = edgeDist(P, x, z);
-      if (d < PARK_BLEND) h = THREE.MathUtils.lerp(parkingHeightAt(x, z), h, THREE.MathUtils.smoothstep(d, 0, PARK_BLEND));
-    }
-    return h;
-  };
+  // 駐車場ポリゴンは発進位置・出入口判定にのみ使用。地形は通常の道路周辺地形(H0)とする。
+  const H = (x, z) => H0(x, z);
   const H0 = (x, z) => {
     let h = T(x, z);
     const legs = legsAt(x, z);
@@ -320,27 +304,7 @@ export function buildAkagiMap(data) {
     posts.count = c; posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
   }
 
-  // ---- 駐車場舗装。道路側は H() の高さを使ってコンクリート斜面に連続させる ----
-  {
-    const step = 0.75;
-    for (const P of parkings) {
-      const v = [], indices = [];
-      const x0 = Math.floor(P.x0 / step) * step, z0 = Math.floor(P.z0 / step) * step;
-      for (let x = x0; x < P.x1; x += step) for (let z = z0; z < P.z1; z += step) {
-        const cx = x + step * 0.5, cz = z + step * 0.5;
-        if (!inPoly(P, cx, cz)) continue;
-        const base = v.length / 3;
-        for (const [px, pz] of [[x,z],[x+step,z],[x,z+step],[x+step,z+step]]) v.push(px, H(px,pz) + 0.02, pz);
-        indices.push(base,base+2,base+1, base+1,base+2,base+3);
-      }
-      if (!v.length) continue;
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-      g.setIndex(indices); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x77797a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
-      m.name = 'akagi-parking'; scenery.add(m);
-    }
-  }
+  // 駐車場専用の舗装メッシュは作らず、周囲と同じ地形を表示する。
   // 駐車場の建物・常設駐車車両は配置しない。舗装面と地形接続だけを残す。
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
@@ -348,7 +312,7 @@ export function buildAkagiMap(data) {
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4);   // 草原・草むら・駐車場には木を立てない
+    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z);   // 草原・草むら・駐車場には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
@@ -374,10 +338,10 @@ export function buildAkagiMap(data) {
   const shadeMeshes = [ground]; group.traverse((o) => { if (o.isMesh) shadeMeshes.push(o); }); scenery.traverse((o) => { if (o.name === 'akagi-roadside') shadeMeshes.push(o); });
   for (const mesh of shadeMeshes) {
     const pos = mesh.geometry.getAttribute('position'), mask = new Float32Array(pos.count);
-    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) ? 0 : 1; }
+    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) ? 0 : 1; }
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
-  const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
+  const softGroundAt = (x, z) => { const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };
   const start = data.start ?? 0, goal = data.goal ?? n - 1;
   // 姫百合駐車場側の発進位置: ゴール地点に最も近い駐車場の道路側の縁から、場内へ約3m入った位置。
   const parkingStart = (() => {
