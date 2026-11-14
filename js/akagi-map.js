@@ -410,7 +410,7 @@ export function buildAkagiMap(data) {
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
   const start = data.start ?? 0;
-  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start,
+  return { colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal: data.goal ?? n - 1,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
