@@ -6393,7 +6393,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const fallbackPosition = applySpawnXZOffsets(0, 0, spawnHeading);
       return {
         x: fallbackPosition.x,
-        y: MAP_CONFIG.positionOffsetY + MAP_CONFIG.spawnOffsetY,
+        // 道路メッシュ検出に失敗しても、赤城山の指定スタート標高を使って空中スポーンを避ける。
+        y: (Number.isFinite(MAP_CONFIG.spawnSurfaceY)
+          ? MAP_CONFIG.spawnSurfaceY
+          : MAP_CONFIG.positionOffsetY)
+          + MAP_CONFIG.spawnOffsetY + CAR_CONFIGS[PLAYER_CAR_KEY].groundOffset,
         z: fallbackPosition.z,
         heading: spawnHeading,
         distance: null,
