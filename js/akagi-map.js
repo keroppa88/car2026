@@ -100,8 +100,8 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  const PARK_DROP = 1.0;       // 駐車場全体を道路面より 1m 下げる
-  const PARK_RAMP = 5.0;       // 道路から駐車場へ下るコンクリートの接続斜面
+  const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
+  const PARK_RAMP = 3.0;       // 道路から駐車場へ下るコンクリートの接続斜面
   for (const P of parkings) {
     let best = null;
     for (const q of P.pts) {
@@ -374,7 +374,9 @@ export function buildAkagiMap(data) {
     for (let tries = 0; tries < 12000 && cars.length < 8; tries++) {
       const x = Math.min(...xs) + rnd() * (Math.max(...xs) - Math.min(...xs));
       const z = Math.min(...zs) + rnd() * (Math.max(...zs) - Math.min(...zs));
-      if (!inPoly(P, x, z) || edgeDist(P, x, z) < 2.7) continue;
+      if (!inPoly(P, x, z) || edgeDist(P, x, z) < 4.5) continue;
+      const road = roadAt(x, z);
+      if (road && road.d < EDGE + 6) continue;   // 道路際・接続斜面には駐車車両を置かない
       if (cars.some(c => Math.hypot(c[0] - x, c[1] - z) < 5.8)) continue;
       cars.push([x, z, baseAngle + (rnd() - 0.5) * 0.28]);
     }
