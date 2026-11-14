@@ -42,7 +42,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // スタート地点を選べるコース(湘南): URL の start=... の地点から始める
   if (MAP_CONFIG.starts) {
     const s = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
-    MAP_CONFIG.spawnReferenceX = s.x; MAP_CONFIG.spawnReferenceZ = s.z; MAP_CONFIG.spawnHeading = s.heading;
+    if (Number.isFinite(s.x) && Number.isFinite(s.z) && Number.isFinite(s.heading)) {
+      MAP_CONFIG.spawnReferenceX = s.x; MAP_CONFIG.spawnReferenceZ = s.z; MAP_CONFIG.spawnHeading = s.heading;
+    }
     MAP_CONFIG.startKey = s.key;
   }
   // ぐんまーと嵐が丘は同じ仕組み(自動生成の2車線道路・終わりのないループ)で走る。
@@ -5795,6 +5797,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           : COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
           : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
+        if (AKAGI_COURSE && MAP_CONFIG.starts) {
+          const selected = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
+          const index = selected.routeEnd === 'goal' ? gunmaCourse.route.length - 1 : 0;
+          const p = gunmaCourse.route[index];
+          const q = gunmaCourse.route[selected.routeEnd === 'goal' ? index - 1 : index + 1];
+          const dx = q.x - p.x, dz = q.z - p.z;
+          const heading = Math.atan2(dx, dz) + (selected.reverse ? Math.PI : 0);
+          MAP_CONFIG.spawnReferenceX = p.x;
+          MAP_CONFIG.spawnReferenceZ = p.z;
+          MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
+          MAP_CONFIG.spawnExactReference = true;
+          MAP_CONFIG.startKey = selected.key;
+        }
         originalBox = new THREE.Box3().setFromObject(map);
         document.body.dataset.gunmaSeed = String(GUNMA_SEED);
         document.body.dataset.mapConnectionAxis = 'procedural-closed-loop';
