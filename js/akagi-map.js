@@ -495,59 +495,8 @@ export function buildAkagiMap(data) {
     }
     if (between) addAkagiLamp(between.x, between.z, 'akagi-lamp-between-toilets');
   }
-  // 2基目：駐車場スロープの脇。スロープ本体から場内側へ約5m離す。
-  if (parkings.length) {
-    const P = parkings.reduce((best,q) => !best || Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0)) < best.score ? {q,score:Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0))} : best,null)?.q || parkings[0];
-    const ri = route.reduce((best,p,i) => Math.abs(routeS[i]-P.rampS) < Math.abs(routeS[best]-P.rampS) ? i : best,0);
-    const rp = route[ri], nn = tangents[ri];
-    // 水色丸の旧位置には置かない。黄緑丸の位置へ移設する。
-    // 駐車場左側の縁で、現在の出入口位置から道路沿いに約30m下がった地点。
-    const targetS = Math.max(0, P.rampS - 30);
-    const targetI = routeS.reduce((bestS, s, i) =>
-      Math.abs(s - targetS) < Math.abs(routeS[bestS] - targetS) ? i : bestS, 0);
-    const targetRoad = route[targetI], targetNormal = tangents[targetI];
-    let movedLamp = null;
-    for (const side of [-1, 1]) {
-      const ex = targetRoad.x + targetNormal.x * side * (R + 0.2);
-      const ez = targetRoad.z + targetNormal.z * side * (R + 0.2);
-      let edge = null;
-      for (let i=0;i<P.pts.length;i++) {
-        const a=P.pts[i], b=P.pts[(i+1)%P.pts.length], dx=b[0]-a[0], dz=b[1]-a[1];
-        const t=THREE.MathUtils.clamp(((ex-a[0])*dx+(ez-a[1])*dz)/(dx*dx+dz*dz||1),0,1);
-        const x=a[0]+dx*t, z=a[1]+dz*t, d=Math.hypot(x-ex,z-ez);
-        if(!edge||d<edge.d) edge={x,z,d};
-      }
-      if(!edge) continue;
-      const cx=P.pts.reduce((s,q)=>s+q[0],0)/P.pts.length, cz=P.pts.reduce((s,q)=>s+q[1],0)/P.pts.length;
-      const dx=cx-edge.x,dz=cz-edge.z,dl=Math.hypot(dx,dz)||1;
-      const x=edge.x+dx/dl*1.2,z=edge.z+dz/dl*1.2;
-      if(inPoly(P,x,z)) { movedLamp={x,z}; break; }
-    }
-    if(movedLamp) addAkagiLamp(movedLamp.x,movedLamp.z,'akagi-lamp-ramp-side');
-
-    // 赤印の位置：スロープの道路側境界から駐車場内へ約1.2m入った場所に追加。
-    // 既存のトイレ間・駐車場内の2基は動かさない。
-    const rampPoint = route[ri], rampNormal = tangents[ri];
-    const lotCx = P.pts.reduce((s,q)=>s+q[0],0)/P.pts.length;
-    const lotCz = P.pts.reduce((s,q)=>s+q[1],0)/P.pts.length;
-    let markedSide = null;
-    for (const side of [-1, 1]) {
-      const ex = rampPoint.x + rampNormal.x * side * (R + 0.2);
-      const ez = rampPoint.z + rampNormal.z * side * (R + 0.2);
-      let edge = null;
-      for (let i=0;i<P.pts.length;i++) {
-        const a=P.pts[i], b=P.pts[(i+1)%P.pts.length], dx=b[0]-a[0], dz=b[1]-a[1];
-        const t=THREE.MathUtils.clamp(((ex-a[0])*dx+(ez-a[1])*dz)/(dx*dx+dz*dz||1),0,1);
-        const x=a[0]+dx*t, z=a[1]+dz*t, d=Math.hypot(x-ex,z-ez);
-        if(!edge||d<edge.d) edge={x,z,d};
-      }
-      if(!edge) continue;
-      const dx=lotCx-edge.x, dz=lotCz-edge.z, dl=Math.hypot(dx,dz)||1;
-      const x=edge.x+dx/dl*1.2, z=edge.z+dz/dl*1.2;
-      if(inPoly(P,x,z)) { markedSide={x,z}; break; }
-    }
-    if(markedSide) addAkagiLamp(markedSide.x,markedSide.z,'akagi-lamp-marked-ramp-side');
-  }
+  // スロープ脇の街灯：指定座標で固定配置。旧来の推定配置2系統は撤去。
+  addAkagiLamp(-1493, 1770, 'akagi-lamp-ramp-side');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
