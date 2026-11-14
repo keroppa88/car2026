@@ -208,8 +208,20 @@ export function buildAkagiMap(data) {
           prevY = py; c.push(...col);
         }
       }
+      // つづら折りの内側では、隣の道の近くまで地面が伸びて三角形が路面へかぶることがある。
+      // 四隅と中心が、どの道路の路肩内にも入らない四角形だけを描く。
+      const clearOfRoad = (ids) => {
+        let x = 0, z = 0;
+        for (const id of ids) {
+          const px = v[id * 3], pz = v[id * 3 + 2];
+          if (nearestRoute(px, pz).d < EDGE - 0.15) return false;
+          x += px; z += pz;
+        }
+        return nearestRoute(x / ids.length, z / ids.length).d >= EDGE - 0.15;
+      };
       for (let i = 0; i + 1 < n; i++) for (let k = 0; k + 1 < m; k++) {
         const a2 = base + i * m + k, b2 = a2 + m;
+        if (!clearOfRoad([a2, b2, a2 + 1, b2 + 1])) continue;
         ind.push(a2, b2, a2 + 1, a2 + 1, b2, b2 + 1);
       }
     }
