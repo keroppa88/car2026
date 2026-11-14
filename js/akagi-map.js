@@ -404,6 +404,8 @@ export function buildAkagiMap(data) {
       if (!inPoly(P, x, z) || edgeDist(P, x, z) < 4.5) continue;
       const road = roadAt(x, z);
       if (road && road.d < EDGE + 6) continue;   // 道路際・接続斜面には駐車車両を置かない
+      // トイレ建物・街灯の周囲は車両を置かず、駐車場内の別位置へ再配置する。
+      if ((data.toilets || []).some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 8.5)) continue;
       if (cars.some(c => Math.hypot(c[0] - x, c[1] - z) < 5.8)) continue;
       cars.push([x, z, baseAngle + (rnd() - 0.5) * 0.28]);
     }
@@ -432,8 +434,28 @@ export function buildAkagiMap(data) {
     const y = P ? P.y : H(tx, tz);
     const body = new THREE.Mesh(new THREE.BoxGeometry(6, 3.2, 4), new THREE.MeshLambertMaterial({ color: 0xf2f2ee, emissive: 0x202020 }));
     body.position.set(tx, y + 1.6, tz); body.rotation.y = ang; body.name = 'akagi-toilet'; scenery.add(body);
+    // 駐車場中央を向く壁面に黒い矩形の入口を追加(装飾や枠は付けない)。
+    if (P) {
+      const cx = P.pts.reduce((s, q) => s + q[0], 0) / P.pts.length;
+      const cz = P.pts.reduce((s, q) => s + q[1], 0) / P.pts.length;
+      const dx = cx - tx, dz = cz - tz;
+      const lx = Math.cos(ang) * dx - Math.sin(ang) * dz;
+      const lz = Math.sin(ang) * dx + Math.cos(ang) * dz;
+      const doorMat = new THREE.MeshBasicMaterial({ color: 0x08090a, side: THREE.DoubleSide });
+      let door;
+      if (Math.abs(lx) / 3 >= Math.abs(lz) / 2) {
+        door = new THREE.Mesh(new THREE.BoxGeometry(0.035, 2.25, 1.15), doorMat);
+        door.position.set(Math.sign(lx) * 3.025, 1.125, 0);
+      } else {
+        door = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.25, 0.035), doorMat);
+        door.position.set(0, 1.125, Math.sign(lz) * 2.025);
+      }
+      door.position.y += y;
+      door.position.x += tx; door.position.z += tz; door.rotation.y = ang;
+      door.name = 'akagi-toilet-entrance'; scenery.add(door);
+    }
     const roof = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.25, 4.6), new THREE.MeshLambertMaterial({ color: 0x8a8d8f }));
-    roof.position.set(tx, y + 3.3, tz); roof.rotation.y = ang; scenery.add(roof);
+    roof.position.set(tx, y + 3.3, tz); roof.rotation.y = ang; roof.name = 'akagi-toilet-roof'; scenery.add(roof);
     body.updateMatrixWorld(); colliders.push(body);
 
     // 姫百合駐車場のトイレ・出入口付近に一般的なポール型街灯を1基設置。
@@ -449,10 +471,13 @@ export function buildAkagiMap(data) {
       pole.position.set(lx, ly + 2.7, lz); pole.name = 'akagi-streetlight-pole'; scenery.add(pole);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.13, 20), poleMat);
       cap.position.set(lx, ly + 5.43, lz); cap.name = 'akagi-streetlight-head'; scenery.add(cap);
-      const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), new THREE.MeshBasicMaterial({ color: 0xffe7a6 }));
+      const diffuserMat = new THREE.MeshBasicMaterial({ color: 0xffe7a6 });
+      const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
       diffuser.position.set(lx, ly + 5.31, lz); diffuser.name = 'akagi-streetlight-diffuser'; scenery.add(diffuser);
-      const glow = new THREE.PointLight(0xffe5a0, 0.65, 13, 2);
-      glow.position.set(lx, ly + 5.05, lz); glow.name = 'akagi-streetlight-glow'; scenery.add(glow);
+      // 夜間に見える照明の光だまり。点光源の負荷を避け、発光表現で再現。
+      const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide });
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), haloMat);
+      halo.rotation.x = -Math.PI / 2; halo.position.set(lx, ly + 0.035, lz); halo.name = 'akagi-streetlight-pool'; scenery.add(halo);
     }
   }
 
