@@ -500,9 +500,16 @@ export function buildAkagiMap(data) {
     const P = parkings.reduce((best,q) => !best || Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0)) < best.score ? {q,score:Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0))} : best,null)?.q || parkings[0];
     const ri = route.reduce((best,p,i) => Math.abs(routeS[i]-P.rampS) < Math.abs(routeS[best]-P.rampS) ? i : best,0);
     const rp = route[ri], nn = tangents[ri];
-    let best = null;
-    for (const side of [-1,1]) {
-      const ex = rp.x + nn.x * side * (R + 0.2), ez = rp.z + nn.z * side * (R + 0.2);
+    // 水色丸の旧位置には置かない。黄緑丸の位置へ移設する。
+    // 駐車場左側の縁で、現在の出入口位置から道路沿いに約30m下がった地点。
+    const targetS = Math.max(0, P.rampS - 30);
+    const targetI = routeS.reduce((bestS, s, i) =>
+      Math.abs(s - targetS) < Math.abs(routeS[bestS] - targetS) ? i : bestS, 0);
+    const targetRoad = route[targetI], targetNormal = tangents[targetI];
+    let movedLamp = null;
+    for (const side of [-1, 1]) {
+      const ex = targetRoad.x + targetNormal.x * side * (R + 0.2);
+      const ez = targetRoad.z + targetNormal.z * side * (R + 0.2);
       let edge = null;
       for (let i=0;i<P.pts.length;i++) {
         const a=P.pts[i], b=P.pts[(i+1)%P.pts.length], dx=b[0]-a[0], dz=b[1]-a[1];
@@ -513,10 +520,10 @@ export function buildAkagiMap(data) {
       if(!edge) continue;
       const cx=P.pts.reduce((s,q)=>s+q[0],0)/P.pts.length, cz=P.pts.reduce((s,q)=>s+q[1],0)/P.pts.length;
       const dx=cx-edge.x,dz=cz-edge.z,dl=Math.hypot(dx,dz)||1;
-      const x=edge.x+dx/dl*5.5,z=edge.z+dz/dl*5.5;
-      if(inPoly(P,x,z) && toiletPts.every(([tx,tz])=>Math.hypot(x-tx,z-tz)>=5.2)) { best={x,z}; break; }
+      const x=edge.x+dx/dl*1.2,z=edge.z+dz/dl*1.2;
+      if(inPoly(P,x,z)) { movedLamp={x,z}; break; }
     }
-    if(best) addAkagiLamp(best.x,best.z,'akagi-lamp-ramp-side');
+    if(movedLamp) addAkagiLamp(movedLamp.x,movedLamp.z,'akagi-lamp-ramp-side');
 
     // 赤印の位置：スロープの道路側境界から駐車場内へ約1.2m入った場所に追加。
     // 既存のトイレ間・駐車場内の2基は動かさない。
