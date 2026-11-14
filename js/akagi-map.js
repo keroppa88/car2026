@@ -129,13 +129,12 @@ export function buildAkagiMap(data) {
     const far = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); far.name = 'AkagiFarGround'; scenery.add(far);
   }
 
-  // ---- 道の帯: 路面・路肩・センターライン(黄色)・外側線(白) ----
+  // ---- 道の帯: 路面・路肩・センターライン(オレンジの1本線)・外側線(白) ----
   const bands = [
     { name: 'GunmaRoad', from: -R, to: R, y: 0, color: 0x4a4c4e },
     { name: 'GunmaShoulder', from: -R - SHOULDER, to: -R, y: -0.01, color: 0x55575a },
     { name: 'GunmaShoulder', from: R, to: R + SHOULDER, y: -0.01, color: 0x55575a },
-    { name: 'GunmaCenterLine', from: -0.2, to: -0.07, y: 0.02, color: 0xd9a628 },
-    { name: 'GunmaCenterLine', from: 0.07, to: 0.2, y: 0.02, color: 0xd9a628 },
+    { name: 'GunmaCenterLine', from: -0.075, to: 0.075, y: 0.02, color: 0xc8782c },   // センターライン: オレンジの1本線(幅 15cm)
     { name: 'GunmaEdgeLine', from: -R + 0.1, to: -R + 0.25, y: 0.02, color: 0xe6e6e0 },
     { name: 'GunmaEdgeLine', from: R - 0.25, to: R - 0.1, y: 0.02, color: 0xe6e6e0 },
   ];
@@ -181,13 +180,27 @@ export function buildAkagiMap(data) {
     // 削った所(切り土)の急な面(40度より急)だけ崖のグレー。四角(三角 2 枚)ごとに決める(ふちをギザギザにしない)。
     // 崖の上(元の山の斜面)は、草と木の茂る暗い緑
     const triN = (t) => { const ax = pos.getX(t), ay = pos.getY(t), az = pos.getZ(t); return new THREE.Vector3(pos.getX(t + 1) - ax, pos.getY(t + 1) - ay, pos.getZ(t + 1) - az).cross(new THREE.Vector3(pos.getX(t + 2) - ax, pos.getY(t + 2) - ay, pos.getZ(t + 2) - az)); };
-    for (let t = 0; t < pos.count; t += 6) {
-      const nq = triN(t).add(triN(t + 3)).normalize();
+    const nQuad = pos.count / 6, steepQ = new Uint8Array(nQuad), cutQ = new Float32Array(nQuad);
+    for (let q = 0; q < nQuad; q++) {
+      const t = q * 6, nq = triN(t).add(triN(t + 3)).normalize();
       let cut = 0; for (let j = 0; j < 6; j++) cut += cutA.getX(t + j) / 6;
-      const steep = Math.abs(nq.y) < 0.77 && cut > 0.4;
+      cutQ[q] = cut; steepQ[q] = Math.abs(nq.y) < 0.77 && cut > 0.4 ? 1 : 0;
+    }
+    // 高さ 1m 未満の崖(グレー)は作らない: 横の並び(道の 1 点 × 片側)ごとに、続いた崖の高さを測り、1m 未満なら草・茂みにする
+    for (let col0 = 0; col0 < nQuad; col0 += m - 1) {
+      for (let k = 0; k < m - 1;) {
+        if (!steepQ[col0 + k]) { k++; continue; }
+        let k2 = k, lo = Infinity, hi = -Infinity;
+        while (k2 < m - 1 && steepQ[col0 + k2]) { for (let j = 0; j < 6; j++) { const y = pos.getY((col0 + k2) * 6 + j); lo = Math.min(lo, y); hi = Math.max(hi, y); } k2++; }
+        if (hi - lo < 1) for (let kk = k; kk < k2; kk++) steepQ[col0 + kk] = 0;
+        k = k2;
+      }
+    }
+    for (let q = 0; q < nQuad; q++) {
+      const t = q * 6, steep = steepQ[q], cut = cutQ[q];
       for (let j = 0; j < 6; j++) {
-        if (steep) { const q = 0.85 + 0.25 * Math.sin(pos.getX(t + j) * 0.7 + pos.getY(t + j) * 1.3) * Math.sin(pos.getZ(t + j) * 0.5); C.setRGB(rock[0] * q, rock[1] * q, rock[2] * q); }
-        else if (cut > 0.4 || cutA.getX(t + j) > 0.4) C.setRGB(0.05, 0.085, 0.03);   // 崖の上のふち: 茂み
+        if (steep) { const v2 = 0.85 + 0.25 * Math.sin(pos.getX(t + j) * 0.7 + pos.getY(t + j) * 1.3) * Math.sin(pos.getZ(t + j) * 0.5); C.setRGB(rock[0] * v2, rock[1] * v2, rock[2] * v2); }
+        else if (cut > 0.4 || cutA.getX(t + j) > 0.4) C.setRGB(0.05, 0.085, 0.03);   // 崖の上のふち・低い切り土: 茂み
         else C.setRGB(col.getX(t + j), col.getY(t + j), col.getZ(t + j));
         col.setXYZ(t + j, C.r, C.g, C.b);
       }
