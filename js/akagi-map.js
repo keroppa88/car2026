@@ -518,16 +518,28 @@ export function buildAkagiMap(data) {
     }
     if(best) addAkagiLamp(best.x,best.z,'akagi-lamp-ramp-side');
 
-    // 赤印の位置：駐車場スロープの脇、道路から駐車場側へ少し入った場所にもう1基。
-    // 既存の2基は動かさず、この位置に追加する。
+    // 赤印の位置：スロープの道路側境界から駐車場内へ約1.2m入った場所に追加。
+    // 既存のトイレ間・駐車場内の2基は動かさない。
     const rampPoint = route[ri], rampNormal = tangents[ri];
+    const lotCx = P.pts.reduce((s,q)=>s+q[0],0)/P.pts.length;
+    const lotCz = P.pts.reduce((s,q)=>s+q[1],0)/P.pts.length;
     let markedSide = null;
     for (const side of [-1, 1]) {
-      const x = rampPoint.x + rampNormal.x * side * (R + 2.2);
-      const z = rampPoint.z + rampNormal.z * side * (R + 2.2);
-      if (inPoly(P, x, z)) { markedSide = {x,z}; break; }
+      const ex = rampPoint.x + rampNormal.x * side * (R + 0.2);
+      const ez = rampPoint.z + rampNormal.z * side * (R + 0.2);
+      let edge = null;
+      for (let i=0;i<P.pts.length;i++) {
+        const a=P.pts[i], b=P.pts[(i+1)%P.pts.length], dx=b[0]-a[0], dz=b[1]-a[1];
+        const t=THREE.MathUtils.clamp(((ex-a[0])*dx+(ez-a[1])*dz)/(dx*dx+dz*dz||1),0,1);
+        const x=a[0]+dx*t, z=a[1]+dz*t, d=Math.hypot(x-ex,z-ez);
+        if(!edge||d<edge.d) edge={x,z,d};
+      }
+      if(!edge) continue;
+      const dx=lotCx-edge.x, dz=lotCz-edge.z, dl=Math.hypot(dx,dz)||1;
+      const x=edge.x+dx/dl*1.2, z=edge.z+dz/dl*1.2;
+      if(inPoly(P,x,z)) { markedSide={x,z}; break; }
     }
-    if (markedSide) addAkagiLamp(markedSide.x, markedSide.z, 'akagi-lamp-marked-ramp-side');
+    if(markedSide) addAkagiLamp(markedSide.x,markedSide.z,'akagi-lamp-marked-ramp-side');
   }
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
