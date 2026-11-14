@@ -421,6 +421,39 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 赤城山(県道4号 前橋赤城線、赤城山総合観光案内所の前 → 姫百合駐車場の前)。道の線は OpenStreetMap、起伏は PLATEAU 前橋市(2023)の地形。
+  // tools/akagi/make_akagi.py → map/akagi-course.json → js/akagi-map.js
+  akagi: {
+    ...commonMap,
+    label: '赤城山',
+    file: 'procedural:akagi',
+    preview: 'picture/akagi.png?v=20261114',
+    courseData: 'map/akagi-course.json?v=20261114-1',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaEdgeLine', 'GunmaCenterLine', 'GunmaGuardrail'],
+    drivableMaterialAliases: ['GunmaShoulder', 'GunmaGrass'],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: false,   // ガードレールに当たる(js/akagi-map.js の colliders)
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    // スタートは案内所の前の左車線。下り(姫百合駐車場の方)を向く。
+    spawnReference: 'fixed',
+    spawnReferenceX: 1.86,
+    spawnReferenceZ: -0.42,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: -0.3302,
+    spawnOffsetRight: 0,
+    laneOffset: 1.8,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261114 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   route66: {
     ...commonMap,
     label: 'ルート66',
@@ -703,4 +736,4 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi', 'fuji'];   // メトロポリス(tokyoeki)は湘南に置き換え
+export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi', 'fuji', 'akagi'];   // メトロポリス(tokyoeki)は湘南に置き換え

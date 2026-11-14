@@ -21,6 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
+import { buildAkagiMap } from './akagi-map.js?v=20261114-1';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -50,10 +51,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const OSM_COURSE = COURSE_KEY === 'nihonbashi' || COURSE_KEY === 'shonan';   // 日本橋・湘南: OpenStreetMap から組み立てる街
   const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
   const FUJI_COURSE = COURSE_KEY === 'fuji';   // 富士スピードウェイ(閉じたサーキット)
-  const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE;   // 地面の高さを格子から直接読むコース
-  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE;
+  const AKAGI_COURSE = COURSE_KEY === 'akagi';   // 赤城山(県道4号の下り。はじめと終わりがある1本道)
+  const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE || AKAGI_COURSE;   // 地面の高さを格子から直接読むコース
+  const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
-  const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE;
+  const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -544,7 +546,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       : new THREE.Fog(SKY, 130, 480);
 
   // near=0.5 keeps enough depth precision at 300 m for the thin road layers
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, FUJI_COURSE || OSM_COURSE ? 12000 : TOUGE_COURSE ? 2200 : 1200);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, FUJI_COURSE || AKAGI_COURSE || OSM_COURSE ? 12000 : TOUGE_COURSE ? 2200 : 1200);
 
   // 色付きの強い環境光はマテリアル色を青白く飽和させるため、昼は中立色で抑える。
   const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7168, 0.55);
@@ -2333,7 +2335,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
-        ground.constant = FUJI_COURSE ? -player.pos.y : 0;   // 富士は起伏があるので、車の高さの平面で読む
+        ground.constant = FUJI_COURSE || AKAGI_COURSE ? -player.pos.y : 0;   // 富士は起伏があるので、車の高さの平面で読む
         coordEl.textContent = ray.ray.intersectPlane(ground, hit) ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
       });
     });
@@ -2590,7 +2592,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (GRID_GROUND_COURSE && gunmaCourse?.ground) {
       const y = gunmaCourse.groundHeightAt(x, z);
       // 富士: 路面(コース・分かれ道)の下の地面(路面より 0.6m 下)は拾わない。拾うと車が路面の下へ沈んだまま走る
-      if (FUJI_COURSE && hits.some((h) => h.point.y > y + 0.05)) return hits;
+      if ((FUJI_COURSE || AKAGI_COURSE) && hits.some((h) => h.point.y > y + 0.05)) return hits;
       hits.push({
         point: new THREE.Vector3(x, y, z),
         face: { normal: gunmaCourse.groundNormalAt(x, z) },
@@ -2784,7 +2786,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         player.pos.z + wallDir.x * side
       );
       wallCaster.set(wallOrigin, wallDir);
-      const hit = (FUJI_COURSE && gunmaCourse?.colliders ? wallCaster.intersectObjects([mapRoot, ...gunmaCourse.colliders], true) : wallCaster.intersectObject(mapRoot, true)).find((candidate) => {
+      const hit = ((FUJI_COURSE || AKAGI_COURSE) && gunmaCourse?.colliders ? wallCaster.intersectObjects([mapRoot, ...gunmaCourse.colliders], true) : wallCaster.intersectObject(mapRoot, true)).find((candidate) => {
         if (!candidate.face) return false;
         // このマップ群では道路と壁の材質色が必ず異なる。道路色として登録した
         // メッシュは、垂直に見える三角面も坂・バンクの継ぎ目なので壁にしない。
@@ -4296,6 +4298,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
+    if (AKAGI_COURSE) return;   // 赤城山: CPU車はまだ走らせない
     // 街並みは車線が広い(中央線から車線中央まで2.8m)。
     const paths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
       NEO_COURSE || FUJI_COURSE ? MAP_CONFIG.laneOffset : 2.05, gunmaCourse.seam.offset);
@@ -5788,6 +5791,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (TOUGE_COURSE) {
         gunmaCourse = FUJI_COURSE ? buildFujiMap(await (await fetch(MAP_CONFIG.courseData)).json(),
           MAP_CONFIG.landcoverImage ? await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = MAP_CONFIG.landcoverImage; }) : null)
+          : AKAGI_COURSE ? buildAkagiMap(await (await fetch(MAP_CONFIG.courseData)).json())
           : COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
           : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
@@ -6718,6 +6722,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           if (layer) layer.visible = false;
         }
         document.body.dataset.mapFog = 'fuji-clear';
+      }
+      if (AKAGI_COURSE) {
+        // 赤城山: 地面・森・ガードレールは地図の外に置く(地面の高さは格子から直接読む)。
+        applyWeatherSky();
+        scene.add(gunmaCourse.ground);
+        scene.add(gunmaCourse.scenery);
+        for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
+          const layer = scene.getObjectByName(name);
+          if (layer) layer.visible = false;
+        }
+        document.body.dataset.mapFog = 'akagi-clear';
       }
       if (COURSE_KEY === 'gunma') {
         // 地表のモヤと谷の雲海で奥行きを出す。道路には全体フォグを掛けない。
@@ -9704,8 +9719,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (roadSurface?.face) {
         playerOnSand = sandMeshes.includes(roadSurface.object)
           || !!(OSM_COURSE && tokyoEkiCity?.isSand?.(player.pos.x, player.pos.z))   // 日本橋・湘南: 砂浜
-          || !!(FUJI_COURSE && roadSurface.object === gunmaCourse?.ground && gunmaCourse.softGroundAt?.(player.pos.x, player.pos.z));   // 富士: 草地・砂地
-        if (FUJI_COURSE && playerOnSand) {
+          || !!((FUJI_COURSE || AKAGI_COURSE) && roadSurface.object === gunmaCourse?.ground && gunmaCourse.softGroundAt?.(player.pos.x, player.pos.z));   // 富士: 草地・砂地
+        if ((FUJI_COURSE || AKAGI_COURSE) && playerOnSand) {
           // 富士: 草地・砂地では速さが半分まで落ちる
           const cap = PLAYER_TOP_SPEED * 0.5, sp = player.vel.length();
           if (sp > cap) player.vel.multiplyScalar(Math.max(cap / sp, Math.exp(-2.5 * dt)));
