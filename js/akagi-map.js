@@ -23,6 +23,8 @@ export function buildAkagiMap(data) {
     return { x: dz / l, z: -dx / l };
   };
   const tangents = route.map((_, i) => normalAt(i));
+  const routeS = new Float64Array(n);
+  for (let i = 1; i < n; i++) routeS[i] = routeS[i - 1] + route[i].distanceTo(route[i - 1]);
   const extIndices = route.map((_, i) => i);
   const ext = route.map((p) => p.clone());
   const extTangents = tangents;
@@ -112,12 +114,28 @@ export function buildAkagiMap(data) {
     const roadY = best ? best.y : route[nearestRoute(P.pts[0][0], P.pts[0][1]).i].y;
     P.roadY = roadY;
     P.y = roadY - PARK_DROP;
+    // ゴール(姫百合側)に最も近い道路境界を、駐車場の出入口とする。
+    const target = route[data.goal ?? n - 1];
+    let entrance = null;
+    for (const q of P.pts) {
+      const r = roadAt(q[0], q[1]);
+      if (!r) continue;
+      const d = Math.hypot(q[0] - target.x, q[1] - target.z);
+      if (!entrance || d < entrance.d) entrance = { d, s: routeS[r.i] };
+    }
+    P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
   }
+  const PARK_ENTRANCE_HALF_LENGTH = 8; // 出入口の幅は道路沿い約16m
+  const nearParkingEntrance = (x, z) => {
+    const r = roadAt(x, z);
+    return !!r && parkings.some((P) => Math.abs(routeS[r.i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH);
+  };
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
   const parkingRampHeight = (P, x, z) => {
     const r = roadAt(x, z);
     if (!r || r.d < EDGE || r.d > EDGE + PARK_RAMP) return null;
-    // 道路端から駐車場へ15度で一定勾配。道路側の高さは変更しない。
+    if (Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
+    // 黄色指定の出入口だけ、道路端から駐車場へ15度で一定勾配。道路側の高さは変更しない。
     const t = THREE.MathUtils.clamp((r.d - EDGE) / PARK_RAMP, 0, 1);
     return THREE.MathUtils.lerp(r.y - 0.05, P.y - 0.05, t);
   };
@@ -283,7 +301,7 @@ export function buildAkagiMap(data) {
   const railMat = new THREE.MeshLambertMaterial({ name: 'GunmaGuardrail', color: 0xf0f0e8, emissive: 0x303030, side: THREE.DoubleSide });
   const colliders = [];
   // 駐車場の出入口だけを短く開ける。従来の5m判定は駐車場周囲に長い欠落を作っていた。
-  const nearParking = (x, z) => parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 1.5);
+  const nearParking = (x, z) => nearParkingEntrance(x, z);
   // 草原の例外は高所スタートから連続する草原区間だけ。森林・崖側・谷側では植生に関係なく設置する。
   const meadowAtSide = (i, side) => {
     const p = route[i], nn = tangents[i];
