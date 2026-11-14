@@ -126,7 +126,7 @@ export function buildAkagiMap(data) {
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
   }
   const PARK_ENTRANCE_HALF_LENGTH = 18; // 姫百合側の駐車場に面した道路終端付近
-  const PARK_MAX_STEP = 0.45; // この高低差以下の区間だけスロープ化。それ以上は崖・段差を残してガードレール
+  const PARK_MAX_STEP = 0.75; // 姫百合駐車場の黄色指定区間。ここより段差が大きい箇所は閉鎖
   const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
     if (!r) return null;
