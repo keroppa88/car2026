@@ -435,6 +435,25 @@ export function buildAkagiMap(data) {
     const roof = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.25, 4.6), new THREE.MeshLambertMaterial({ color: 0x8a8d8f }));
     roof.position.set(tx, y + 3.3, tz); roof.rotation.y = ang; scenery.add(roof);
     body.updateMatrixWorld(); colliders.push(body);
+
+    // 姫百合駐車場のトイレ・出入口付近に一般的なポール型街灯を1基設置。
+    // 駐車場の内側へ少し寄せ、道路・スロープには置かない。
+    if (P) {
+      const cx = P.pts.reduce((s, q) => s + q[0], 0) / P.pts.length;
+      const cz = P.pts.reduce((s, q) => s + q[1], 0) / P.pts.length;
+      const dx = cx - tx, dz = cz - tz, dl = Math.hypot(dx, dz) || 1;
+      const lx = tx + dx / dl * 2.5, lz = tz + dz / dl * 2.5;
+      const ly = H(lx, lz);
+      const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.4, 10), poleMat);
+      pole.position.set(lx, ly + 2.7, lz); pole.name = 'akagi-streetlight-pole'; scenery.add(pole);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.13, 20), poleMat);
+      cap.position.set(lx, ly + 5.43, lz); cap.name = 'akagi-streetlight-head'; scenery.add(cap);
+      const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), new THREE.MeshBasicMaterial({ color: 0xffe7a6 }));
+      diffuser.position.set(lx, ly + 5.31, lz); diffuser.name = 'akagi-streetlight-diffuser'; scenery.add(diffuser);
+      const glow = new THREE.PointLight(0xffe5a0, 0.65, 13, 2);
+      glow.position.set(lx, ly + 5.05, lz); glow.name = 'akagi-streetlight-glow'; scenery.add(glow);
+    }
   }
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
