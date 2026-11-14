@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261115-akagi-lamps-D-4';
+import { buildAkagiMap } from './akagi-map.js?v=20261115-akagi-cpu-light-menu-1';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -4315,8 +4315,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const trafficPlan = FUJI_COURSE
       ? [['same', Math.round(GUNMA_CPU_SAME * 1.5), FUJI_CPU_FACTORS.map((f) => f * PLAYER_TOP_SPEED_KMH)]]   // サーキットは同じ向きだけ。台数 1.5倍、自車の最高速の 0.8〜1.1倍
       : [
-        ['same', AKAGI_COURSE ? 3 : GUNMA_CPU_SAME, [65, 75, 85]],
-        ['oncoming', AKAGI_COURSE ? 3 : GUNMA_CPU_ONCOMING, [55, 65, 75]],
+        ['same', GUNMA_CPU_SAME, [65, 75, 85]],
+        ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
       ];
     for (const [direction, count, speeds] of trafficPlan) {
       const path = paths[direction];
