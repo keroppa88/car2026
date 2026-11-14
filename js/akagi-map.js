@@ -293,7 +293,8 @@ export function buildAkagiMap(data) {
     return end;
   });
   const skip = (i, side) => {
-    if ((data.start != null && Math.abs(i - data.start) < 12) || (data.goal != null && Math.abs(i - data.goal) < 12)) return true;
+    // ガードレールを一律に省略するのは高所スタート直後の草原だけ。
+    // ヘアピン外側・直線の崖側/低い側・ゴール付近は通常どおり設置する。
     const sideIndex = side < 0 ? 0 : 1;
     return i <= startMeadowEnd[sideIndex] && meadowAtSide(i, side);
   };
