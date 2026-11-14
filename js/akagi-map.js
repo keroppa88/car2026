@@ -53,23 +53,54 @@ export function buildAkagiMap(data) {
     return best;
   };
 
-  // ---- 地面(地形の升目 6m)。道のそばは路面の高さにそろえ(切り土・盛り土)、少し離れると元の地形へなめらかに戻す ----
+  // ---- 地面。元の地形(T)を、道ごとに「切り土(山側: 側溝の先はグレーの崖)」と「盛り土(谷側: ゆるい草の斜面)」で削る・盛る(H) ----
   const G = data.ground, cols = G.nx - 1, lines = G.nz - 1;
   const minX = G.x0, minZ = G.z0, maxX = G.x0 + cols * G.cell, maxZ = G.z0 + lines * G.cell;
-  const verts = new Float32Array((cols + 1) * (lines + 1) * 3), colors = new Float32Array(verts.length);
-  const flatW = RAIL + 1.0 + 2 * G.cell;    // ここまでは路面と同じ高さ(升目の斜めの三角が路面へかぶらない)
-  const forest = [0.02, 0.035, 0.015], bush = [0.035, 0.055, 0.02], bank = [0.17, 0.26, 0.08];   // 道ぎわは草の緑、離れると森の下の暗い影
-  for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
-    const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix;
-    let h = G.h[k];
-    const r = roadAt(x, z);
-    const near = r ? THREE.MathUtils.smoothstep(r.d, RAIL + 1, RAIL + 8) : 1;   // 色: 道ぎわの草 → 暗い影(草は1本ずつ描かず、地面の色だけ)
-    if (r && r.d < flatW + 40) {
-      h = THREE.MathUtils.lerp(r.y - 0.3, h, THREE.MathUtils.smoothstep(r.d, flatW, flatW + 40));
+  const R = AKAGI_ROAD_HALF, EDGE = R + SHOULDER, STRIP = 30;   // STRIP: 道の両わきの細かい地面の幅(路肩の外から)
+  const T = (x, z) => {
+    const fx = THREE.MathUtils.clamp((x - minX) / G.cell, 0, cols - 1e-6), fz = THREE.MathUtils.clamp((z - minZ) / G.cell, 0, lines - 1e-6);
+    const ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, k = iz * (cols + 1) + ix;
+    return (G.h[k] * (1 - tx) + G.h[k + 1] * tx) * (1 - tz) + (G.h[k + cols + 1] * (1 - tx) + G.h[k + cols + 2] * tx) * tz;
+  };
+  // 近くを通る道の「区間」ごとの、いちばん近い所(つづら折りでは 2〜3 本の道が近くを通る)
+  const legsAt = (x, z) => {
+    const bx = Math.floor(x / B), bz = Math.floor(z / B), cand = [];
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (const i of bucket.get((bx + a) + ',' + (bz + b)) || []) cand.push([(route[i].x - x) ** 2 + (route[i].z - z) ** 2, i]);
+    cand.sort((p, q) => p[0] - q[0]);
+    const legs = [];
+    for (const [, i] of cand) {
+      if (legs.some((l) => Math.abs(l.i - i) < 25)) continue;
+      let best = null;
+      for (const [a, b] of [[clampI(i - 1), i], [i, clampI(i + 1)]]) {
+        if (a === b) continue;
+        const A = route[a], Bq = route[b], dx = Bq.x - A.x, dz = Bq.z - A.z, t = THREE.MathUtils.clamp(((x - A.x) * dx + (z - A.z) * dz) / (dx * dx + dz * dz || 1), 0, 1), d = Math.hypot(A.x + dx * t - x, A.z + dz * t - z);
+        if (!best || d < best.d) best = { d, y: A.y + (Bq.y - A.y) * t, i };
+      }
+      legs.push(best); if (legs.length >= 3) break;
     }
+    return legs;
+  };
+  const CUT = 2.2, FILL = 0.75, DITCH = 1.2;   // 崖の傾き(高さ/横)、盛り土の傾き、崖の下の側溝・草の幅
+  const H = (x, z) => {
+    let h = T(x, z);
+    const legs = legsAt(x, z);
+    for (let k = legs.length - 1; k >= 0; k--) {   // 近い道ほどあとで(強く)効かせる
+      const { d, y } = legs[k], e = d - EDGE;
+      if (e <= 0) return y - 0.05;
+      h = THREE.MathUtils.clamp(h, y - 0.1 - FILL * Math.max(0, e - 0.3), y - 0.1 + CUT * Math.max(0, e - DITCH));
+    }
+    return h;
+  };
+  // 粗い地面(6m 升目)。道の両わき(細かい地面の下)は少し下げて、細かい地面から突き出ないように
+  const verts = new Float32Array((cols + 1) * (lines + 1) * 3), colors = new Float32Array(verts.length);
+  const forest = [0.02, 0.035, 0.015], bush = [0.035, 0.055, 0.02];   // 道から離れた所: 森の下の暗い影(草は1本ずつ描かず、地面の色だけ)
+  for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
+    const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix, legs = legsAt(x, z);
+    const d = legs.length ? legs[0].d : 1e9;
+    const h = H(x, z) - 6 * (1 - THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1));
     verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
     const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
-    for (let c = 0; c < 3; c++) colors[k * 3 + c] = THREE.MathUtils.lerp(bank[c], forest[c] + (bush[c] - forest[c]) * mix * 0.7, near);
+    for (let c = 0; c < 3; c++) colors[k * 3 + c] = forest[c] + (bush[c] - forest[c]) * mix * 0.7;
   }
   const idx = [];
   for (let iz = 0; iz < lines; iz++) for (let ix = 0; ix < cols; ix++) { const a = iz * (cols + 1) + ix, b = a + cols + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
@@ -79,14 +110,10 @@ export function buildAkagiMap(data) {
   groundGeo.setIndex(idx); groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));
   ground.name = 'AkagiGround';
-  const groundHeightAt = (x, z) => {
-    const fx = THREE.MathUtils.clamp((x - minX) / G.cell, 0, cols - 1e-6), fz = THREE.MathUtils.clamp((z - minZ) / G.cell, 0, lines - 1e-6);
-    const ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, i0 = (iz * (cols + 1) + ix) * 3 + 1;
-    const a = verts[i0], r = verts[i0 + 3], d = verts[i0 + (cols + 1) * 3], g = verts[i0 + (cols + 2) * 3];
-    return tx + tz <= 1 ? a * (1 - tx - tz) + r * tx + d * tz : r * (1 - tz) + d * (1 - tx) + g * (tx + tz - 1);
-  };
-  const groundNormalAt = (x, z) => new THREE.Vector3(groundHeightAt(x - 1, z) - groundHeightAt(x + 1, z), 2, groundHeightAt(x, z - 1) - groundHeightAt(x, z + 1)).normalize();
-  const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : groundHeightAt(x, z));
+  // 地面の高さ(車・木の置き場所)は H をそのまま使う(道のわきの崖・斜面も正しい高さ)
+  const groundHeightAt = (x, z) => H(x, z);
+  const groundNormalAt = (x, z) => new THREE.Vector3(H(x - 1, z) - H(x + 1, z), 2, H(x, z - 1) - H(x, z + 1)).normalize();
+  const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : H(x, z));
 
   // 地図の外の遠い地面(60m 升目、半径 6km)。高さは地形の端のまま。内側と重なる所は下げる
   {
@@ -103,7 +130,6 @@ export function buildAkagiMap(data) {
   }
 
   // ---- 道の帯: 路面・路肩・センターライン(黄色)・外側線(白) ----
-  const R = AKAGI_ROAD_HALF;
   const bands = [
     { name: 'GunmaRoad', from: -R, to: R, y: 0, color: 0x4a4c4e },
     { name: 'GunmaShoulder', from: -R - SHOULDER, to: -R, y: -0.01, color: 0x55575a },
@@ -123,19 +149,51 @@ export function buildAkagiMap(data) {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide })); mesh.name = band.name; group.add(mesh);
   }
-  // 路肩の外の土手(路面の高さから地面へ 3m でつなぐ。道と地面のすき間を見せない)
-  for (const side of [-1, 1]) {
-    const v = new Float32Array(n * 2 * 3), ind = [];
-    for (let i = 0; i < n; i++) {
-      const p = route[i], nn = tangents[i];
-      for (let s = 0; s < 2; s++) {
-        const across = side * (R + SHOULDER + (s ? 3 : 0)), o = (i * 2 + s) * 3, x = p.x + nn.x * across, z = p.z + nn.z * across;
-        v[o] = x; v[o + 2] = z; v[o + 1] = s ? Math.min(p.y - 0.05, groundHeightAt(x, z) + 0.05) : p.y - 0.02;
+  // ---- 道の両わきの細かい地面(路肩の外から 30m)。山側の崖はグレー(吹き付けのコンクリート)、崖の下と谷側の斜面は草、奥は森の暗い影 ----
+  {
+    const OFF = [0, 0.4, DITCH, DITCH + 0.6, DITCH + 1.5, DITCH + 3, DITCH + 5, DITCH + 7.5, 11, 15, 20, 25, STRIP];
+    const m = OFF.length, v = [], c = [], ind = [];
+    const grass = [0.17, 0.26, 0.08], rock = [0.15, 0.155, 0.15], C = new THREE.Color(), cutV = [];   // cutV: 削った深さ(元の地形 - 地面)
+    for (const side of [-1, 1]) {
+      const base = v.length / 3;
+      for (let i = 0; i < n; i++) {
+        const p = route[i], nn = tangents[i];
+        let px = p.x + nn.x * side * EDGE, pz = p.z + nn.z * side * EDGE, py = p.y - 0.05, prevY = py;
+        for (let k = 0; k < m; k++) {
+          const o = EDGE + OFF[k], x = p.x + nn.x * side * o, z = p.z + nn.z * side * o;
+          const legs = legsAt(x, z);
+          if (k === 0 || (legs.length && Math.abs(legs[0].i - i) < 25)) { px = x; pz = z; py = k === 0 ? p.y - 0.05 : H(x, z); }   // ほかの道の方が近い所(つづら折りの間)では止める
+          v.push(px, py, pz); cutV.push(T(px, pz) - py);
+          const slope = k ? (py - prevY) / Math.max(0.3, OFF[k] - OFF[k - 1]) : 0, far = THREE.MathUtils.smoothstep(OFF[k], 2.5, 7);
+          let col = grass.map((g, j) => g + (forest[j] - g) * far);
+          prevY = py; c.push(...col);
+        }
       }
-      if (i + 1 < n) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+      for (let i = 0; i + 1 < n; i++) for (let k = 0; k + 1 < m; k++) {
+        const a2 = base + i * m + k, b2 = a2 + m;
+        ind.push(a2, b2, a2 + 1, a2 + 1, b2, b2 + 1);
+      }
     }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: 0x4d6b28, side: THREE.DoubleSide })); mesh.name = 'GunmaGrass'; group.add(mesh);
+    // 崖の色は面ごとにくっきり(上の点が崖なら、その面は崖の色)
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); geo.setAttribute('cut', new THREE.Float32BufferAttribute(cutV, 1)); geo.setIndex(ind);
+    const flat = geo.toNonIndexed(); flat.computeVertexNormals();
+    const pos = flat.getAttribute('position'), col = flat.getAttribute('color'), cutA = flat.getAttribute('cut');
+    // 削った所(切り土)の急な面(40度より急)だけ崖のグレー。四角(三角 2 枚)ごとに決める(ふちをギザギザにしない)。
+    // 崖の上(元の山の斜面)は、草と木の茂る暗い緑
+    const triN = (t) => { const ax = pos.getX(t), ay = pos.getY(t), az = pos.getZ(t); return new THREE.Vector3(pos.getX(t + 1) - ax, pos.getY(t + 1) - ay, pos.getZ(t + 1) - az).cross(new THREE.Vector3(pos.getX(t + 2) - ax, pos.getY(t + 2) - ay, pos.getZ(t + 2) - az)); };
+    for (let t = 0; t < pos.count; t += 6) {
+      const nq = triN(t).add(triN(t + 3)).normalize();
+      let cut = 0; for (let j = 0; j < 6; j++) cut += cutA.getX(t + j) / 6;
+      const steep = Math.abs(nq.y) < 0.77 && cut > 0.4;
+      for (let j = 0; j < 6; j++) {
+        if (steep) { const q = 0.85 + 0.25 * Math.sin(pos.getX(t + j) * 0.7 + pos.getY(t + j) * 1.3) * Math.sin(pos.getZ(t + j) * 0.5); C.setRGB(rock[0] * q, rock[1] * q, rock[2] * q); }
+        else if (cut > 0.4 || cutA.getX(t + j) > 0.4) C.setRGB(0.05, 0.085, 0.03);   // 崖の上のふち: 茂み
+        else C.setRGB(col.getX(t + j), col.getY(t + j), col.getZ(t + j));
+        col.setXYZ(t + j, C.r, C.g, C.b);
+      }
+    }
+    const mesh = new THREE.Mesh(flat, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide }));
+    mesh.name = 'akagi-roadside'; scenery.add(mesh);
   }
 
   // ---- スタート・ゴールの線(道を横切る白い帯 0.6m) ----
@@ -186,7 +244,7 @@ export function buildAkagiMap(data) {
       if (rnd() > 0.12 + 0.55 * g) continue;
       const off = g > 0.5 ? RAIL + 1.2 + rnd() * 5 : RAIL + 7 + rnd() * 10;
       const x = p.x + nn.x * side * off + (rnd() - 0.5) * 2, z = p.z + nn.z * side * off + (rnd() - 0.5) * 2;
-      const r = roadAt(x, z); if (!r || r.d < RAIL + 1) continue;
+      const r = roadAt(x, z); if (!r || r.d < RAIL + 1 || T(x, z) - H(x, z) > 0.5) continue;   // 崖(削った面)には立てない
       trees.push([x, groundHeightAt(x, z) - 0.3, z, g > 0.5 ? 15 + rnd() * 7 : 10 + rnd() * 6]);
     }
     // 奥の森(道から 15m〜100m)

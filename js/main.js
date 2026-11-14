@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261114-6';
+import { buildAkagiMap } from './akagi-map.js?v=20261114-10';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -6739,6 +6739,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           if (mesh.isMesh && shadedBands.has(mesh.material?.name)) mesh.material = gunmaCanopy.material(mesh.material);
         });
         gunmaCourse.ground.material = gunmaCanopy.material(gunmaCourse.ground.material);   // 地面にも同じ木陰
+        gunmaCourse.scenery.traverse((mesh) => { if (mesh.name === 'akagi-roadside') mesh.material = gunmaCanopy.material(mesh.material); });   // 道わきの崖・斜面にも
         document.body.dataset.mapFog = 'akagi-clear';
       }
       if (COURSE_KEY === 'gunma') {
