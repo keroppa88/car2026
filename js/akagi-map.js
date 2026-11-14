@@ -101,7 +101,8 @@ export function buildAkagiMap(data) {
     Object.assign(P, region(P.pts));
   }
   const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
-  const PARK_RAMP = 3.0;       // 道路から駐車場へ下るコンクリートの接続斜面
+  const PARK_RAMP_ANGLE = 15;
+  const PARK_RAMP = PARK_DROP / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180); // 15度の直線スロープ(約0.93m)
   for (const P of parkings) {
     let best = null;
     for (const q of P.pts) {
@@ -116,7 +117,8 @@ export function buildAkagiMap(data) {
   const parkingRampHeight = (P, x, z) => {
     const r = roadAt(x, z);
     if (!r || r.d < EDGE || r.d > EDGE + PARK_RAMP) return null;
-    const t = THREE.MathUtils.smoothstep(r.d, EDGE, EDGE + PARK_RAMP);
+    // 道路端から駐車場へ15度で一定勾配。道路側の高さは変更しない。
+    const t = THREE.MathUtils.clamp((r.d - EDGE) / PARK_RAMP, 0, 1);
     return THREE.MathUtils.lerp(r.y - 0.05, P.y - 0.05, t);
   };
   const H = (x, z) => {
@@ -333,7 +335,7 @@ export function buildAkagiMap(data) {
 
   // ---- 駐車場舗装。道路側は H() の高さを使ってコンクリート斜面に連続させる ----
   {
-    const step = 0.75;
+    const step = 0.25; // 15度スロープを細かく分割して段差を抑える
     for (const P of parkings) {
       const v = [], indices = [];
       const x0 = Math.floor(P.x0 / step) * step, z0 = Math.floor(P.z0 / step) * step;
