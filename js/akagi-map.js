@@ -273,17 +273,29 @@ export function buildAkagiMap(data) {
   // ---- ガードレール(白、高さ 0.8m、両側)。見えない壁(高さ 1.2m)で当たり判定 ----
   const railMat = new THREE.MeshLambertMaterial({ name: 'GunmaGuardrail', color: 0xf0f0e8, emissive: 0x303030, side: THREE.DoubleSide });
   const colliders = [];
-  const nearParking = (x, z) => parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 5);
-  // スタート側の草原は、草原の外に木が十分に茂る地点まで左右ともガードレールを設けない。
-  // grove > 0.5 は、道のすぐ脇に木を密に並べる区間と一致させる。
-  const skip = (i, side) => {
-    if ((data.start != null && Math.abs(i - data.start) < 12) || (data.goal != null && Math.abs(i - data.goal) < 12)) return true;
+  // 駐車場の出入口だけを短く開ける。従来の5m判定は駐車場周囲に長い欠落を作っていた。
+  const nearParking = (x, z) => parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 1.5);
+  // 草原の例外は高所スタートから連続する草原区間だけ。森林・崖側・谷側では植生に関係なく設置する。
+  const meadowAtSide = (i, side) => {
     const p = route[i], nn = tangents[i];
     for (let off = EDGE; off <= RAIL + 8; off += 2) {
-      const x = p.x + nn.x * side * off, z = p.z + nn.z * side * off;
-      if (inAny(meadows, x, z)) return true;
+      if (inAny(meadows, p.x + nn.x * side * off, p.z + nn.z * side * off)) return true;
     }
-    return akagiGrove(p.x, p.z) <= 0.5;
+    return false;
+  };
+  const startIndex = clampI(data.start ?? 0);
+  const startMeadowEnd = [-1, 1].map((side) => {
+    let seen = false, dry = 0, end = startIndex - 1;
+    for (let i = startIndex; i < n; i++) {
+      if (meadowAtSide(i, side)) { seen = true; dry = 0; end = i; }
+      else if (seen && ++dry >= 8) break;
+    }
+    return end;
+  });
+  const skip = (i, side) => {
+    if ((data.start != null && Math.abs(i - data.start) < 12) || (data.goal != null && Math.abs(i - data.goal) < 12)) return true;
+    const sideIndex = side < 0 ? 0 : 1;
+    return i <= startMeadowEnd[sideIndex] && meadowAtSide(i, side);
   };
   for (const side of [-1, 1]) {
     const wall = [], panel = [];
