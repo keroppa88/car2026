@@ -5810,7 +5810,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           MAP_CONFIG.spawnReferenceX = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.x : p.x;
           MAP_CONFIG.spawnReferenceZ = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.z : p.z;
           MAP_CONFIG.spawnOffsetRight = 0;
-          MAP_CONFIG.spawnSurfaceY = null;
+          // 駐車場内の地表 H(x,z) は舗装面 P.y より0.05m低い。
+          // 道路メッシュの高さ検索に頼らず、その実際の地表高へ車体を接地させる。
+          MAP_CONFIG.spawnSurfaceY = selected.key === 'himeyuri' && gunmaCourse.parkingStart
+            ? gunmaCourse.parkingStart.y - 0.05
+            : null;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
           MAP_CONFIG.startKey = selected.key;
