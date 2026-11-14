@@ -478,6 +478,59 @@ export function buildAkagiMap(data) {
     // 地面から 1.5cm 上げ、埋没と地面とのちらつきを防ぐ。
     return (hit ? hit.point.y : terrainY) + 0.015;
   };
+  // 円形の光だまり用テクスチャ。中心から外周へ滑らかに透明化する。
+  const lampGlowCanvas = document.createElement('canvas');
+  lampGlowCanvas.width = lampGlowCanvas.height = 128;
+  const lampGlowCtx = lampGlowCanvas.getContext('2d');
+  const lampGlowGradient = lampGlowCtx.createRadialGradient(64, 64, 2, 64, 64, 63);
+  lampGlowGradient.addColorStop(0, 'rgba(255, 218, 153, 0.30)');
+  lampGlowGradient.addColorStop(0.28, 'rgba(255, 211, 139, 0.23)');
+  lampGlowGradient.addColorStop(0.62, 'rgba(255, 199, 119, 0.10)');
+  lampGlowGradient.addColorStop(0.88, 'rgba(255, 190, 105, 0.025)');
+  lampGlowGradient.addColorStop(1, 'rgba(255, 190, 105, 0)');
+  lampGlowCtx.fillStyle = lampGlowGradient;
+  lampGlowCtx.fillRect(0, 0, 128, 128);
+  const lampGlowTexture = new THREE.CanvasTexture(lampGlowCanvas);
+  lampGlowTexture.colorSpace = THREE.SRGBColorSpace;
+
+  // 円形パッチの頂点ごとに実際の地表高を取得し、斜面でも地面に沿わせる。
+  const makeLampPoolGeometry = (x, z, baseY, radius) => {
+    const rings = 5, segments = 32;
+    const positions = [0, lampSurfaceY(x, z) - baseY + 0.025, 0];
+    const uvs = [0.5, 0.5];
+    const indices = [];
+    for (let ring = 1; ring <= rings; ring++) {
+      const r = radius * ring / rings;
+      for (let i = 0; i < segments; i++) {
+        const angle = i / segments * Math.PI * 2;
+        const dx = Math.cos(angle) * r, dz = Math.sin(angle) * r;
+        positions.push(dx, lampSurfaceY(x + dx, z + dz) - baseY + 0.025, dz);
+        uvs.push(0.5 + dx / (2 * radius), 0.5 + dz / (2 * radius));
+      }
+    }
+    // 中心から最初のリング。
+    for (let i = 0; i < segments; i++) {
+      const next = (i + 1) % segments;
+      indices.push(0, 1 + next, 1 + i);
+    }
+    // 各リング間を三角形で接続。
+    for (let ring = 1; ring < rings; ring++) {
+      const inner = 1 + (ring - 1) * segments;
+      const outer = 1 + ring * segments;
+      for (let i = 0; i < segments; i++) {
+        const next = (i + 1) % segments;
+        const a = inner + i, b = inner + next, c = outer + i, d = outer + next;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  };
+
   const addAkagiLamp = (x, z, name) => {
     const ly = lampSurfaceY(x, z);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
@@ -488,12 +541,23 @@ export function buildAkagiMap(data) {
     const diffuserMat = new THREE.MeshBasicMaterial({ color: 0x665b42 });
     const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
     diffuser.position.set(x, ly + 5.31, z); diffuser.name = name + '-diffuser'; scenery.add(diffuser);
-    // 光だまりの拡散範囲は従来の5倍。PointLightも強度5・照射距離27.5mで追加する。
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(27.5, 27.5), haloMat);
-    halo.rotation.x = -Math.PI / 2; halo.position.set(x, ly + 0.035, z); halo.name = name + '-pool'; scenery.add(halo);
+
+    // 直径27.5mの円形光だまり。四角い板を使わず、地表の凹凸に合わせて変形させる。
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: lampGlowTexture, color: 0xffd98a, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    const halo = new THREE.Mesh(makeLampPoolGeometry(x, z, ly, 13.75), haloMat);
+    halo.position.set(x, ly, z);
+    halo.name = name + '-pool';
+    halo.renderOrder = 3;
+    scenery.add(halo);
+
     const light = new THREE.PointLight(0xffd98a, 5, 27.5, 2);
-    light.position.set(x, ly + 5.25, z); light.visible = false; light.name = name + '-point-light'; scenery.add(light);
+    light.position.set(x, ly + 5.25, z);
+    light.visible = false;
+    light.name = name + '-point-light';
+    scenery.add(light);
     akagiNightLights.push({ diffuserMat, haloMat, light });
   };
   const toiletPts = (data.toilets || []);
