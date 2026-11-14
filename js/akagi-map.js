@@ -442,7 +442,7 @@ export function buildAkagiMap(data) {
     const cz = best.P.pts.reduce((v, q) => v + q[1], 0) / best.P.pts.length;
     const dx = cx - best.x, dz = cz - best.z, len = Math.hypot(dx, dz) || 1;
     let x = best.x, z = best.z;
-    for (const step of [3.2, 2.5, 1.8, 1.0, 0.4]) {
+    for (const step of [0.5, 0.8, 1.2, 1.8, 2.5]) {
       const tx = best.x + dx / len * step, tz = best.z + dz / len * step;
       if (inPoly(best.P, tx, tz)) { x = tx; z = tz; break; }
     }
