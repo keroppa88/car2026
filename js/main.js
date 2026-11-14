@@ -5806,9 +5806,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const q = gunmaCourse.route[selected.routeEnd === 'goal' ? index - 1 : index + 1];
           const dx = q.x - p.x, dz = q.z - p.z;
           const heading = Math.atan2(dx, dz);
-          MAP_CONFIG.spawnReferenceX = p.x;
-          MAP_CONFIG.spawnReferenceZ = p.z;
-          MAP_CONFIG.spawnOffsetRight = selected.key === 'himeyuri' ? -1.8 : 0;
+          // 姫百合側は駐車場入口のすぐ内側へ戻し、道路の上り車線方向を向ける。
+          MAP_CONFIG.spawnReferenceX = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.x : p.x;
+          MAP_CONFIG.spawnReferenceZ = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.z : p.z;
+          MAP_CONFIG.spawnOffsetRight = 0;
           MAP_CONFIG.spawnSurfaceY = null;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
