@@ -128,7 +128,11 @@ export function buildAkagiMap(data) {
   const PARK_ENTRANCE_HALF_LENGTH = 18; // 黄色指定の出入口。道路沿い約36mを開放
   const nearParkingEntrance = (x, z) => {
     const r = roadAt(x, z);
-    return !!r && parkings.some((P) => Math.abs(routeS[r.i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH);
+    // 道路沿いの距離だけで両側を開けない。駐車場ポリゴンに面した側(黄色線側)だけ開放する。
+    return !!r && parkings.some((P) =>
+      Math.abs(routeS[r.i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH &&
+      edgeDist(P, x, z) <= 2.0
+    );
   };
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
   const parkingRampHeight = (P, x, z) => {
