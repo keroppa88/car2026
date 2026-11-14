@@ -4311,6 +4311,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const GUNMA_CPU_SAME = 6;
   const FUJI_CPU_FACTORS = [0.9, 0.8, 1.0, 0.85, 1.1, 0.9, 0.95, 1.05, 0.9];   // 富士の CPU 車の速さ(自車の何倍か)。0.9倍を中心に
   const GUNMA_CPU_ONCOMING = 6;
+  // 赤城は全12台を登り・下りに6台ずつ固定配分。route[0]→route末尾は観光案内所から姫百合への下り。
+  const AKAGI_CPU_DOWNHILL = 6;
+  const AKAGI_CPU_UPHILL = 6;
 
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
@@ -4326,10 +4329,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 街並みも二車線の対面通行。左車線が自分と同じ向き、右車線が対向車。
     const trafficPlan = FUJI_COURSE
       ? [['same', Math.round(GUNMA_CPU_SAME * 1.5), FUJI_CPU_FACTORS.map((f) => f * PLAYER_TOP_SPEED_KMH)]]   // サーキットは同じ向きだけ。台数 1.5倍、自車の最高速の 0.8〜1.1倍
-      : [
-        ['same', GUNMA_CPU_SAME, [65, 75, 85]],
-        ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
-      ];
+      : AKAGI_COURSE
+        ? [
+          ['same', AKAGI_CPU_DOWNHILL, [65, 75, 85]],       // 下り: 観光案内所 → 姫百合駐車場
+          ['oncoming', AKAGI_CPU_UPHILL, [55, 65, 75]],     // 上り: 姫百合駐車場 → 観光案内所
+        ]
+        : [
+          ['same', GUNMA_CPU_SAME, [65, 75, 85]],
+          ['oncoming', GUNMA_CPU_ONCOMING, [55, 65, 75]],
+        ];
     for (const [direction, count, speeds] of trafficPlan) {
       const path = paths[direction];
       for (let i = 0; i < count; i++) {
@@ -4371,9 +4379,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         created++;
       }
     }
-    document.body.dataset.gunmaCpuSameDirection = String(FUJI_COURSE ? created : GUNMA_CPU_SAME);
+    document.body.dataset.gunmaCpuSameDirection = String(FUJI_COURSE ? created : AKAGI_COURSE ? AKAGI_CPU_DOWNHILL : GUNMA_CPU_SAME);
     document.body.dataset.gunmaCpuSpeedsKmh = aiCars.filter((a) => a.gunmaTraffic).map((a) => Math.round(a.speedKmh)).join(',');
-    document.body.dataset.gunmaCpuOncoming = String(GUNMA_CPU_ONCOMING);
+    document.body.dataset.gunmaCpuOncoming = String(AKAGI_COURSE ? AKAGI_CPU_UPHILL : GUNMA_CPU_ONCOMING);
+    if (AKAGI_COURSE) {
+      document.body.dataset.akagiCpuDownhill = String(AKAGI_CPU_DOWNHILL);
+      document.body.dataset.akagiCpuUphill = String(AKAGI_CPU_UPHILL);
+      document.body.dataset.akagiCpuDirectionBalance = '50:50';
+    }
     document.body.dataset.gunmaCpuLaneOffsetMeters = '2.05';
     document.body.dataset.gunmaCpuRouteLengthMeters = paths.same.length.toFixed(0);
   }
