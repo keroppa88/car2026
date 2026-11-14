@@ -1163,9 +1163,10 @@
       }
       if (event.key === 'Enter') { stage === 'car' ? showCourses() : start(); return; }
       const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
-      if (stage === 'car') carIndex = (carIndex + delta + carKeys.length) % carKeys.length;
-      else if (stage === 'start') startIndex = (startIndex + delta + startButtons.length) % startButtons.length;
-      else courseIndex = (courseIndex + delta + COURSE_ORDER.length) % COURSE_ORDER.length;
+      // 選択カーソルは端で折り返さない。
+      if (stage === 'car') carIndex = Math.max(0, Math.min(carKeys.length - 1, carIndex + delta));
+      else if (stage === 'start') startIndex = Math.max(0, Math.min(startButtons.length - 1, startIndex + delta));
+      else courseIndex = Math.max(0, Math.min(COURSE_ORDER.length - 1, courseIndex + delta));
       paint();
     });
     window.addEventListener('pointerdown', armDemoIdleTimer, { passive: true });
