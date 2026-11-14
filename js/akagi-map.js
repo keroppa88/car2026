@@ -100,9 +100,14 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  for (const P of parkings) {   // 駐車場舗装面は最寄りの道路面と同じ高さにする
-    let best = null; for (const q of P.pts) { const k = nearestRoute(q[0], q[1]); if (!best || k.d < best.d) best = k; }
-    P.y = route[best.i].y;
+  for (const P of parkings) {   // 駐車場舗装面は、接続する道路の路面高に合わせる(ルート点の段差を拾わず線形補間)
+    let best = null;
+    for (const q of P.pts) {
+      const r = roadAt(q[0], q[1]);
+      if (r && (!best || r.d < best.d)) best = r;
+    }
+    // 舗装メッシュは P.y + 0.02 に描画するため、道路面と同じ高さになるよう基準値を 2cm 下げる。
+    P.y = best ? best.y - 0.02 : route[nearestRoute(P.pts[0][0], P.pts[0][1]).i].y - 0.02;
   }
   const PARK_BLEND = 8;   // 駐車場のまわり 8m で元の地面へなめらかに戻す
   const H = (x, z) => {
