@@ -6714,25 +6714,44 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     //  - 1灯ずつは控えめにし、2灯が重なる前方の中央が主に明るくなるようにする(配分は後で調整)。
     //  - 円錐の上の縁が水平になるよう半角と同じだけ下へ向け、ライトの高さより上は照らさない。
     const NEO_LAMP_X = 0.8, NEO_CONE = 1.1, NEO_LAMP_INTENSITY = 2.08;
+    const HEADLIGHT_UPPER_RANGE_SCALE = 0.70;  // 車体より上への照射角を30%縮小
+    const HEADLIGHT_BRIGHTNESS_SCALE = 0.80;   // 自車前照灯の明るさを20%低減
+    const HEADLIGHT_Y = 0.75, HEADLIGHT_Z = 2.55;
     for (const side of [-1, 1]) {
-      const intensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
+      const baseIntensity = NEO_COURSE ? NEO_LAMP_INTENSITY : gunmaHeadlights ? 4.2 : 0.42;
+      const intensity = baseIntensity * HEADLIGHT_BRIGHTNESS_SCALE;
       const distance = gunmaHeadlights ? 56 : 7;
-      const angle = NEO_COURSE ? NEO_CONE
+      const baseAngle = NEO_COURSE ? NEO_CONE
         : gunmaHeadlights ? Math.atan(Math.tan(0.65) * 3) : 0.65;
+      const targetZ = NEO_COURSE ? HEADLIGHT_Z + 10 : gunmaHeadlights ? 24 : 8;
+      const baseTargetY = NEO_COURSE
+        ? HEADLIGHT_Y - Math.tan(NEO_CONE) * 10
+        : 0;
+      // SpotLightは円錐形なので、下側の照射限界を維持したまま上側の開きを30%縮める。
+      // 上端だけを内側へ移し、照射軸を少し下げる。路面側の下端は元の角度を維持。
+      const dz = targetZ - HEADLIGHT_Z;
+      const baseDownAngle = Math.atan2(HEADLIGHT_Y - baseTargetY, dz);
+      const upperOpenAngle = Math.max(0, baseAngle - baseDownAngle);
+      const reducedUpperOpenAngle = upperOpenAngle * HEADLIGHT_UPPER_RANGE_SCALE;
+      const lowerDownAngle = baseDownAngle + baseAngle;
+      const angle = (lowerDownAngle + reducedUpperOpenAngle) * 0.5;
+      const aimDownAngle = (lowerDownAngle - reducedUpperOpenAngle) * 0.5;
+      const targetY = HEADLIGHT_Y - Math.tan(aimDownAngle) * dz;
       const decay = gunmaHeadlights ? 0.5 : 1.5;
       const light = new THREE.SpotLight(0xffeecb, intensity, distance, angle, NEO_COURSE ? 1 : 0.6, decay);
-      light.position.set(side * (NEO_COURSE ? NEO_LAMP_X : HEADLIGHT_OFFSET_X), 0.75, 2.55);
+      light.position.set(side * (NEO_COURSE ? NEO_LAMP_X : HEADLIGHT_OFFSET_X), HEADLIGHT_Y, HEADLIGHT_Z);
       light.visible = vehicleLightsShouldBeVisible();
       if (NEO_COURSE) {
-        // まっすぐ前へ、NEO_CONE だけ下向き。
-        light.target.position.set(side * NEO_LAMP_X, 0.75 - Math.tan(NEO_CONE) * 10, 2.55 + 10);
+        light.target.position.set(side * NEO_LAMP_X, targetY, targetZ);
       } else {
-        light.target.position.set(side * HEADLIGHT_AIM_X, 0, gunmaHeadlights ? 24 : 8);
+        light.target.position.set(side * HEADLIGHT_AIM_X, targetY, targetZ);
       }
       player.tilt.add(light);
       player.tilt.add(light.target);
       playerHeadlights.push(light);
     }
+    document.body.dataset.playerHeadlightUpperRangeScale = String(HEADLIGHT_UPPER_RANGE_SCALE);
+    document.body.dataset.playerHeadlightBrightnessScale = String(HEADLIGHT_BRIGHTNESS_SCALE);
 
     if (MAP_GLTF) {
       const info = await loadGltfMap(MAP_GLTF);
