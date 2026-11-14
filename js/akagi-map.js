@@ -514,7 +514,6 @@ export function buildAkagiMap(data) {
   // 既存のスロープ脇の街灯は維持。
   addAkagiLamp(-1493, 1770, 'akagi-lamp-ramp-side');
   // 指定地点への追加街灯。いずれも基部の高さは各地点の地形高 H(x,z) を使用。
-  addAkagiLamp(-1473, 1793, 'akagi-lamp-parking');
   addAkagiLamp(-211, 389, 'akagi-lamp-new-location');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
