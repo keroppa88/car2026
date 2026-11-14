@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261114-guardrail-3';
+import { buildAkagiMap } from './akagi-map.js?v=20261114-guardrail-4';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -5801,12 +5801,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const selected = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
           const index = selected.routeEnd === 'goal' ? gunmaCourse.goal : gunmaCourse.start;
           const p = gunmaCourse.route[index];
-          // 駐車場(ゴール)からの上りは route の前方(index - 1)、案内所からの下りは後方(index + 1)を向く。
+          // 姫百合側は道路終点ではなく、駐車場の道路側の前列から上り方向へ発進する。
+          const parkingStart = selected.key === 'himeyuri' ? gunmaCourse.parkingStart : null;
+          // 駐車場からの上りは route の前方(index - 1)、案内所からの下りは後方(index + 1)を向く。
           const q = gunmaCourse.route[selected.routeEnd === 'goal' ? index - 1 : index + 1];
           const dx = q.x - p.x, dz = q.z - p.z;
           const heading = Math.atan2(dx, dz);
-          MAP_CONFIG.spawnReferenceX = p.x;
-          MAP_CONFIG.spawnReferenceZ = p.z;
+          MAP_CONFIG.spawnReferenceX = parkingStart ? parkingStart.x : p.x;
+          MAP_CONFIG.spawnReferenceZ = parkingStart ? parkingStart.z : p.z;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
           MAP_CONFIG.startKey = selected.key;
