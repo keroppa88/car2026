@@ -5799,7 +5799,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         map = gunmaCourse.group;
         if (AKAGI_COURSE && MAP_CONFIG.starts) {
           const selected = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
-          const index = selected.routeEnd === 'goal' ? gunmaCourse.route.length - 1 : 0;
+          const index = selected.routeEnd === 'goal' ? gunmaCourse.goal : gunmaCourse.start;
           const p = gunmaCourse.route[index];
           const q = gunmaCourse.route[selected.routeEnd === 'goal' ? index - 1 : index + 1];
           const dx = q.x - p.x, dz = q.z - p.z;
