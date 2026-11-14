@@ -274,11 +274,21 @@ export function buildAkagiMap(data) {
   const railMat = new THREE.MeshLambertMaterial({ name: 'GunmaGuardrail', color: 0xf0f0e8, emissive: 0x303030, side: THREE.DoubleSide });
   const colliders = [];
   const nearParking = (x, z) => parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 5);
-  const skip = (i) => (data.start != null && Math.abs(i - data.start) < 12) || (data.goal != null && Math.abs(i - data.goal) < 12);   // 駐車場の出入口のあたりは切る
+  // スタート側の草原は、草原の外に木が十分に茂る地点まで左右ともガードレールを設けない。
+  // grove > 0.5 は、道のすぐ脇に木を密に並べる区間と一致させる。
+  const skip = (i, side) => {
+    if ((data.start != null && Math.abs(i - data.start) < 12) || (data.goal != null && Math.abs(i - data.goal) < 12)) return true;
+    const p = route[i], nn = tangents[i];
+    for (let off = EDGE; off <= RAIL + 8; off += 2) {
+      const x = p.x + nn.x * side * off, z = p.z + nn.z * side * off;
+      if (inAny(meadows, x, z)) return true;
+    }
+    return akagiGrove(p.x, p.z) <= 0.5;
+  };
   for (const side of [-1, 1]) {
     const wall = [], panel = [];
     for (let i = 0; i + 1 < n; i++) {
-      if (skip(i) || skip(i + 1)) continue;
+      if (skip(i, side) || skip(i + 1, side)) continue;
       const a = route[i], b = route[i + 1], na = tangents[i], nb = tangents[i + 1];
       const pa = [a.x + na.x * side * RAIL, a.z + na.z * side * RAIL], pb = [b.x + nb.x * side * RAIL, b.z + nb.z * side * RAIL];
       if (nearParking(...pa) || nearParking(...pb)) continue;   // 駐車場の入口(道と駐車場の間)はガードレールなし
@@ -293,7 +303,7 @@ export function buildAkagiMap(data) {
     const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), railMat, Math.ceil(n / 2) + 1), M = new THREE.Matrix4();
     let c = 0;
     for (let i = 0; i < n; i += 2) {
-      if (skip(i)) continue;
+      if (skip(i, side)) continue;
       const p = route[i], nn = tangents[i];
       if (nearParking(p.x + nn.x * side * RAIL, p.z + nn.z * side * RAIL)) continue;
       posts.setMatrixAt(c++, M.makeTranslation(p.x + nn.x * side * (RAIL + 0.08), p.y + 0.4, p.z + nn.z * side * (RAIL + 0.08)));
