@@ -391,7 +391,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '富士スピードウェイ',
     file: 'procedural:fuji',
-    preview: 'picture/fuji.png',
+    preview: 'picture/fuji.png?v=20261114',
     courseData: 'map/fuji-course.json?v=20261114-5',
     // 地面の塗り分け(舗装 = 薄いグレー、芝生 = 薄い黄緑、木々 = 深い緑)。tools/fuji/make_landcover.py が空撮から作る
     landcoverImage: 'map/fuji-landcover-hd.png?v=20261114-4',
