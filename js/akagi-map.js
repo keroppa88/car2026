@@ -461,7 +461,7 @@ export function buildAkagiMap(data) {
 
   }
 
-  // 駐車場照明は建物の屋根・壁から十分離した地面上に2基だけ配置する。
+  // 街灯の支柱基部は各地点の地形高 H(x,z) に合わせる。駐車場の高さを流用しない。
   const addAkagiLamp = (x, z, name) => {
     const ly = H(x, z);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
@@ -495,8 +495,11 @@ export function buildAkagiMap(data) {
     }
     if (between) addAkagiLamp(between.x, between.z, 'akagi-lamp-between-toilets');
   }
-  // スロープ脇の街灯：指定座標で固定配置。旧来の推定配置2系統は撤去。
+  // 既存のスロープ脇の街灯は維持。
   addAkagiLamp(-1493, 1770, 'akagi-lamp-ramp-side');
+  // 指定地点への追加街灯。いずれも基部の高さは各地点の地形高 H(x,z) を使用。
+  addAkagiLamp(-1477, 1493, 'akagi-lamp-west-slope');
+  addAkagiLamp(68, 514, 'akagi-lamp-high-point');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
