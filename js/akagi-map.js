@@ -375,7 +375,7 @@ export function buildAkagiMap(data) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
       g.setIndex(indices); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x77797a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x4a4c4e, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
       m.name = 'akagi-parking'; scenery.add(m);
     }
   }
