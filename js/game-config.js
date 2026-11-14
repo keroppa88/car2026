@@ -440,6 +440,11 @@ export const MAP_CONFIGS = {
     loopMode: 'none',
     roadMotionStep: 0.15,
     // スタートは案内所の前の左車線。下り(姫百合駐車場の方)を向く。
+    // スタート地点はコース選択後に選ぶ。route の両端から座標と進行方向を取得する。
+    starts: [
+      { key: 'himeyuri', label: '姫百合駐車場（のぼり）', routeEnd: 'goal', reverse: true },
+      { key: 'kankou', label: '赤城山観光案内所（くだり）', routeEnd: 'start', reverse: false },
+    ],
     spawnReference: 'fixed',
     spawnReferenceX: 1.86,
     spawnReferenceZ: -0.42,
