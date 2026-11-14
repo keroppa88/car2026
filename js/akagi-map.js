@@ -459,28 +459,61 @@ export function buildAkagiMap(data) {
     roof.position.set(tx, y + 3.3, tz); roof.rotation.y = ang; roof.name = 'akagi-toilet-roof'; scenery.add(roof);
     body.updateMatrixWorld(); colliders.push(body);
 
-    // 姫百合駐車場のトイレ・出入口付近に一般的なポール型街灯を1基設置。
-    // 駐車場の内側へ少し寄せ、道路・スロープには置かない。
-    if (P) {
-      const cx = P.pts.reduce((s, q) => s + q[0], 0) / P.pts.length;
-      const cz = P.pts.reduce((s, q) => s + q[1], 0) / P.pts.length;
-      const dx = cx - tx, dz = cz - tz, dl = Math.hypot(dx, dz) || 1;
-      const lx = tx + dx / dl * 2.5, lz = tz + dz / dl * 2.5;
-      const ly = H(lx, lz);
-      const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.4, 10), poleMat);
-      pole.position.set(lx, ly + 2.7, lz); pole.name = 'akagi-streetlight-pole'; scenery.add(pole);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.13, 20), poleMat);
-      cap.position.set(lx, ly + 5.43, lz); cap.name = 'akagi-streetlight-head'; scenery.add(cap);
-      const diffuserMat = new THREE.MeshBasicMaterial({ color: 0x665b42 });
-      const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
-      diffuser.position.set(lx, ly + 5.31, lz); diffuser.name = 'akagi-streetlight-diffuser'; scenery.add(diffuser);
-      // 夜間に見える照明の光だまり。点光源の負荷を避け、発光表現で再現。
-      const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide });
-      const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), haloMat);
-      halo.rotation.x = -Math.PI / 2; halo.position.set(lx, ly + 0.035, lz); halo.name = 'akagi-streetlight-pool'; scenery.add(halo);
-      akagiNightLights.push({ diffuserMat, haloMat });
+  }
+
+  // 駐車場照明は建物の屋根・壁から十分離した地面上に2基だけ配置する。
+  const addAkagiLamp = (x, z, name) => {
+    const ly = H(x, z);
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.4, 10), poleMat);
+    pole.position.set(x, ly + 2.7, z); pole.name = name + '-pole'; scenery.add(pole);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.13, 20), poleMat);
+    cap.position.set(x, ly + 5.43, z); cap.name = name + '-head'; scenery.add(cap);
+    const diffuserMat = new THREE.MeshBasicMaterial({ color: 0x665b42 });
+    const diffuser = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 20), diffuserMat);
+    diffuser.position.set(x, ly + 5.31, z); diffuser.name = name + '-diffuser'; scenery.add(diffuser);
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), haloMat);
+    halo.rotation.x = -Math.PI / 2; halo.position.set(x, ly + 0.035, z); halo.name = name + '-pool'; scenery.add(halo);
+    akagiNightLights.push({ diffuserMat, haloMat });
+  };
+  const toiletPts = (data.toilets || []);
+  if (toiletPts.length >= 2) {
+    // 1基目：2棟のトイレの中間。建物の外壁から最低4.5m離す。
+    const mx = (toiletPts[0][0] + toiletPts[1][0]) / 2;
+    const mz = (toiletPts[0][1] + toiletPts[1][1]) / 2;
+    const vx = toiletPts[1][0] - toiletPts[0][0], vz = toiletPts[1][1] - toiletPts[0][1];
+    const vl = Math.hypot(vx, vz) || 1;
+    let between = null;
+    for (const side of [-1, 1]) {
+      const x = mx + (-vz / vl) * side * 4.8, z = mz + (vx / vl) * side * 4.8;
+      if (parkings.some(P => inPoly(P, x, z)) &&
+          toiletPts.every(([tx,tz]) => Math.hypot(x-tx,z-tz) >= 5.2)) { between = {x,z}; break; }
     }
+    if (between) addAkagiLamp(between.x, between.z, 'akagi-lamp-between-toilets');
+  }
+  // 2基目：駐車場スロープの脇。スロープ本体から場内側へ約5m離す。
+  if (parkings.length) {
+    const P = parkings.reduce((best,q) => !best || Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0)) < best.score ? {q,score:Math.abs(q.rampS - (routeS[nearestRoute(q.pts[0][0],q.pts[0][1]).i] || 0))} : best,null)?.q || parkings[0];
+    const ri = route.reduce((best,p,i) => Math.abs(routeS[i]-P.rampS) < Math.abs(routeS[best]-P.rampS) ? i : best,0);
+    const rp = route[ri], nn = tangents[ri];
+    let best = null;
+    for (const side of [-1,1]) {
+      const ex = rp.x + nn.x * side * (R + 0.2), ez = rp.z + nn.z * side * (R + 0.2);
+      let edge = null;
+      for (let i=0;i<P.pts.length;i++) {
+        const a=P.pts[i], b=P.pts[(i+1)%P.pts.length], dx=b[0]-a[0], dz=b[1]-a[1];
+        const t=THREE.MathUtils.clamp(((ex-a[0])*dx+(ez-a[1])*dz)/(dx*dx+dz*dz||1),0,1);
+        const x=a[0]+dx*t, z=a[1]+dz*t, d=Math.hypot(x-ex,z-ez);
+        if(!edge||d<edge.d) edge={x,z,d};
+      }
+      if(!edge) continue;
+      const cx=P.pts.reduce((s,q)=>s+q[0],0)/P.pts.length, cz=P.pts.reduce((s,q)=>s+q[1],0)/P.pts.length;
+      const dx=cx-edge.x,dz=cz-edge.z,dl=Math.hypot(dx,dz)||1;
+      const x=edge.x+dx/dl*5.5,z=edge.z+dz/dl*5.5;
+      if(inPoly(P,x,z) && toiletPts.every(([tx,tz])=>Math.hypot(x-tx,z-tz)>=5.2)) { best={x,z}; break; }
+    }
+    if(best) addAkagiLamp(best.x,best.z,'akagi-lamp-ramp-side');
   }
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
