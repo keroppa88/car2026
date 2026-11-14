@@ -12,6 +12,7 @@ from scipy import ndimage
 ROOT = Path(__file__).resolve().parents[2]
 OSM, DEM, OUT = ROOT / 'tools/akagi/akagi.osm', ROOT / 'tools/akagi/akagi_dem.npz', ROOT / 'map/akagi-course.json'
 STEP, CELL, PAD = 3.0, 6.0, 600.0
+EXT = 100.0   # スタートの手前・ゴールの先にのばす長さ(m)
 N, W = {}, {}
 for _, e in etree.iterparse(str(OSM), events=('end',)):
     if e.tag == 'node': N[e.get('id')] = (float(e.get('lat')), float(e.get('lon')))
@@ -36,8 +37,18 @@ while pq:
         if d + w < dist.get(v, 1e18): dist[v] = d + w; prev[v] = u; heapq.heappush(pq, (d + w, v))
 path = [B]
 while path[-1] != A: path.append(prev[path[-1]])
-ll = np.array([N[i] for i in path[::-1]])
-lat0, lon0 = ll[0]
+path = path[::-1]
+def walk(end, back, need=EXT):
+    # 端から、来た道と反対へ 4号を need m 先までたどる
+    out, cur, prv, d = [], end, back, 0.0
+    while d < need:
+        nxt = [(v, w) for v, w in G[cur] if v != prv and v not in path]
+        if not nxt: break
+        v, w = nxt[0]; out.append(v); d += w; prv, cur = cur, v
+    return out
+pre, post = walk(path[0], path[1])[::-1], walk(path[-1], path[-2])
+ll = np.array([N[i] for i in pre + path + post])
+lat0, lon0 = N[path[0]]
 KX = math.cos(math.radians(lat0)) * 111320.0; KZ = 110574.0
 P = np.stack([(ll[:, 1] - lon0) * KX, -(ll[:, 0] - lat0) * KZ], 1)
 # 地形
@@ -51,6 +62,12 @@ def dem_at(lat, lon):
 lat_of = lambda zz: lat0 - zz / KZ; lon_of = lambda xx: lon0 + xx / KX
 # コース: 3m ごとに置き直す(はじめと終わりがある1本道)
 seg = np.linalg.norm(np.diff(P, axis=0), axis=1); cum = np.concatenate([[0], np.cumsum(seg)]); L = cum[-1]
+cs = cum[len(pre)]; ce = cum[len(pre) + len(path) - 1]            # スタート・ゴールの位置(道にそった長さ)
+a0, a1 = max(0.0, cs - EXT), min(L, ce + EXT)                        # ちょうど 100m ずつに切る
+keep = (cum > a0) & (cum < a1)
+P = np.vstack([[np.interp(a0, cum, P[:, k]) for k in (0, 1)], P[keep], [np.interp(a1, cum, P[:, k]) for k in (0, 1)]])
+cs, ce = cs - a0, ce - a0
+seg = np.linalg.norm(np.diff(P, axis=0), axis=1); cum = np.concatenate([[0], np.cumsum(seg)]); L = cum[-1]
 n = int(round(L / STEP)) + 1; ds = np.linspace(0, L, n)
 Q = np.stack([np.interp(ds, cum, P[:, k]) for k in (0, 1)], 1)
 # 角をならす(OSM の折れ線の角を丸める)
@@ -63,9 +80,9 @@ x0, x1 = Q[:, 0].min() - PAD, Q[:, 0].max() + PAD; z0, z1 = Q[:, 1].min() - PAD,
 nx, nz = int((x1 - x0) / CELL) + 1, int((z1 - z0) / CELL) + 1
 GX, GZ = np.meshgrid(x0 + np.arange(nx) * CELL, z0 + np.arange(nz) * CELL)
 gh = dem_at(lat_of(GZ), lon_of(GX)) - BASE
-data = {'origin': [float(lat0), float(lon0)], 'base': BASE,
+data = {'origin': [float(lat0), float(lon0)], 'base': BASE, 'start': int(round(cs / L * (n - 1))), 'goal': int(round(ce / L * (n - 1))),
         'route': [[round(float(q[0]), 2), round(float(y[i] - BASE), 3), round(float(q[1]), 2)] for i, q in enumerate(Q)],
         'ground': {'x0': round(float(x0), 2), 'z0': round(float(z0), 2), 'cell': CELL, 'nx': nx, 'nz': nz,
                    'h': [round(float(v), 1) for v in gh.ravel()]}}
 OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-print('長さ', round(L), 'm  点', n, ' 高さ', round(y[0]), '→', round(y[-1]), ' 基準', BASE, ' 地面', nx, 'x', nz, OUT.stat().st_size // 1024, 'KB')
+print('のばした長さ', round(cs), round(L - ce), ' スタート', data['start'], 'ゴール', data['goal'], ' 長さ', round(L), 'm  点', n, ' 高さ', round(y[0]), '→', round(y[-1]), ' 基準', BASE, ' 地面', nx, 'x', nz, OUT.stat().st_size // 1024, 'KB')
