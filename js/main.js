@@ -5799,22 +5799,30 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         map = gunmaCourse.group;
         if (AKAGI_COURSE && MAP_CONFIG.starts) {
           const selected = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
-          const index = selected.routeEnd === 'goal' ? gunmaCourse.goal : gunmaCourse.start;
+          const isHimeyuri = selected.key === 'himeyuri';
+          // 姫百合側は駐車場ポリゴンを基準にしない。指定された道路センターライン座標を基準にする。
+          // 指定点(-1447, 1776)に最も近いコース中心線の点を求め、その地点の接線で進行方向を決める。
+          const anchor = isHimeyuri ? { x: -1447, z: 1776 } : null;
+          let index = selected.routeEnd === 'goal' ? gunmaCourse.goal : gunmaCourse.start;
+          if (anchor) {
+            let bestDistance = Infinity;
+            for (let i = 0; i < gunmaCourse.route.length; i++) {
+              const r = gunmaCourse.route[i];
+              const d = (r.x - anchor.x) ** 2 + (r.z - anchor.z) ** 2;
+              if (d < bestDistance) { bestDistance = d; index = i; }
+            }
+          }
           const p = gunmaCourse.route[index];
-          // 姫百合側は駐車場内ではなく、駐車場正面の道路上に車線に沿って配置する。
-          // 上り方向は route の前方(index - 1)。日本の左側通行なので進行方向の左車線へ寄せる。
-          const q = gunmaCourse.route[selected.routeEnd === 'goal' ? index - 1 : index + 1];
+          // route は観光案内所→姫百合。姫百合発進は逆向き(index - 1)で上り方向。
+          const q = gunmaCourse.route[isHimeyuri ? Math.max(0, index - 1) : Math.min(gunmaCourse.route.length - 1, index + 1)];
           const dx = q.x - p.x, dz = q.z - p.z;
           const heading = Math.atan2(dx, dz);
-          // 姫百合側は駐車場入口のすぐ内側へ戻し、道路の上り車線方向を向ける。
-          MAP_CONFIG.spawnReferenceX = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.x : p.x;
-          MAP_CONFIG.spawnReferenceZ = selected.key === 'himeyuri' && gunmaCourse.parkingStart ? gunmaCourse.parkingStart.z : p.z;
-          MAP_CONFIG.spawnOffsetRight = 0;
-          // 駐車場の実際の走行面は舗装メッシュの P.y + 0.02。
-          // 地形メッシュ H(x,z) (= P.y - 0.05) ではなく、舗装面の高さに車体を接地させる。
-          MAP_CONFIG.spawnSurfaceY = selected.key === 'himeyuri' && gunmaCourse.parkingStart
-            ? gunmaCourse.parkingStart.y + 0.02
-            : null;
+          MAP_CONFIG.spawnReferenceX = anchor ? anchor.x : p.x;
+          MAP_CONFIG.spawnReferenceZ = anchor ? anchor.z : p.z;
+          // 指定座標は道路センターライン。日本の左側通行なので、進行方向の左車線中央へ1.8m寄せる。
+          MAP_CONFIG.spawnOffsetRight = isHimeyuri ? -1.8 : 0;
+          // 道路上の実際の路面高をレイキャストで取得する。駐車場の高さは使わない。
+          MAP_CONFIG.spawnSurfaceY = null;
           MAP_CONFIG.spawnHeading = Math.atan2(Math.sin(heading), Math.cos(heading));
           MAP_CONFIG.spawnExactReference = true;
           MAP_CONFIG.startKey = selected.key;
