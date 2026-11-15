@@ -5929,8 +5929,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           // 姫百合発進は上り方向の左車線中央へ。道路メッシュと同じ法線方向に1.8mずらす。
           // spawnOffsetRight(車両 heading 基準)には依存せず、道路中心線の法線で直接配置する。
           const laneNormal = gunmaCourse.tangents[index];
-          MAP_CONFIG.spawnReferenceX = p.x + (isHimeyuri ? laneNormal.x * -1.8 : 0);
-          MAP_CONFIG.spawnReferenceZ = p.z + (isHimeyuri ? laneNormal.z * -1.8 : 0);
+          MAP_CONFIG.spawnReferenceX = p.x + laneNormal.x * (isHimeyuri ? -1.8 : selected.key === 'kankou' ? 1.0 : 0);
+          MAP_CONFIG.spawnReferenceZ = p.z + laneNormal.z * (isHimeyuri ? -1.8 : selected.key === 'kankou' ? 1.0 : 0);
           MAP_CONFIG.spawnOffsetRight = 0;
           // route[index].y は路面高の検索基準値。実際の発進Yは、
           // 車線オフセット後のX/Zで道路メッシュをレイキャストして取得する。
