@@ -4311,8 +4311,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const FUJI_CPU_FACTORS = [0.9, 0.8, 1.0, 0.85, 1.1, 0.9, 0.95, 1.05, 0.9];   // 富士の CPU 車の速さ(自車の何倍か)。0.9倍を中心に
   const GUNMA_CPU_ONCOMING = 6;
   // 赤城は全12台を登り・下りに6台ずつ固定配分。route[0]→route末尾は観光案内所から姫百合への下り。
-  const AKAGI_CPU_DOWNHILL = 6;
-  const AKAGI_CPU_UPHILL = 6;
+  const AKAGI_CPU_DOWNHILL = 4;
+  const AKAGI_CPU_UPHILL = 4;
 
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
@@ -4343,7 +4343,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const endDistance = path.distances[path.points.length - 1];
         // 赤城山は湘南と同じ方式。CPU車は固定地点に並べず、
         // 自車から離れた範囲にだけ出し、走行に合わせて再配置する。
-        const akagiOffset = [-550, -350, -180, 180, 350, 550][i % 6];
+        const akagiOffset = [-550, -180, 180, 550][i % 4];
         const playerRouteIndex = anchor;
         const playerLaneDistance = direction === 'same'
           ? paths.same.distances[playerRouteIndex]
