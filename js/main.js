@@ -5928,8 +5928,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           // 実際の発進基準点は必ずセンターライン上の route[index] に置く。
           MAP_CONFIG.spawnReferenceX = p.x;
           MAP_CONFIG.spawnReferenceZ = p.z;
-          // 指定座標は道路センターライン。日本の左側通行なので、進行方向の左車線中央へ1.8m寄せる。
-          MAP_CONFIG.spawnOffsetRight = isHimeyuri ? -1.8 : 0;
+          // 姫百合発進は上り。上り用(oncoming)走行ラインと同じ側へ1.8m寄せる。
+          MAP_CONFIG.spawnOffsetRight = isHimeyuri ? 1.8 : 0;
           // route[index].y は路面高の検索基準値。実際の発進Yは、
           // 車線オフセット後のX/Zで道路メッシュをレイキャストして取得する。
           MAP_CONFIG.spawnSurfaceY = p.y;
