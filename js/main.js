@@ -290,18 +290,16 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     result.textContent = 'Time＝' + timeText;
     result.style.cssText = 'display:none;position:absolute;left:0;right:0;top:42%;'
       + 'transform:translateY(-50%);text-align:center;color:#fff;font-size:20px;'
-      + 'font-weight:400;letter-spacing:0.02em;font-variant-numeric:tabular-nums;';
-    const titleButton = document.createElement('button');
-    titleButton.type = 'button';
+      + 'font-weight:400;letter-spacing:0.02em;font-variant-numeric:tabular-nums;'
+      + 'pointer-events:none;';
+    // 通常のリンク遷移にして、ゲーム側の入力処理に妨げられないようにする。
+    const titleButton = document.createElement('a');
+    titleButton.href = new URL(location.pathname, location.origin).href;
     titleButton.textContent = 'タイトルに戻る';
-    titleButton.style.cssText = 'display:none;position:absolute;left:50%;bottom:9%;'
-      + 'transform:translateX(-50%);padding:10px 22px;border:1px solid #777;'
-      + 'border-radius:4px;background:#111;color:#fff;font-size:14px;cursor:pointer;';
-    titleButton.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      location.href = location.pathname;
-    });
+    titleButton.style.cssText = 'position:absolute;z-index:2;left:50%;bottom:9%;'
+      + 'transform:translateX(-50%);display:block;padding:10px 22px;'
+      + 'border:1px solid #777;border-radius:4px;background:#111;color:#fff;'
+      + 'font-size:14px;text-decoration:none;cursor:pointer;pointer-events:auto;';
     overlay.append(result, titleButton);
     document.body.appendChild(overlay);
     akagiFinishOverlay = overlay;
@@ -311,7 +309,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       akagiFinishState = 'finished';
       document.body.dataset.akagiFinishState = 'finished';
       result.style.display = 'block';
-      titleButton.style.display = 'block';
+      // タイムを10秒表示した後、同じ位置でメッセージに切り替える。
+      setTimeout(() => {
+        if (akagiFinishState !== 'finished') return;
+        result.textContent = 'To be continued...';
+        result.style.fontVariantNumeric = 'normal';
+      }, 10000);
     }, 2000);
   }
 
