@@ -5926,10 +5926,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const heading = Math.atan2(dx, dz);
           // 指定座標は最近傍の道路センターラインを探すためだけに使う。
           // 実際の発進基準点は必ずセンターライン上の route[index] に置く。
-          MAP_CONFIG.spawnReferenceX = p.x;
-          MAP_CONFIG.spawnReferenceZ = p.z;
-          // 姫百合発進は上り。上り用(oncoming)走行ラインと同じ側へ1.8m寄せる。
-          MAP_CONFIG.spawnOffsetRight = isHimeyuri ? 1.8 : 0;
+          // 姫百合発進は上り方向の左車線中央へ。道路メッシュと同じ法線方向に1.8mずらす。
+          // spawnOffsetRight(車両 heading 基準)には依存せず、道路中心線の法線で直接配置する。
+          const laneNormal = gunmaCourse.tangents[index];
+          MAP_CONFIG.spawnReferenceX = p.x + (isHimeyuri ? laneNormal.x * 1.8 : 0);
+          MAP_CONFIG.spawnReferenceZ = p.z + (isHimeyuri ? laneNormal.z * 1.8 : 0);
+          MAP_CONFIG.spawnOffsetRight = 0;
           // route[index].y は路面高の検索基準値。実際の発進Yは、
           // 車線オフセット後のX/Zで道路メッシュをレイキャストして取得する。
           MAP_CONFIG.spawnSurfaceY = p.y;
