@@ -4409,10 +4409,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const path = paths[direction];
       for (let i = 0; i < count; i++) {
         const endDistance = path.distances[path.points.length - 1];
+        // 赤城山は湘南と同じ方式。CPU車は固定地点に並べず、
+        // 自車から離れた範囲にだけ出し、走行に合わせて再配置する。
+        const akagiOffset = [-550, -350, -180, 180, 350, 550][i % 6];
+        const playerRouteIndex = AKAGI_COURSE
+          ? nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z)
+          : anchor;
+        const playerLaneDistance = direction === 'same'
+          ? paths.same.distances[playerRouteIndex]
+          : paths.oncoming.distances[paths.oncoming.points.length - 1 - playerRouteIndex];
         const distance = AKAGI_COURSE
-          ? clamp(starts[direction] + i * 110, 8, Math.max(8, endDistance - 12))
+          ? playerLaneDistance + akagiOffset
           : starts[direction] + i * path.length / count;
-        const at = sampleGunmaTrafficPath(path, distance);
+        const spawnable = distance >= 20 && distance <= endDistance - 20;
+        const at = sampleGunmaTrafficPath(path, clamp(distance, 0, endDistance));
         const ahead = sampleGunmaTrafficPath(path, Math.min(distance + 4, endDistance));
         const vehicle = vehicles[created % vehicles.length];
         const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
@@ -4437,11 +4447,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           radius: carRadiusFor(false, car.group),
           gunmaTraffic: direction,
           gunmaPath: path,
-          gunmaDistance: ((distance % path.length) + path.length) % path.length,
+          gunmaDistance: AKAGI_COURSE ? clamp(distance, 0, endDistance) : ((distance % path.length) + path.length) % path.length,
+          ...(AKAGI_COURSE ? { akagiOffsetMeters: akagiOffset, active: spawnable } : {}),
           speedKmh,
         };
         ai.group.position.copy(ai.pos);
         ai.group.rotation.y = ai.heading;
+        if (AKAGI_COURSE) ai.group.visible = spawnable;
         aiCars.push(ai);
         created++;
       }
@@ -10225,7 +10237,55 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }
     return v;
   }
+  let akagiTrafficProjectionAt = -Infinity;
+  let akagiTrafficRouteIndex = 0;
+  function updateAkagiTrafficCar(ai, dt) {
+    const path = ai.gunmaPath;
+    const endDistance = path.distances[path.points.length - 1];
+    const now = performance.now();
+    if (now - akagiTrafficProjectionAt > 250) {
+      akagiTrafficRouteIndex = nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z);
+      akagiTrafficProjectionAt = now;
+    }
+    const routeIndex = akagiTrafficRouteIndex;
+    const playerDistance = ai.gunmaTraffic === 'same'
+      ? ai.gunmaPath.distances[routeIndex]
+      : ai.gunmaPath.distances[ai.gunmaPath.points.length - 1 - routeIndex];
+    const relativeDistance = ai.gunmaDistance - playerDistance;
+    // 自車から650mを超えた車、コース端で消えた車は、視界外の所定距離へ再配置。
+    if (!ai.active || Math.abs(relativeDistance) > 650
+      || ai.gunmaDistance < 20 || ai.gunmaDistance > endDistance - 20) {
+      const nextDistance = playerDistance + ai.akagiOffsetMeters;
+      if (nextDistance < 20 || nextDistance > endDistance - 20) {
+        ai.active = false;
+        ai.group.visible = false;
+        return;
+      }
+      ai.gunmaDistance = nextDistance;
+      ai.active = true;
+      ai.group.visible = true;
+    }
+    ai.gunmaDistance += ai.v * dt;
+    if (ai.gunmaDistance >= endDistance - 1) {
+      ai.group.visible = false;
+      ai.active = false;
+      return;
+    }
+    const at = sampleGunmaTrafficPath(path, ai.gunmaDistance);
+    const ahead = sampleGunmaTrafficPath(path, Math.min(ai.gunmaDistance + 4, endDistance));
+    const behind = sampleGunmaTrafficPath(path, Math.max(0, ai.gunmaDistance - 4));
+    ai.pos.set(at.x, at.y, at.z);
+    ai.heading = Math.atan2(ahead.x - at.x, ahead.z - at.z);
+    ai.group.position.copy(ai.pos);
+    ai.group.rotation.y = ai.heading;
+    ai.tilt.rotation.x = -Math.atan2(ahead.y - behind.y, 8);
+  }
+
   function updateGunmaTrafficCar(ai, dt) {
+    if (AKAGI_COURSE) {
+      updateAkagiTrafficCar(ai, dt);
+      return;
+    }
     const path = ai.gunmaPath;
     if (FUJI_COURSE) {
       // サーキット: カーブの手前で減速し、出口で加速する(曲がる半径から出せる速さ。横 9m/s²、減速 6m/s²)
