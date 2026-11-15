@@ -266,38 +266,31 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     player.vel.set(0, 0, 0);
     player.drifting = false;
     autoDrive = false;
+    // ゴール後はエンジン・タイヤ・車内音を即時停止する。
+    AUDIO.silence();
+    winkerSound.pause();
+    winkerSound.currentTime = 0;
     for (const key of Object.keys(keys)) keys[key] = false;
     shiftUp = false;
     shiftDown = false;
     document.body.dataset.akagiFinishState = 'fading';
     document.body.dataset.akagiFinishTimeMs = String(Math.round(elapsedMs));
 
-    const totalSeconds = elapsedMs / 1000;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = (totalSeconds % 60).toFixed(2).padStart(5, '0');
-    const timeText = minutes ? `${minutes}:${seconds}` : `${seconds}秒`;
+    const minutes = String(Math.floor(elapsedMs / 60000)).padStart(2, '0');
+    const seconds = String(Math.floor(elapsedMs / 1000) % 60).padStart(2, '0');
+    const timeText = `${minutes}:${seconds}`;
 
     const overlay = document.createElement('div');
     overlay.id = 'akagi-finish-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;'
-      + 'flex-direction:column;align-items:center;justify-content:center;gap:28px;'
-      + 'box-sizing:border-box;padding:24px;background:#000;color:#fff;opacity:0;'
-      + 'transition:opacity 2000ms linear;pointer-events:auto;'
-      + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
-    const heading = document.createElement('div');
-    heading.textContent = 'FINISH';
-    heading.style.cssText = 'display:none;font-size:clamp(28px,5vw,48px);font-weight:800;letter-spacing:0.18em;';
+      + 'align-items:center;justify-content:center;box-sizing:border-box;padding:24px;'
+      + 'background:#000;color:#fff;opacity:0;transition:opacity 2000ms linear;'
+      + 'pointer-events:none;font-family:Arial,sans-serif;';
     const result = document.createElement('div');
-    result.textContent = `TIME  ${timeText}`;
-    result.style.cssText = 'display:none;font-size:clamp(24px,4vw,40px);font-weight:800;'
-      + 'letter-spacing:0.08em;font-variant-numeric:tabular-nums;';
-    const back = document.createElement('button');
-    back.type = 'button';
-    back.textContent = 'タイトルに戻る';
-    back.style.cssText = 'display:none;margin-top:12px;padding:13px 30px;border:2px solid #fff;'
-      + 'border-radius:4px;background:#111;color:#fff;font-size:18px;font-weight:700;cursor:pointer;';
-    back.addEventListener('click', () => location.replace(location.pathname));
-    overlay.append(heading, result, back);
+    result.textContent = timeText;
+    result.style.cssText = 'display:none;color:#fff;font-size:clamp(48px,10vw,96px);'
+      + 'font-weight:700;letter-spacing:0.06em;font-variant-numeric:tabular-nums;';
+    overlay.append(result);
     document.body.appendChild(overlay);
     akagiFinishOverlay = overlay;
     requestAnimationFrame(() => { overlay.style.opacity = '1'; });
@@ -305,9 +298,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (akagiFinishState !== 'fading') return;
       akagiFinishState = 'finished';
       document.body.dataset.akagiFinishState = 'finished';
-      heading.style.display = 'block';
       result.style.display = 'block';
-      back.style.display = 'inline-block';
     }, 2000);
   }
 
