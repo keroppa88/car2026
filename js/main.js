@@ -282,11 +282,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;'
       + 'flex-direction:column;align-items:center;justify-content:center;gap:28px;'
       + 'box-sizing:border-box;padding:24px;background:#000;color:#fff;opacity:0;'
-      + 'transition:opacity 2000ms linear;pointer-events:none;'
+      + 'transition:opacity 2000ms linear;pointer-events:auto;'
       + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
     const heading = document.createElement('div');
     heading.textContent = 'FINISH';
-    heading.style.cssText = 'font-size:clamp(28px,5vw,48px);font-weight:800;letter-spacing:0.18em;';
+    heading.style.cssText = 'display:none;font-size:clamp(28px,5vw,48px);font-weight:800;letter-spacing:0.18em;';
     const result = document.createElement('div');
     result.textContent = `TIME  ${timeText}`;
     result.style.cssText = 'display:none;font-size:clamp(24px,4vw,40px);font-weight:800;'
@@ -305,9 +305,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (akagiFinishState !== 'fading') return;
       akagiFinishState = 'finished';
       document.body.dataset.akagiFinishState = 'finished';
+      heading.style.display = 'block';
       result.style.display = 'block';
       back.style.display = 'inline-block';
-      overlay.style.pointerEvents = 'auto';
     }, 2000);
   }
 
