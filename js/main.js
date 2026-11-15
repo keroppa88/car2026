@@ -11536,12 +11536,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         applyNight();
         demoDayNightAt = now + 10000;
       }
-      if (musicMode || pauseMode) {
-        // 音楽選択・一時停止中は運転(シミュレーション)を停止。音はアイドルへ。
+      if (musicMode || pauseMode || (AKAGI_COURSE && akagiFinishState !== 'racing')) {
+        // 音楽選択・一時停止・赤城山ゴール後は運転(シミュレーション)を停止。音はアイドルへ。
         AUDIO.update(dt, {
           gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false,
           speed: 0, autoDrive: autoDrive || demoActive,
         });
+        if (AKAGI_COURSE && akagiFinishState !== 'racing') updateInteriorSound(0);
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);
