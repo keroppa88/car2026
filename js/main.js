@@ -6900,6 +6900,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         applyWeatherSky();
         scene.add(gunmaCourse.ground);
         scene.add(gunmaCourse.scenery);
+        // 赤城山: 嵐が丘・富士と同じ柔らかい霧を、標高に関係なくルート沿い各所へ配置。
+        moorFog = createMoorFog(scene, gunmaCourse, { roadside: true });
         for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
