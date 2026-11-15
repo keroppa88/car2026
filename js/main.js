@@ -7222,12 +7222,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 従来位置から車幅の半分(0.78m)左へ。右車輪は従来の車体中心を通る。
         // The copy of the first 200 m after the end lets the autopilot look
         // across the seam instead of steering back toward the start.
-        const gunmaLane = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
-          MAP_CONFIG.laneOffset ?? MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset).same.points;
-        const gunmaSeam = gunmaCourse.seam.offset;
+        const gunmaPaths = buildGunmaTrafficPaths(gunmaCourse.route, gunmaCourse.tangents,
+          MAP_CONFIG.laneOffset ?? MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset);
+        // 赤城山の姫百合スタートは上り。ルートを逆向きにたどる対向車線側を
+        // 自動運転ラインに使い、下り用ラインを追ってガードレールへ向かわないようにする。
+        const uphillStart = AKAGI_COURSE && MAP_CONFIG.startKey === 'himeyuri';
+        const gunmaLane = (uphillStart ? gunmaPaths.oncoming : gunmaPaths.same).points;
+        const gunmaSeam = uphillStart
+          ? { x: -gunmaCourse.seam.offset.x, z: -gunmaCourse.seam.offset.z }
+          : gunmaCourse.seam.offset;
         car2AutoRoute = gunmaLane.concat(gunmaLane.slice(0, 67).map((point) => ({
           ...point, x: point.x + gunmaSeam.x, z: point.z + gunmaSeam.z,
         }))).map((point) => ({ ...point, width: 8.64 }));
+        document.body.dataset.akagiAutoDriveDirection = uphillStart ? 'uphill' : 'downhill';
         spawnGunmaTrafficCpuCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
