@@ -254,70 +254,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let hudState = 0;                  // G: 0=全表示 1=操作説明なし 2=メーターもなし
   let mirrorView = false;            // F: 画面上部のバックミラー
   let pauseMode = false;             // ESC: ゲーム一時停止(操作説明を表示)
-  // 赤城山タイムアタック。計測は最初のアクセル入力から開始する。
-  let akagiTimerStartedAt = null;
-  let akagiFinishState = 'racing';
-  let akagiFinishOverlay = null;
-
-  function finishAkagiRun() {
-    if (!AKAGI_COURSE || akagiFinishState !== 'racing' || akagiTimerStartedAt === null) return;
-    akagiFinishState = 'fading';
-    const elapsedMs = Math.max(0, performance.now() - akagiTimerStartedAt);
-    player.vel.set(0, 0, 0);
-    player.drifting = false;
-    autoDrive = false;
-    // ゴール後はエンジン・タイヤ・車内音を即時停止する。
-    AUDIO.silence();
-    winkerSound.pause();
-    winkerSound.currentTime = 0;
-    for (const key of Object.keys(keys)) keys[key] = false;
-    shiftUp = false;
-    shiftDown = false;
-    document.body.dataset.akagiFinishState = 'fading';
-    document.body.dataset.akagiFinishTimeMs = String(Math.round(elapsedMs));
-
-    const minutes = String(Math.floor(elapsedMs / 60000)).padStart(2, '0');
-    const seconds = String(Math.floor(elapsedMs / 1000) % 60).padStart(2, '0');
-    const timeText = `${minutes}:${seconds}`;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'akagi-finish-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;'
-      + 'align-items:center;justify-content:center;box-sizing:border-box;padding:24px;'
-      + 'background:#000;color:#fff;opacity:0;transition:opacity 2000ms linear;'
-      + 'pointer-events:auto;font-family:Arial,sans-serif;';
-    const result = document.createElement('div');
-    result.textContent = 'Time＝' + timeText;
-    result.style.cssText = 'display:none;position:absolute;left:0;right:0;top:42%;'
-      + 'transform:translateY(-50%);text-align:center;color:#fff;font-size:20px;'
-      + 'font-weight:400;letter-spacing:0.02em;font-variant-numeric:tabular-nums;'
-      + 'pointer-events:none;';
-    // 通常のリンク遷移にして、ゲーム側の入力処理に妨げられないようにする。
-    const titleButton = document.createElement('a');
-    titleButton.href = new URL(location.pathname, location.origin).href;
-    titleButton.textContent = 'タイトルに戻る';
-    titleButton.style.cssText = 'position:absolute;z-index:2;left:50%;bottom:9%;'
-      + 'transform:translateX(-50%);display:block;padding:10px 22px;'
-      + 'border:1px solid #777;border-radius:4px;background:#111;color:#fff;'
-      + 'font-size:14px;text-decoration:none;cursor:pointer;pointer-events:auto;';
-    overlay.append(result, titleButton);
-    document.body.appendChild(overlay);
-    akagiFinishOverlay = overlay;
-    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
-    setTimeout(() => {
-      if (akagiFinishState !== 'fading') return;
-      akagiFinishState = 'finished';
-      document.body.dataset.akagiFinishState = 'finished';
-      result.style.display = 'block';
-      // タイムを10秒表示した後、同じ位置でメッセージに切り替える。
-      setTimeout(() => {
-        if (akagiFinishState !== 'finished') return;
-        result.textContent = 'To be continued...';
-        result.style.fontVariantNumeric = 'normal';
-      }, 10000);
-    }, 2000);
-  }
-
   function applyPause() {
     const helpEl = document.getElementById('help');
     if (pauseMode) {
@@ -442,10 +378,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // car2のデモ画面: 何かのボタンでタイトルへ戻る
     if (demoActive && CAR2_MODE) {
       if (!IS_MOBILE) exitCar2Demo();   // スマホはデモを見せるだけ
-      e.preventDefault();
-      return;
-    }
-    if (AKAGI_COURSE && akagiFinishState !== 'racing') {
       e.preventDefault();
       return;
     }
@@ -9687,7 +9619,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // ------------------------------------------------------------- update ---
   function updatePlayer(dt) {
-    if (AKAGI_COURSE && akagiFinishState !== 'racing') return;
     // 4コースデモはすべて各コースのY自動運転と同じ5速巡航。
     if (demoActive) player.gear = car2AutoRoute ? 6 : (SUZUKA_MODE ? 5 : 3);
     // gears
@@ -9728,12 +9659,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
     }
-    // 最初の手動アクセル入力で計測開始。自動運転・デモ走行は計測対象外。
-    if (AKAGI_COURSE && !demoActive && !autoDrive && throttle && akagiTimerStartedAt === null) {
-      akagiTimerStartedAt = performance.now();
-      document.body.dataset.akagiTimerStarted = 'true';
-    }
-
     // steering (less lock at speed, extra lock while sliding for counter-steer)
     const speedAlong = player.vel.x * Math.sin(player.heading) + player.vel.z * Math.cos(player.heading);
     const lock = 0.55 / (1 + Math.abs(speedAlong) * (player.drifting ? 0.02 : 0.055));
@@ -10211,15 +10136,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     rpmEl.style.width = (rpm * 100).toFixed(1) + '%';
     rpmEl.classList.toggle('red', rpm > 0.93);
 
-    // 赤城山: スタート地点に応じた専用ゴール座標へ到達したら終了。
-    if (AKAGI_COURSE && akagiFinishState === 'racing' && akagiTimerStartedAt !== null) {
-      const goal = MAP_CONFIG.startKey === 'himeyuri'
-        ? { x: -96, z: 107 }       // 姫百合スタート(上り)
-        : { x: 1438, z: 1863 };   // 観光案内所スタート(下り)
-      if (Math.hypot(player.pos.x - goal.x, player.pos.z - goal.z) <= 12) {
-        finishAkagiRun();
-      }
-    }
   }
 
   function buildFujiSpeedProfile(path) {
@@ -10360,7 +10276,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
 
   function updateAI(dt, sigStates) {
-    if (AKAGI_COURSE && akagiFinishState !== 'racing') return;
     let cpuOvertakingNow = 0;
     let tokyoCpuDriftingNow = 0;
     let tokyoCpuMinSpeedNow = Infinity;
@@ -11611,13 +11526,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         applyNight();
         demoDayNightAt = now + 10000;
       }
-      if (musicMode || pauseMode || (AKAGI_COURSE && akagiFinishState !== 'racing')) {
-        // 音楽選択・一時停止・赤城山ゴール後は運転(シミュレーション)を停止。音はアイドルへ。
+      if (musicMode || pauseMode) {
+        // 音楽選択・一時停止中は運転(シミュレーション)を停止。音はアイドルへ。
         AUDIO.update(dt, {
           gear: 1, rpm: 0, throttle: false, slip: 0, drifting: false, brakeSkid: false,
           speed: 0, autoDrive: autoDrive || demoActive,
         });
-        if (AKAGI_COURSE && akagiFinishState !== 'racing') updateInteriorSound(0);
       } else {
         updatePlayer(dt);
         updateAI(dt, sigStates);
