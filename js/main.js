@@ -254,6 +254,62 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let hudState = 0;                  // G: 0=全表示 1=操作説明なし 2=メーターもなし
   let mirrorView = false;            // F: 画面上部のバックミラー
   let pauseMode = false;             // ESC: ゲーム一時停止(操作説明を表示)
+  // 赤城山タイムアタック。計測は最初のアクセル入力から開始する。
+  let akagiTimerStartedAt = null;
+  let akagiFinishState = 'racing';
+  let akagiFinishOverlay = null;
+
+  function finishAkagiRun() {
+    if (!AKAGI_COURSE || akagiFinishState !== 'racing' || akagiTimerStartedAt === null) return;
+    akagiFinishState = 'fading';
+    const elapsedMs = Math.max(0, performance.now() - akagiTimerStartedAt);
+    player.vel.set(0, 0, 0);
+    player.drifting = false;
+    autoDrive = false;
+    for (const key of Object.keys(keys)) keys[key] = false;
+    shiftUp = false;
+    shiftDown = false;
+    document.body.dataset.akagiFinishState = 'fading';
+    document.body.dataset.akagiFinishTimeMs = String(Math.round(elapsedMs));
+
+    const totalSeconds = elapsedMs / 1000;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = (totalSeconds % 60).toFixed(2).padStart(5, '0');
+    const timeText = minutes ? `${minutes}:${seconds}` : `${seconds}秒`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'akagi-finish-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;'
+      + 'flex-direction:column;align-items:center;justify-content:center;gap:28px;'
+      + 'box-sizing:border-box;padding:24px;background:#000;color:#fff;opacity:0;'
+      + 'transition:opacity 2000ms linear;pointer-events:none;'
+      + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
+    const heading = document.createElement('div');
+    heading.textContent = 'FINISH';
+    heading.style.cssText = 'font-size:clamp(28px,5vw,48px);font-weight:800;letter-spacing:0.18em;';
+    const result = document.createElement('div');
+    result.textContent = `TIME  ${timeText}`;
+    result.style.cssText = 'display:none;font-size:clamp(24px,4vw,40px);font-weight:800;'
+      + 'letter-spacing:0.08em;font-variant-numeric:tabular-nums;';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.textContent = 'タイトルに戻る';
+    back.style.cssText = 'display:none;margin-top:12px;padding:13px 30px;border:2px solid #fff;'
+      + 'border-radius:4px;background:#111;color:#fff;font-size:18px;font-weight:700;cursor:pointer;';
+    back.addEventListener('click', () => location.replace(location.pathname));
+    overlay.append(heading, result, back);
+    document.body.appendChild(overlay);
+    akagiFinishOverlay = overlay;
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+    setTimeout(() => {
+      if (akagiFinishState !== 'fading') return;
+      akagiFinishState = 'finished';
+      document.body.dataset.akagiFinishState = 'finished';
+      result.style.display = 'block';
+      back.style.display = 'inline-block';
+      overlay.style.pointerEvents = 'auto';
+    }, 2000);
+  }
 
   function applyPause() {
     const helpEl = document.getElementById('help');
@@ -379,6 +435,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // car2のデモ画面: 何かのボタンでタイトルへ戻る
     if (demoActive && CAR2_MODE) {
       if (!IS_MOBILE) exitCar2Demo();   // スマホはデモを見せるだけ
+      e.preventDefault();
+      return;
+    }
+    if (AKAGI_COURSE && akagiFinishState !== 'racing') {
       e.preventDefault();
       return;
     }
@@ -9600,6 +9660,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
 
   // ------------------------------------------------------------- update ---
   function updatePlayer(dt) {
+    if (AKAGI_COURSE && akagiFinishState !== 'racing') return;
     // 4コースデモはすべて各コースのY自動運転と同じ5速巡航。
     if (demoActive) player.gear = car2AutoRoute ? 6 : (SUZUKA_MODE ? 5 : 3);
     // gears
@@ -9639,6 +9700,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       brake = !!keys['a'] || gamepadState.brake;         // A / LT = ブレーキ
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
+    }
+    // 最初の手動アクセル入力で計測開始。自動運転・デモ走行は計測対象外。
+    if (AKAGI_COURSE && !demoActive && !autoDrive && throttle && akagiTimerStartedAt === null) {
+      akagiTimerStartedAt = performance.now();
+      document.body.dataset.akagiTimerStarted = 'true';
     }
 
     // steering (less lock at speed, extra lock while sliding for counter-steer)
@@ -10117,6 +10183,16 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (throttle && player.gear !== 1) rpm = Math.max(rpm, 0.3);
     rpmEl.style.width = (rpm * 100).toFixed(1) + '%';
     rpmEl.classList.toggle('red', rpm > 0.93);
+
+    // 赤城山: スタート地点に応じた専用ゴール座標へ到達したら終了。
+    if (AKAGI_COURSE && akagiFinishState === 'racing' && akagiTimerStartedAt !== null) {
+      const goal = MAP_CONFIG.startKey === 'himeyuri'
+        ? { x: -96, z: 107 }       // 姫百合スタート(上り)
+        : { x: 1438, z: 1863 };   // 観光案内所スタート(下り)
+      if (Math.hypot(player.pos.x - goal.x, player.pos.z - goal.z) <= 12) {
+        finishAkagiRun();
+      }
+    }
   }
 
   function buildFujiSpeedProfile(path) {
@@ -10209,6 +10285,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   }
 
   function updateAI(dt, sigStates) {
+    if (AKAGI_COURSE && akagiFinishState !== 'racing') return;
     let cpuOvertakingNow = 0;
     let tokyoCpuDriftingNow = 0;
     let tokyoCpuMinSpeedNow = Infinity;
