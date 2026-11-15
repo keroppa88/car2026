@@ -6887,8 +6887,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         applyWeatherSky();
         scene.add(gunmaCourse.ground);
         scene.add(gunmaCourse.scenery);
-        // 道沿いの一部区間に、嵐が丘と同じ低い地表霧＋路肩の霧の塊を配置。
-        moorFog = createMoorFog(scene, gunmaCourse, { roadside: true });
         for (const name of ['gunma-cloud-floor', 'gunma-mist-sheets']) {
           const layer = scene.getObjectByName(name);
           if (layer) layer.visible = false;
