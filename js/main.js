@@ -285,12 +285,24 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;'
       + 'align-items:center;justify-content:center;box-sizing:border-box;padding:24px;'
       + 'background:#000;color:#fff;opacity:0;transition:opacity 2000ms linear;'
-      + 'pointer-events:none;font-family:Arial,sans-serif;';
+      + 'pointer-events:auto;font-family:Arial,sans-serif;';
     const result = document.createElement('div');
-    result.textContent = timeText;
-    result.style.cssText = 'display:none;color:#fff;font-size:clamp(48px,10vw,96px);'
-      + 'font-weight:700;letter-spacing:0.06em;font-variant-numeric:tabular-nums;';
-    overlay.append(result);
+    result.textContent = 'Time＝' + timeText;
+    result.style.cssText = 'display:none;position:absolute;left:0;right:0;top:42%;'
+      + 'transform:translateY(-50%);text-align:center;color:#fff;font-size:20px;'
+      + 'font-weight:400;letter-spacing:0.02em;font-variant-numeric:tabular-nums;';
+    const titleButton = document.createElement('button');
+    titleButton.type = 'button';
+    titleButton.textContent = 'タイトルに戻る';
+    titleButton.style.cssText = 'display:none;position:absolute;left:50%;bottom:9%;'
+      + 'transform:translateX(-50%);padding:10px 22px;border:1px solid #777;'
+      + 'border-radius:4px;background:#111;color:#fff;font-size:14px;cursor:pointer;';
+    titleButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      location.href = location.pathname;
+    });
+    overlay.append(result, titleButton);
     document.body.appendChild(overlay);
     akagiFinishOverlay = overlay;
     requestAnimationFrame(() => { overlay.style.opacity = '1'; });
@@ -299,6 +311,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       akagiFinishState = 'finished';
       document.body.dataset.akagiFinishState = 'finished';
       result.style.display = 'block';
+      titleButton.style.display = 'block';
     }, 2000);
   }
 
