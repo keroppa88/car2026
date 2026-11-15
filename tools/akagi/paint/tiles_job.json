@@ -1,0 +1,234 @@
+{
+"W": 1400,
+"H": 1400,
+"cams": [
+{
+"pos": [
+-1350,
+1300,
+150
+],
+"target": [
+-1350,
+0,
+150.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-1350_150.png"
+},
+{
+"pos": [
+-750,
+1300,
+150
+],
+"target": [
+-750,
+0,
+150.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-750_150.png"
+},
+{
+"pos": [
+-150,
+1300,
+150
+],
+"target": [
+-150,
+0,
+150.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-150_150.png"
+},
+{
+"pos": [
+-1350,
+1300,
+700
+],
+"target": [
+-1350,
+0,
+700.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-1350_700.png"
+},
+{
+"pos": [
+-750,
+1300,
+700
+],
+"target": [
+-750,
+0,
+700.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-750_700.png"
+},
+{
+"pos": [
+-150,
+1300,
+700
+],
+"target": [
+-150,
+0,
+700.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-150_700.png"
+},
+{
+"pos": [
+-1350,
+1300,
+1250
+],
+"target": [
+-1350,
+0,
+1250.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-1350_1250.png"
+},
+{
+"pos": [
+-750,
+1300,
+1250
+],
+"target": [
+-750,
+0,
+1250.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-750_1250.png"
+},
+{
+"pos": [
+-150,
+1300,
+1250
+],
+"target": [
+-150,
+0,
+1250.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-150_1250.png"
+},
+{
+"pos": [
+-1350,
+1300,
+1800
+],
+"target": [
+-1350,
+0,
+1800.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-1350_1800.png"
+},
+{
+"pos": [
+-750,
+1300,
+1800
+],
+"target": [
+-750,
+0,
+1800.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-750_1800.png"
+},
+{
+"pos": [
+-150,
+1300,
+1800
+],
+"target": [
+-150,
+0,
+1800.01
+],
+"up": [
+0,
+0,
+-1
+],
+"fov": 60,
+"out": "/home/claude/car2026/tools/akagi/paint/tile_-150_1800.png"
+}
+]
+}

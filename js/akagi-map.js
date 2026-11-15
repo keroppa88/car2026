@@ -333,27 +333,40 @@ export function buildAkagiMap(data) {
     const sideIndex = side < 0 ? 0 : 1;
     return i <= startMeadowEnd[sideIndex] && meadowAtSide(i, side);
   };
+  // 絵で決めたガードレール(tools/akagi/apply_rail_paint.py の railL / railR: 1 = ある、0 = なし、-1 = 絵に写っていない → 従来の決め方)
+  const painted = (i, side) => { const f = side > 0 ? data.railL : data.railR; return f ? f[i] : -1; };
+  const railAt = (i, side) => {
+    const f = painted(i, side); if (f >= 0) return f === 1;
+    const p = route[i], nn = tangents[i];
+    return !skip(i, side) && !nearParking(p.x + nn.x * side * RAIL, p.z + nn.z * side * RAIL);
+  };
   for (const side of [-1, 1]) {
-    const wall = [], panel = [];
+    const wall = [], panel = [], has = route.map((_, i) => railAt(i, side));
+    const railPt = (i, along = 0) => { const p = route[i], nn = tangents[i], fx = -nn.z, fz = nn.x; return [p.x + nn.x * side * RAIL + fx * along, p.y, p.z + nn.z * side * RAIL + fz * along]; };
+    const quad = (P, A, Bq, y0, y1) => P.push(A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y0, Bq[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y1, A[2]);
     for (let i = 0; i + 1 < n; i++) {
-      if (skip(i, side) || skip(i + 1, side)) continue;
-      const a = route[i], b = route[i + 1], na = tangents[i], nb = tangents[i + 1];
-      const pa = [a.x + na.x * side * RAIL, a.z + na.z * side * RAIL], pb = [b.x + nb.x * side * RAIL, b.z + nb.z * side * RAIL];
-      if (nearParking(...pa) || nearParking(...pb)) continue;   // 駐車場の入口(道と駐車場の間)はガードレールなし
-      const quad = (P, y0, y1) => P.push(pa[0], a.y + y0, pa[1], pb[0], b.y + y0, pb[1], pb[0], b.y + y1, pb[1], pa[0], a.y + y0, pa[1], pb[0], b.y + y1, pb[1], pa[0], a.y + y1, pa[1]);
-      quad(panel, 0.45, 0.8); quad(wall, -0.1, 1.1);
+      if (!has[i] || !has[i + 1]) continue;
+      const A = railPt(i), Bq = railPt(i + 1);
+      quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1);
+    }
+    // 途切れる所は支柱の所。レールは端の支柱から 0.4m だけ先へ出す(写真のように)
+    for (let i = 0; i < n; i++) {
+      if (!has[i]) continue;
+      if (i === 0 || !has[i - 1]) { const A = railPt(i, -0.4), Bq = railPt(i); quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1); }
+      if (i === n - 1 || !has[i + 1]) { const A = railPt(i), Bq = railPt(i, 0.4); quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1); }
     }
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(panel, 3)); pg.computeVertexNormals();
     const pm = new THREE.Mesh(pg, railMat); pm.name = 'GunmaGuardrail'; scenery.add(pm);
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wall, 3)); wg.computeVertexNormals();
     const wm = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })); wm.name = 'akagi-guardrail'; scenery.add(wm); colliders.push(wm);
-    // 支柱(6m ごと)
-    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), railMat, Math.ceil(n / 2) + 1), M = new THREE.Matrix4();
+    // 支柱(6m ごと = 偶数の点)。レールの端にも必ず立てる
+    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), railMat, n + 1), M = new THREE.Matrix4();
     let c = 0;
-    for (let i = 0; i < n; i += 2) {
-      if (skip(i, side)) continue;
+    for (let i = 0; i < n; i++) {
+      if (!has[i]) continue;
+      const end = i === 0 || !has[i - 1] || i === n - 1 || !has[i + 1];
+      if (i % 2 && !end) continue;
       const p = route[i], nn = tangents[i];
-      if (nearParking(p.x + nn.x * side * RAIL, p.z + nn.z * side * RAIL)) continue;
       posts.setMatrixAt(c++, M.makeTranslation(p.x + nn.x * side * (RAIL + 0.08), p.y + 0.4, p.z + nn.z * side * (RAIL + 0.08)));
     }
     posts.count = c; posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
