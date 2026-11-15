@@ -56,7 +56,7 @@ export function createMoorFog(scene, course, options = {}) {
     }
   }
   const cells = Math.ceil(RADIUS / CELL);
-  const capacity = Math.ceil(Math.PI * cells * cells) * PUFFS + roadPuffs.length;
+  const capacity = options.roadside ? roadPuffs.length : Math.ceil(Math.PI * cells * cells) * PUFFS;
   const material = new THREE.ShaderMaterial({
     uniforms: { fogMap: { value: texture }, time, tint },
     vertexShader: `
@@ -117,6 +117,7 @@ export function createMoorFog(scene, course, options = {}) {
   const matrix = new THREE.Matrix4();
   const lastCentre = new THREE.Vector2(Infinity, Infinity);
   const relay = (cx, cz) => {
+    if (!options.roadside) {
     const gx = Math.round(cx / CELL), gz = Math.round(cz / CELL);
     let n = 0;
     for (let iz = -cells; iz <= cells; iz++) {
@@ -141,6 +142,7 @@ export function createMoorFog(scene, course, options = {}) {
           mesh.setMatrixAt(n++, matrix);
         }
       }
+    }
     }
     // 道沿いの霧も、カメラから遠すぎない塊だけ追加。塊自体はワールド座標に固定。
     for (const puff of roadPuffs) {
