@@ -419,6 +419,12 @@
   /* 開始位置メニューだけ横幅を広げ、地点名を1行で表示する。 */
   #start-grid { width: min(500px, calc(100vw - 32px)); box-sizing: border-box; }
   #start-grid .dq-item { white-space: nowrap; }
+  /* 開始位置の窓: 文字は窓の中央。→ は文字のすぐ左 */
+  #start-grid { text-align: center; }
+  #start-grid .dq-item { padding: 5px 1.6em; }
+  #start-grid .dq-item.active::before { content: none; }
+  #start-grid .dq-item span { position: relative; }
+  #start-grid .dq-item.active span::before { content: '→'; position: absolute; right: 100%; margin-right: .35em; }
   .select-card {
     min-height: 190px; padding: 12px; display: grid; grid-template-rows: 1fr auto;
     gap: 12px; border: 2px solid rgba(255,140,26,.48); border-radius: 12px;
@@ -1099,7 +1105,7 @@
       startIndex = 0;
       startButtons = starts.map((s, i) => {
         const b = document.createElement('div');
-        b.className = 'dq-item'; b.textContent = s.label;
+        b.className = 'dq-item'; b.append(Object.assign(document.createElement('span'), { textContent: s.label }));
         b.addEventListener('click', () => { startIndex = i; paint(); });
         b.addEventListener('dblclick', () => start());
         grid.append(b);
