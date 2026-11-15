@@ -25,7 +25,7 @@ import { buildAkagiMap } from './akagi-map.js?v=20261115-akagi-lamp-pools-round-
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
-import { createMoorFog } from './moor-fog.js?v=20261115-roadside-fog-light-1';
+import { createMoorFog } from './moor-fog.js?v=20261115-roadside-fog-restored-1';
 import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
 
 (function () {
