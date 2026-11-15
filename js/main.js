@@ -4420,8 +4420,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           ? playerLaneDistance + akagiOffset
           : starts[direction] + i * path.length / count;
         const spawnable = distance >= 20 && distance <= endDistance - 20;
-        const at = sampleGunmaTrafficPath(path, clamp(distance, 0, endDistance));
-        const ahead = sampleGunmaTrafficPath(path, Math.min(distance + 4, endDistance));
+        const initialDistance = clamp(distance, 0, endDistance);
+        const at = sampleGunmaTrafficPath(path, initialDistance);
+        const ahead = sampleGunmaTrafficPath(path, Math.min(initialDistance + 4, endDistance));
         const vehicle = vehicles[created % vehicles.length];
         const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
@@ -4445,7 +4446,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           radius: carRadiusFor(false, car.group),
           gunmaTraffic: direction,
           gunmaPath: path,
-          gunmaDistance: AKAGI_COURSE ? clamp(distance, 0, endDistance) : ((distance % path.length) + path.length) % path.length,
+          gunmaDistance: AKAGI_COURSE ? initialDistance : ((distance % path.length) + path.length) % path.length,
           ...(AKAGI_COURSE ? { akagiOffsetMeters: akagiOffset, active: spawnable } : {}),
           speedKmh,
         };
