@@ -4412,9 +4412,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 赤城山は湘南と同じ方式。CPU車は固定地点に並べず、
         // 自車から離れた範囲にだけ出し、走行に合わせて再配置する。
         const akagiOffset = [-550, -350, -180, 180, 350, 550][i % 6];
-        const playerRouteIndex = AKAGI_COURSE
-          ? nearestRouteIndexTo(gunmaCourse.route, player.pos.x, player.pos.z)
-          : anchor;
+        const playerRouteIndex = anchor;
         const playerLaneDistance = direction === 'same'
           ? paths.same.distances[playerRouteIndex]
           : paths.oncoming.distances[paths.oncoming.points.length - 1 - playerRouteIndex];
