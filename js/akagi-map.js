@@ -97,7 +97,7 @@ export function buildAkagiMap(data) {
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
   // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
-  const parkingBoundaryA = [-1527, 1774], parkingBoundaryB = [-1552, 1784];
+  const parkingBoundaryA = [-1560, 1770], parkingBoundaryB = [-1537, 1818];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
     - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
   const roadSideSign = Math.sign(boundarySide(route[data.goal ?? n - 1].x, route[data.goal ?? n - 1].z)) || -1;
