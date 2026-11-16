@@ -96,12 +96,11 @@ export function buildAkagiMap(data) {
     for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); }
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
-  // 姫百合駐車場を指定線で二分し、トイレ側だけを残す。
-  const parkingBoundaryA = [-1528, 1774], parkingBoundaryB = [-1544, 1781];
+  // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
+  const parkingBoundaryA = [-1560, 1770], parkingBoundaryB = [-1537, 1818];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
     - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
-  const toiletAnchor = [-1532, 1790];
-  const roadSideSign = Math.sign(boundarySide(toiletAnchor[0], toiletAnchor[1])) || -1;
+  const roadSideSign = Math.sign(boundarySide(route[data.goal ?? n - 1].x, route[data.goal ?? n - 1].z)) || -1;
   const clipParkingToRoadSide = (pts) => {
     const out = [];
     for (let i = 0; i < pts.length; i++) {
@@ -116,25 +115,14 @@ export function buildAkagiMap(data) {
     }
     return out;
   };
-  // トイレ位置を含む駐車場ポリゴンだけを切る。他の駐車場には触れない。
-  for (const P of parkings) {
-    if (!inPoly(P, toiletAnchor[0], toiletAnchor[1]) && edgeDist(P, toiletAnchor[0], toiletAnchor[1]) > 6) continue;
-    P.pts = clipParkingToRoadSide(P.pts);
-    Object.assign(P, region(P.pts));
-  }
+  for (const P of parkings) { P.pts = clipParkingToRoadSide(P.pts); Object.assign(P, region(P.pts)); }
   // 既存2棟を撤去し、指定座標に新しい木造トイレを1棟だけ設置。
   const toiletPts = [[-1532, 1790]];
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
-  // 駐車場の道路側の既存頂点だけを路肩へ寄せる。指定境界線上の頂点は固定する。
+  // 駐車場の角で道から 10m 以内のものは、道の路肩まで寄せる(道と駐車場の間にすき間を作らない)
   for (const P of parkings) {
-    const isToiletParking = inPoly(P, toiletAnchor[0], toiletAnchor[1]) || edgeDist(P, toiletAnchor[0], toiletAnchor[1]) <= 6;
-    P.pts = P.pts.map(([x, z]) => {
-      if (isToiletParking && Math.abs(boundarySide(x, z)) < 0.01) return [x, z];
-      const r = roadAt(x, z); if (!r || r.d > EDGE + 10 || r.d < 0.01) return [x, z];
-      const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k];
-    });
-    // 道路側へ寄せた後にもう一度境界で切る。削除側へのはみ出し・復活を防ぐ。
-    if (isToiletParking) P.pts = clipParkingToRoadSide(P.pts);
+    P.pts = P.pts.map(([x, z]) => { const r = roadAt(x, z); if (!r || r.d > EDGE + 10 || r.d < 0.01) return [x, z];
+      const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
   const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
@@ -433,7 +421,6 @@ export function buildAkagiMap(data) {
     const P = parkings.find((q) => inPoly(q, tx, tz) || edgeDist(q, tx, tz) < 6);
     let ang = 0;   // 向き: 駐車場のいちばん長い辺にそろえる
     if (P) { let L = 0; for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) { const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], l = Math.hypot(dx, dz); if (l > L) { L = l; ang = Math.atan2(-dz, dx); } } }
-    ang += Math.PI / 2; // 建物全体を同じ位置で90度回転
     const y = P ? P.y : H(tx, tz);
     const body = new THREE.Mesh(new THREE.BoxGeometry(6, 3.2, 4), new THREE.MeshLambertMaterial({ color: 0x59351f }));
     body.position.set(tx, y + 1.6, tz); body.rotation.y = ang; body.name = 'akagi-toilet'; scenery.add(body);
