@@ -428,7 +428,7 @@ export const MAP_CONFIGS = {
     label: '赤城山',
     file: 'procedural:akagi',
     preview: 'picture/akagi.png?v=20261114',
-    courseData: 'map/akagi-course.json?v=20261116-1',
+    courseData: 'map/akagi-course.json?v=20261116-2',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
