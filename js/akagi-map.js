@@ -96,11 +96,10 @@ export function buildAkagiMap(data) {
     for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); }
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
-  // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
-  const parkingBoundaryA = [-1527, 1774], parkingBoundaryB = [-1552, 1784];
+  // 姫百合駐車場を指定線で二分し、トイレ側だけを残す。
+  const parkingBoundaryA = [-1530, 1813], parkingBoundaryB = [-1545, 1782];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
     - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
-  // トイレのある側だけを駐車場として残す。反対側は通常の森林地形・樹木に戻す。
   const toiletAnchor = [-1532, 1790];
   const roadSideSign = Math.sign(boundarySide(toiletAnchor[0], toiletAnchor[1])) || -1;
   const clipParkingToRoadSide = (pts) => {
@@ -117,14 +116,22 @@ export function buildAkagiMap(data) {
     }
     return out;
   };
-  for (const P of parkings) { P.pts = clipParkingToRoadSide(P.pts); Object.assign(P, region(P.pts)); }
+  // トイレ位置を含む駐車場ポリゴンだけを切る。他の駐車場には触れない。
+  for (const P of parkings) {
+    if (!inPoly(P, toiletAnchor[0], toiletAnchor[1]) && edgeDist(P, toiletAnchor[0], toiletAnchor[1]) > 6) continue;
+    P.pts = clipParkingToRoadSide(P.pts);
+    Object.assign(P, region(P.pts));
+  }
   // 既存2棟を撤去し、指定座標に新しい木造トイレを1棟だけ設置。
   const toiletPts = [[-1532, 1790]];
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
-  // 駐車場の角で道から 10m 以内のものは、道の路肩まで寄せる(道と駐車場の間にすき間を作らない)
+  // 駐車場の道路側の既存頂点だけを路肩へ寄せる。指定境界線上の頂点は固定する。
   for (const P of parkings) {
-    P.pts = P.pts.map(([x, z]) => { const r = roadAt(x, z); if (!r || r.d > EDGE + 10 || r.d < 0.01) return [x, z];
-      const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
+    P.pts = P.pts.map(([x, z]) => {
+      if (Math.abs(boundarySide(x, z)) < 0.01) return [x, z];
+      const r = roadAt(x, z); if (!r || r.d > EDGE + 10 || r.d < 0.01) return [x, z];
+      const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k];
+    });
     Object.assign(P, region(P.pts));
   }
   const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
