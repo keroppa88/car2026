@@ -197,7 +197,8 @@ export function buildAkagiMap(data) {
     const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix, legs = legsAt(x, z);
     const d = legs.length ? legs[0].d : 1e9;
     const h = H(x, z) - 6 * (1 - THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1));
-    verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;    const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
+    verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
+    const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
     const area = inAny(meadows, x, z) ? MEADOW : inAny(bushes, x, z) ? BUSHY : null;
     for (let c = 0; c < 3; c++) colors[k * 3 + c] = area ? area[c] * (0.92 + 0.16 * mix) : forest[c] + (bush[c] - forest[c]) * mix * 0.7;
   }
@@ -396,7 +397,8 @@ export function buildAkagiMap(data) {
   // ---- 駐車場舗装。道路側は H() の高さを使ってコンクリート斜面に連続させる ----
   {
     const step = 0.25; // 15度スロープを細かく分割して段差を抑える
-    for (const P of parkings) {      const v = [], indices = [];
+    for (const P of parkings) {
+      const v = [], indices = [];
       const x0 = Math.floor(P.x0 / step) * step, z0 = Math.floor(P.z0 / step) * step;
       for (let x = x0; x < P.x1; x += step) for (let z = z0; z < P.z1; z += step) {
         const cx = x + step * 0.5, cz = z + step * 0.5;
@@ -595,7 +597,8 @@ export function buildAkagiMap(data) {
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
   const start = data.start ?? 0, goal = data.goal ?? n - 1;
-  // 姫百合駐車場側の発進位置: ゴール地点に最も近い駐車場の道路側の縁から、場内へ約3m入った位置。  const parkingStart = (() => {
+  // 姫百合駐車場側の発進位置: ゴール地点に最も近い駐車場の道路側の縁から、場内へ約3m入った位置。
+  const parkingStart = (() => {
     if (!parkings.length) return null;
     const target = route[goal];
     let best = null;
