@@ -100,7 +100,9 @@ export function buildAkagiMap(data) {
   const parkingBoundaryA = [-1560, 1770], parkingBoundaryB = [-1537, 1818];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
     - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
-  const roadSideSign = Math.sign(boundarySide(route[data.goal ?? n - 1].x, route[data.goal ?? n - 1].z)) || -1;
+  // トイレのある側だけを駐車場として残す。反対側は通常の森林地形・樹木に戻す。
+  const toiletAnchor = [-1532, 1790];
+  const roadSideSign = Math.sign(boundarySide(toiletAnchor[0], toiletAnchor[1])) || -1;
   const clipParkingToRoadSide = (pts) => {
     const out = [];
     for (let i = 0; i < pts.length; i++) {
