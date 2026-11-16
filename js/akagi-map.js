@@ -127,11 +127,14 @@ export function buildAkagiMap(data) {
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
   // 駐車場の道路側の既存頂点だけを路肩へ寄せる。指定境界線上の頂点は固定する。
   for (const P of parkings) {
+    const isToiletParking = inPoly(P, toiletAnchor[0], toiletAnchor[1]) || edgeDist(P, toiletAnchor[0], toiletAnchor[1]) <= 6;
     P.pts = P.pts.map(([x, z]) => {
-      if (Math.abs(boundarySide(x, z)) < 0.01) return [x, z];
+      if (isToiletParking && Math.abs(boundarySide(x, z)) < 0.01) return [x, z];
       const r = roadAt(x, z); if (!r || r.d > EDGE + 10 || r.d < 0.01) return [x, z];
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k];
     });
+    // 道路側へ寄せた後にもう一度境界で切る。削除側へのはみ出し・復活を防ぐ。
+    if (isToiletParking) P.pts = clipParkingToRoadSide(P.pts);
     Object.assign(P, region(P.pts));
   }
   const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
