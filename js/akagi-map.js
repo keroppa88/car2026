@@ -97,7 +97,7 @@ export function buildAkagiMap(data) {
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
   // 姫百合駐車場を指定線で二分し、トイレ側だけを残す。
-  const parkingBoundaryA = [-1530, 1813], parkingBoundaryB = [-1545, 1782];
+  const parkingBoundaryA = [-1528, 1774], parkingBoundaryB = [-1544, 1781];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
     - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
   const toiletAnchor = [-1532, 1790];
