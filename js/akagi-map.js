@@ -96,6 +96,28 @@ export function buildAkagiMap(data) {
     for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); }
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
+  // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
+  const parkingBoundaryA = [-1560, 1770], parkingBoundaryB = [-1537, 1818];
+  const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
+    - (parkingBoundaryB[1] - parkingBoundaryA[1]) * (x - parkingBoundaryA[0]);
+  const roadSideSign = Math.sign(boundarySide(route[data.goal ?? n - 1].x, route[data.goal ?? n - 1].z)) || -1;
+  const clipParkingToRoadSide = (pts) => {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const da = boundarySide(a[0], a[1]) * roadSideSign, db = boundarySide(b[0], b[1]) * roadSideSign;
+      const ina = da >= 0, inb = db >= 0;
+      if (ina) out.push(a);
+      if (ina !== inb) {
+        const t = da / (da - db);
+        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      }
+    }
+    return out;
+  };
+  for (const P of parkings) { P.pts = clipParkingToRoadSide(P.pts); Object.assign(P, region(P.pts)); }
+  // 既存2棟を撤去し、指定座標に新しい木造トイレを1棟だけ設置。
+  const toiletPts = [[-1532, 1790]];
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
   // 駐車場の角で道から 10m 以内のものは、道の路肩まで寄せる(道と駐車場の間にすき間を作らない)
   for (const P of parkings) {
@@ -393,60 +415,14 @@ export function buildAkagiMap(data) {
       m.name = 'akagi-parking'; scenery.add(m);
     }
   }
-  // ---- 終着点の駐車場に、まばらに駐車した車を8台配置 ----
-  if (parkings.length && data.goal != null) {
-    const goal = route[data.goal];
-    const P = parkings.reduce((best, q) => {
-      const cx = q.pts.reduce((s, v) => s + v[0], 0) / q.pts.length;
-      const cz = q.pts.reduce((s, v) => s + v[1], 0) / q.pts.length;
-      const d = (cx - goal.x) ** 2 + (cz - goal.z) ** 2;
-      return !best || d < best.d ? { P: q, d } : best;
-    }, null).P;
-    let longest = 0, baseAngle = 0;
-    for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) {
-      const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], len = Math.hypot(dx, dz);
-      if (len > longest) { longest = len; baseAngle = Math.atan2(-dz, dx); }
-    }
-    let seed = 20261114;
-    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-    const xs = P.pts.map(v => v[0]), zs = P.pts.map(v => v[1]);
-    const cars = [];
-    // 車体の長さ・幅を確保し、互いに距離を空けて候補位置を探す
-    for (let tries = 0; tries < 12000 && cars.length < 8; tries++) {
-      const x = Math.min(...xs) + rnd() * (Math.max(...xs) - Math.min(...xs));
-      const z = Math.min(...zs) + rnd() * (Math.max(...zs) - Math.min(...zs));
-      if (!inPoly(P, x, z) || edgeDist(P, x, z) < 4.5) continue;
-      const road = roadAt(x, z);
-      if (road && road.d < EDGE + 6) continue;   // 道路際・接続斜面には駐車車両を置かない
-      // トイレ建物・街灯の周囲は車両を置かず、駐車場内の別位置へ再配置する。
-      if ((data.toilets || []).some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 8.5)) continue;
-      if (cars.some(c => Math.hypot(c[0] - x, c[1] - z) < 5.8)) continue;
-      cars.push([x, z, baseAngle + (rnd() - 0.5) * 0.28]);
-    }
-    if (cars.length) {
-      const palette = [0xf4f4f2, 0xc9ccce, 0x2a2c2f, 0x7d8286, 0xc8232c, 0x1f4fa8, 0x2b7a4b, 0xe0e0d8];
-      const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1.75, 0.85, 4.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), cars.length);
-      const cab = new THREE.InstancedMesh(new THREE.BoxGeometry(1.6, 0.6, 2.3), new THREE.MeshLambertMaterial({ color: 0x30363c }), cars.length);
-      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
-      cars.forEach(([x, z, angle], i) => {
-        const y = P.y + 0.02, tall = i === 3 ? 1.18 : 1;
-        Q.setFromAxisAngle(Y, angle);
-        body.setMatrixAt(i, M.compose(V.set(x, y + 0.6, z), Q, S.set(1, tall, 1)));
-        body.setColorAt(i, C.setHex(palette[i]));
-        cab.setMatrixAt(i, M.compose(V.set(x, y + 1.025 * tall, z), Q, S.set(1, 1, tall > 1 ? 1.4 : 1)));
-      });
-      body.frustumCulled = cab.frustumCulled = false;
-      body.name = cab.name = 'akagi-parked-cars';
-      scenery.add(body, cab);
-    }
-  }
+  // 駐車車両は次段階で配置するため、現在は置かない。
 
-  for (const [tx, tz] of data.toilets || []) {
+  for (const [tx, tz] of toiletPts) {
     const P = parkings.find((q) => inPoly(q, tx, tz) || edgeDist(q, tx, tz) < 6);
     let ang = 0;   // 向き: 駐車場のいちばん長い辺にそろえる
     if (P) { let L = 0; for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) { const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], l = Math.hypot(dx, dz); if (l > L) { L = l; ang = Math.atan2(-dz, dx); } } }
     const y = P ? P.y : H(tx, tz);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(6, 3.2, 4), new THREE.MeshLambertMaterial({ color: 0xf2f2ee, emissive: 0x202020 }));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(6, 3.2, 4), new THREE.MeshLambertMaterial({ color: 0x59351f }));
     body.position.set(tx, y + 1.6, tz); body.rotation.y = ang; body.name = 'akagi-toilet'; scenery.add(body);
     // 駐車場中央を向く壁面に黒い矩形の入口を追加(装飾や枠は付けない)。
     if (P) {
@@ -468,8 +444,16 @@ export function buildAkagiMap(data) {
       door.position.x += tx; door.position.z += tz; door.rotation.y = ang;
       door.name = 'akagi-toilet-entrance'; scenery.add(door);
     }
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.25, 4.6), new THREE.MeshLambertMaterial({ color: 0x8a8d8f }));
-    roof.position.set(tx, y + 3.3, tz); roof.rotation.y = ang; roof.name = 'akagi-toilet-roof'; scenery.add(roof);
+    const roofGeo = new THREE.BufferGeometry();
+    roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+      -3.3,3.15,-2.3, 0,4.45,-2.3, 0,4.45,2.3, -3.3,3.15,-2.3, 0,4.45,2.3, -3.3,3.15,2.3,
+       0,4.45,-2.3, 3.3,3.15,-2.3, 3.3,3.15,2.3, 0,4.45,-2.3, 3.3,3.15,2.3, 0,4.45,2.3,
+      -3.3,3.15,-2.3, -3.3,3.15,2.3, 3.3,3.15,-2.3, 3.3,3.15,-2.3, -3.3,3.15,2.3, 3.3,3.15,2.3,
+      -3.3,3.15,-2.3, 3.3,3.15,-2.3, 0,4.45,-2.3, -3.3,3.15,2.3, 0,4.45,2.3, 3.3,3.15,2.3
+    ], 3));
+    roofGeo.computeVertexNormals();
+    const roof = new THREE.Mesh(roofGeo, new THREE.MeshLambertMaterial({ color: 0x493024, side: THREE.DoubleSide }));
+    roof.position.set(tx, y, tz); roof.rotation.y = ang; roof.name = 'akagi-toilet-roof'; scenery.add(roof);
     body.updateMatrixWorld(); colliders.push(body);
 
   }
@@ -573,29 +557,7 @@ export function buildAkagiMap(data) {
     scenery.add(light);
     akagiNightLights.push({ diffuserMat, haloMat, light });
   };
-  const toiletPts = (data.toilets || []);
-  if (toiletPts.length >= 2) {
-    // 1基目：2棟のトイレの中間。建物の外壁から最低4.5m離す。
-    const mx = (toiletPts[0][0] + toiletPts[1][0]) / 2;
-    const mz = (toiletPts[0][1] + toiletPts[1][1]) / 2;
-    const vx = toiletPts[1][0] - toiletPts[0][0], vz = toiletPts[1][1] - toiletPts[0][1];
-    const vl = Math.hypot(vx, vz) || 1;
-    let between = null;
-    // まず建物2棟の正確な中間点を使う。屋根の外に出る距離が取れない場合だけ横へ逃がす。
-    const candidates = [{x:mx,z:mz}, ...[-1,1].map(side => ({
-      x:mx + (-vz / vl) * side * 4.8, z:mz + (vx / vl) * side * 4.8
-    }))];
-    for (const p of candidates) {
-      if (parkings.some(P => inPoly(P, p.x, p.z)) &&
-          toiletPts.every(([tx,tz]) => Math.hypot(p.x-tx,p.z-tz) >= 4.2)) { between = p; break; }
-    }
-    if (between) addAkagiLamp(between.x, between.z, 'akagi-lamp-between-toilets');
-  }
-  // C：今回追加したスロープ脇の街灯。
-  addAkagiLamp(-1493, 1771, 'akagi-lamp-ramp-side');
-
-  // B：以前からあった街灯。指定座標に固定して復活。
-  addAkagiLamp(-1475, 1795, 'akagi-lamp-parking-existing');
+  // 姫百合駐車場内の既存街灯は撤去。
   // D：ユーザー指定座標（X=-265, Z=162）。符号を保持して固定配置。
   addAkagiLamp(-233, 261, 'akagi-lamp-D');
 
