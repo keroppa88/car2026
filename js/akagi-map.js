@@ -116,8 +116,21 @@ export function buildAkagiMap(data) {
     return out;
   };
   for (const P of parkings) { P.pts = clipParkingToRoadSide(P.pts); Object.assign(P, region(P.pts)); }
+  // 北側を直線で切る(絵の赤線。おおまかな位置)。線の南側(駐車場のまん中の側)だけ残す
+  {
+    const A = [-1563.7, 1785.9], B = [-1499.3, 1762.9], sideOf = (x, z) => (B[0] - A[0]) * (z - A[1]) - (B[1] - A[1]) * (x - A[0]), keep = Math.sign(sideOf(-1520, 1795));
+    for (const P of parkings) {
+      const out = [];
+      for (let i = 0; i < P.pts.length; i++) {
+        const a = P.pts[i], b = P.pts[(i + 1) % P.pts.length], da = sideOf(a[0], a[1]) * keep, db = sideOf(b[0], b[1]) * keep;
+        if (da >= 0) out.push(a);
+        if ((da >= 0) !== (db >= 0)) { const t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+      }
+      if (out.length >= 3) { P.pts = out; Object.assign(P, region(P.pts)); }
+    }
+  }
   // 既存2棟を撤去し、指定座標に新しい木造トイレを1棟だけ設置。
-  const toiletPts = [[-1532, 1790]];
+  const toiletPts = [[-1538.5, 1796]];   // 絵の赤丸の位置
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
   // 駐車場の角で道から 10m 以内のものは、道の路肩まで寄せる(道と駐車場の間にすき間を作らない)
   for (const P of parkings) {
