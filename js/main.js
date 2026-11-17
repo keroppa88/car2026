@@ -7684,6 +7684,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     document.body.dataset.demoSequenceElapsed = '0.0';
     document.body.dataset.demoBgmDelayMs = '7000';
     applyDemoMapLook();   // このマップの空・雲・雨・昼夜
+    AUDIO.setVolume(engineVolume * 2 / 3);   // デモ中のエンジン音は 2/3
+    AUDIO.setInteriorVolume(0.85 * engineVolume * 2 / 3);
     setTimeout(() => {
       if (demoActive && DEMO_SEQUENCE_ACTIVE && !demoSequenceLeaving) {
         requestDemoBackgroundMusic();
