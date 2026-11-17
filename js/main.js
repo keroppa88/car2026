@@ -7739,6 +7739,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!demoActive || !DEMO_SEQUENCE_ACTIVE || demoSequenceLeaving) return;
     const elapsed = Math.max(0, (now - demoSequenceStartedAt) / 1000);
     document.body.dataset.demoSequenceElapsed = elapsed.toFixed(1);
+    // デモ中のエンジン音は、視点が「主観のボンネットあり」(V=1)の時だけ鳴らす
+    AUDIO.setEngineMuted(soundMode !== 0 || bonnetView !== 1);
 
     // 海岸線と森林地帯は、カメラを切り替えて見せる(空・昼夜はマップごとに決まっていて変えない)
     if (COURSE_KEY === 'sea') {
