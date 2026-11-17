@@ -125,7 +125,7 @@ export function buildAkagiMap(data) {
       const q = route[r.i], k = (EDGE - 0.2) / r.d; return [q.x + (x - q.x) * k, q.z + (z - q.z) * k]; });
     Object.assign(P, region(P.pts));
   }
-  const PARK_DROP = 0.25;      // 駐車場全体を道路面より 25cm 下げる
+  const PARK_DROP = 0;         // 駐車場の高さ = いちばん近い所の道の高さ(そこが出入口のスロープ)
   const PARK_RAMP_ANGLE = 15;
   const PARK_RAMP = PARK_DROP / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180); // 15度の直線スロープ(約0.93m)
   for (const P of parkings) {
@@ -147,8 +147,12 @@ export function buildAkagiMap(data) {
       if (!entrance || d < entrance.d) entrance = { d, s: routeS[r.i] };
     }
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
+    // 出入口: 駐車場が道に接している区間のまん中。駐車場の高さは、そこの道の高さに合わせる(スロープの所で段差なし)
+    const touch = [];
+    for (let i = 0; i < n; i++) for (const sd of [-1, 1]) if (inPoly(P, route[i].x + tangents[i].x * sd * (EDGE + 0.8), route[i].z + tangents[i].z * sd * (EDGE + 0.8))) { touch.push(i); break; }
+    if (touch.length) { const mid = touch[Math.floor(touch.length / 2)]; P.rampS = routeS[mid]; P.roadY = route[mid].y; P.y = P.roadY - PARK_DROP; }
   }
-  const PARK_ENTRANCE_HALF_LENGTH = 55; // 姫百合駐車場に面した黄色指定区間を長めに開放(全長約110m)
+  const PARK_ENTRANCE_HALF_LENGTH = 3;  // 出入口のスロープの幅は車 2 台ぶん(6m)。それ以外は段差(コンクリートの壁)
   const PARK_MAX_STEP = 0.75; // 姫百合駐車場の黄色指定区間。ここより段差が大きい箇所は閉鎖
   const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
@@ -156,7 +160,6 @@ export function buildAkagiMap(data) {
     // 姫百合駐車場に面した黄色指定区間だけ。反対側・離れた道路は対象外。
     if (edgeDist(P, x, z) > 2.5) return null;
     const rise = Math.abs(r.y - P.y);
-    if (rise > PARK_MAX_STEP) return null;
     const length = rise / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180);
     return { r, length };
   };
@@ -358,8 +361,10 @@ export function buildAkagiMap(data) {
   // 絵で決めたガードレール(tools/akagi/apply_rail_paint.py の railL / railR: 1 = ある、0 = なし、-1 = 絵に写っていない → 従来の決め方)
   const painted = (i, side) => { const f = side > 0 ? data.railL : data.railR; return f ? f[i] : -1; };
   const railAt = (i, side) => {
-    const f = painted(i, side); if (f >= 0) return f === 1;
     const p = route[i], nn = tangents[i];
+    // 駐車場の出入口(スロープ、幅 6m)は、絵のガードレールがあっても開ける
+    if (parkings.some((P) => Math.abs(routeS[i] - P.rampS) < PARK_ENTRANCE_HALF_LENGTH + 0.5 && inPoly(P, p.x + nn.x * side * (EDGE + 0.8), p.z + nn.z * side * (EDGE + 0.8)))) return false;
+    const f = painted(i, side); if (f >= 0) return f === 1;
     return !skip(i, side) && !nearParking(p.x + nn.x * side * RAIL, p.z + nn.z * side * RAIL);
   };
   for (const side of [-1, 1]) {
@@ -416,6 +421,70 @@ export function buildAkagiMap(data) {
     }
   }
   // 駐車車両は次段階で配置するため、現在は置かない。
+  // ---- 駐車場と道の間の段差: コンクリート色の壁(出入口のスロープの所は除く)。高い側の上面にふたをして、土手の斜面を隠す。当たり判定あり ----
+  {
+    const v = [], W0 = EDGE + 0.02, W1 = EDGE + 0.45;
+    const quad = (a, b, c, d2) => v.push(...a, ...b, ...c, ...a, ...c, ...d2);
+    for (const P of parkings) for (const side of [-1, 1]) for (let i = 0; i + 1 < n; i++) {
+      const at = (k, off) => [route[k].x + tangents[k].x * side * off, route[k].z + tangents[k].z * side * off];
+      const m0 = at(i, EDGE + 0.8), m1 = at(i + 1, EDGE + 0.8);
+      if (!inPoly(P, m0[0], m0[1]) || !inPoly(P, m1[0], m1[1])) continue;
+      if (Math.abs(routeS[i] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH && Math.abs(routeS[i + 1] - P.rampS) <= PARK_ENTRANCE_HALF_LENGTH) continue;   // スロープ
+      const ya = route[i].y, yb = route[i + 1].y, py = P.y - 0.03;
+      const up = (ya + yb) / 2 < py;                 // 駐車場の方が高い → 壁は道ぎわ。道の方が高い → 壁は駐車場ぎわ
+      const off = up ? W0 : W1, a = at(i, off), b = at(i + 1, off);
+      quad([a[0], Math.min(ya, py) - 0.05, a[1]], [b[0], Math.min(yb, py) - 0.05, b[1]], [b[0], Math.max(yb, py), b[1]], [a[0], Math.max(ya, py), a[1]]);
+      const c0 = at(i, W0), c1 = at(i + 1, W0), e0 = at(i, W1), e1 = at(i + 1, W1);   // 上面のふた
+      quad([c0[0], Math.max(ya, py), c0[1]], [c1[0], Math.max(yb, py), c1[1]], [e1[0], Math.max(yb, py), e1[1]], [e0[0], Math.max(ya, py), e0[1]]);
+    }
+    if (v.length) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x8b8d8c, side: THREE.DoubleSide })); m.name = 'akagi-parking-step'; scenery.add(m); colliders.push(m);
+    }
+  }
+
+  // ---- 駐車場の囲い: 道に面した辺は道のガードレール(スロープの所だけ開く)。それ以外の辺は緑の金網(高さ 1.5m、支柱 2m ごと)。当たり判定あり ----
+  {
+    const net = [], uvs = [], wall = [], postAt = [], HN = 1.5;
+    for (const P of parkings) {
+      const y = P.y - 0.03;
+      for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) {
+        const a = P.pts[j], b = P.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.round(L / 2));
+        for (let t = 0; t < k; t++) {
+          const p0 = [a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k], p1 = [a[0] + (b[0] - a[0]) * (t + 1) / k, a[1] + (b[1] - a[1]) * (t + 1) / k];
+          const r0 = roadAt(p0[0], p0[1]), r1 = roadAt(p1[0], p1[1]);
+          if ((r0 && r0.d < EDGE + 2.5) || (r1 && r1.d < EDGE + 2.5)) continue;   // 道に面した所はガードレール
+          const l = L / k, u0 = t * l / 0.5, u1 = (t + 1) * l / 0.5;
+          net.push(p0[0], y, p0[1], p1[0], y, p1[1], p1[0], y + HN, p1[1], p0[0], y, p0[1], p1[0], y + HN, p1[1], p0[0], y + HN, p0[1]);
+          uvs.push(u0, 0, u1, 0, u1, HN / 0.5, u0, 0, u1, HN / 0.5, u0, HN / 0.5);
+          wall.push(p0[0], y - 0.2, p0[1], p1[0], y - 0.2, p1[1], p1[0], y + 1.3, p1[1], p0[0], y - 0.2, p0[1], p1[0], y + 1.3, p1[1], p0[0], y + 1.3, p0[1]);
+          postAt.push([p0[0], y, p0[1]], [p1[0], y, p1[1]]);
+        }
+      }
+    }
+    if (net.length) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64; const cx = cv.getContext('2d');
+      cx.strokeStyle = 'rgba(40,120,80,0.95)'; cx.lineWidth = 2.2;
+      for (let k = -64; k < 128; k += 16) { cx.beginPath(); cx.moveTo(k, 0); cx.lineTo(k + 64, 64); cx.stroke(); cx.beginPath(); cx.moveTo(k + 64, 0); cx.lineTo(k, 64); cx.stroke(); }
+      const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(net, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide, emissive: 0x0a2416 })); m.name = 'akagi-parking-fence'; scenery.add(m);
+      const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wall, 3)); wg.computeVertexNormals();
+      const wm = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })); wm.name = 'akagi-parking-fence-wall'; scenery.add(wm); colliders.push(wm);
+      const postMat = new THREE.MeshLambertMaterial({ color: 0x1f8a5a });
+      const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, HN + 0.05, 0.07), postMat, postAt.length), M4 = new THREE.Matrix4();
+      postAt.forEach(([x, y, z], k) => posts.setMatrixAt(k, M4.makeTranslation(x, y + (HN + 0.05) / 2, z)));
+      posts.name = 'akagi-parking-fence-posts'; posts.frustumCulled = false; scenery.add(posts);
+      // 上と下の横の棒
+      const bars = [];
+      for (let k = 0; k < net.length; k += 18) for (const [h0, h1] of [[HN - 0.05, HN], [0.03, 0.08]]) {
+        const ax = net[k], ay = net[k + 1], az = net[k + 2], bx = net[k + 3], bz = net[k + 5];
+        bars.push(ax, ay + h0, az, bx, ay + h0, bz, bx, ay + h1, bz, ax, ay + h0, az, bx, ay + h1, bz, ax, ay + h1, az);
+      }
+      const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bars, 3)); bg.computeVertexNormals();
+      const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ color: 0x1f8a5a, side: THREE.DoubleSide })); bm.name = 'akagi-parking-fence-bars'; scenery.add(bm);
+    }
+  }
 
   for (const [tx, tz] of toiletPts) {
     const P = parkings.find((q) => inPoly(q, tx, tz) || edgeDist(q, tx, tz) < 6);
