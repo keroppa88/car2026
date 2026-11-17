@@ -637,6 +637,7 @@
     demoQuery.set('course', COURSE_ORDER[demoStage]);
     demoQuery.set('demo', '1');
     demoQuery.set('demoStage', String(demoStage));
+    demoQuery.set('demoMapCount', '0');
     demoQuery.set('demoEmbedded', '1');
     if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
     demoFrame.src = `${location.pathname}?${demoQuery}`;
