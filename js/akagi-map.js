@@ -66,21 +66,36 @@ export function buildAkagiMap(data) {
     return (G.h[k] * (1 - tx) + G.h[k + 1] * tx) * (1 - tz) + (G.h[k + cols + 1] * (1 - tx) + G.h[k + cols + 2] * tx) * tz;
   };
   // 近くを通る道の「区間」ごとの、いちばん近い所(つづら折りでは 2〜3 本の道が近くを通る)
+  // (読み込みを速く: 候補を並べ替えず、近い順に 3 本だけ選ぶ。同じ点を続けて聞かれたら前の答えを返す)
+  const candD = new Float64Array(4096), candI = new Int32Array(4096);
+  let memoX = NaN, memoZ = NaN, memoLegs = null;
   const legsAt = (x, z) => {
-    const bx = Math.floor(x / B), bz = Math.floor(z / B), cand = [];
-    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (const i of bucket.get((bx + a) + ',' + (bz + b)) || []) cand.push([(route[i].x - x) ** 2 + (route[i].z - z) ** 2, i]);
-    cand.sort((p, q) => p[0] - q[0]);
+    if (x === memoX && z === memoZ) return memoLegs;
+    const bx = Math.floor(x / B), bz = Math.floor(z / B); let m = 0;
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      const list = bucket.get((bx + a) + ',' + (bz + b)); if (!list) continue;
+      for (let k = 0; k < list.length && m < 4096; k++) { const i = list[k], p = route[i], dx = p.x - x, dz = p.z - z; candD[m] = dx * dx + dz * dz; candI[m++] = i; }
+    }
     const legs = [];
-    for (const [, i] of cand) {
-      if (legs.some((l) => Math.abs(l.i - i) < 25)) continue;
-      let best = null;
-      for (const [a, b] of [[clampI(i - 1), i], [i, clampI(i + 1)]]) {
+    while (legs.length < 3) {
+      let bi = -1, bd = Infinity;
+      for (let k = 0; k < m; k++) {
+        if (candD[k] >= bd) continue;
+        const i = candI[k]; let near = false;
+        for (let q = 0; q < legs.length; q++) if (Math.abs(legs[q].i - i) < 25) { near = true; break; }
+        if (!near) { bd = candD[k]; bi = i; }
+      }
+      if (bi < 0) break;
+      const i = bi; let best = null;
+      for (let e = 0; e < 2; e++) {
+        const a = e ? i : clampI(i - 1), b = e ? clampI(i + 1) : i;
         if (a === b) continue;
         const A = route[a], Bq = route[b], dx = Bq.x - A.x, dz = Bq.z - A.z, t = THREE.MathUtils.clamp(((x - A.x) * dx + (z - A.z) * dz) / (dx * dx + dz * dz || 1), 0, 1), d = Math.hypot(A.x + dx * t - x, A.z + dz * t - z);
         if (!best || d < best.d) best = { d, y: A.y + (Bq.y - A.y) * t, i };
       }
-      legs.push(best); if (legs.length >= 3) break;
+      legs.push(best);
     }
+    memoX = x; memoZ = z; memoLegs = legs;
     return legs;
   };
   const CUT = 2.2, FILL = 0.75, DITCH = 1.2;   // 崖の傾き(高さ/横)、盛り土の傾き、崖の下の側溝・草の幅
@@ -545,11 +560,26 @@ export function buildAkagiMap(data) {
   const lampRaycaster = new THREE.Raycaster();
   const lampRayOrigin = new THREE.Vector3();
   const lampRayDown = new THREE.Vector3(0, -1, 0);
+  // 読み込みを速く: 街灯のまわり(半径 r)の三角形だけを抜き出した小さな形に Raycast する(大きな地面ぜんぶには当てない)
+  let lampLocal = null;
+  const localGround = (x, z, r) => lampGroundMeshes.map((mesh) => {
+    const pos = mesh.geometry.getAttribute('position'), idx = mesh.geometry.index, cnt = idx ? idx.count : pos.count, out = [];
+    for (let t = 0; t < cnt; t += 3) {
+      const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
+      const ax = pos.getX(a), az = pos.getZ(a);
+      if (Math.abs(ax - x) > r + 14 || Math.abs(az - z) > r + 14) continue;
+      const bx = pos.getX(b), bz = pos.getZ(b), cx = pos.getX(c), cz = pos.getZ(c);
+      if (Math.min(ax, bx, cx) > x + r || Math.max(ax, bx, cx) < x - r || Math.min(az, bz, cz) > z + r || Math.max(az, bz, cz) < z - r) continue;
+      out.push(ax, pos.getY(a), az, bx, pos.getY(b), bz, cx, pos.getY(c), cz);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })); m.updateMatrixWorld(true); return m;
+  });
   const lampSurfaceY = (x, z) => {
     const terrainY = H(x, z);
     lampRayOrigin.set(x, terrainY + 10000, z);
     lampRaycaster.set(lampRayOrigin, lampRayDown);
-    const hit = lampRaycaster.intersectObjects(lampGroundMeshes, false)[0];
+    const hit = lampRaycaster.intersectObjects(lampLocal || lampGroundMeshes, false)[0];
     // 地面から 1.5cm 上げ、埋没と地面とのちらつきを防ぐ。
     return (hit ? hit.point.y : terrainY) + 0.015;
   };
@@ -607,6 +637,7 @@ export function buildAkagiMap(data) {
   };
 
   const addAkagiLamp = (x, z, name) => {
+    lampLocal = localGround(x, z, 15);
     const ly = lampSurfaceY(x, z);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x17191b });
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.4, 10), poleMat);
