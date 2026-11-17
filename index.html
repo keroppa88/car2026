@@ -465,6 +465,21 @@
     letter-spacing: 0.32em; white-space: nowrap;
     text-shadow: 0 0 12px rgba(255, 112, 20, 0.55), 2px 2px 0 #4b1707;
   }
+  #title-back-btn {
+    position: fixed; left: 50%; bottom: 82px; z-index: 3;
+    transform: translateX(-50%);
+    min-width: 132px; padding: 8px 20px;
+    border: 2px solid #ff8c1a; border-radius: 6px;
+    color: #ffcf99; background: rgba(12, 10, 9, 0.94);
+    box-shadow: inset 0 0 0 2px #3b210f, 0 4px 14px rgba(0, 0, 0, 0.55);
+    font: 800 15px/1.2 "Arial Black", "Yu Gothic", Meiryo, sans-serif;
+    letter-spacing: 0.16em; cursor: pointer;
+  }
+  #title-back-btn:hover, #title-back-btn:focus-visible {
+    color: #fff; background: #d94312; outline: none;
+    border-color: #ffbd73;
+  }
+  #title-back-btn[hidden] { display: none; }
   @media (max-width: 760px) {
     .select-grid, .select-grid.cars { grid-template-columns: 1fr 1fr; }
     #course-grid { grid-template-columns: 1fr 1fr; }
@@ -475,6 +490,7 @@
     #title-bottom-bar { height: 26px; }
     #title-copyright { font-size: 11px; letter-spacing: 0.12em; }
     #title-pc-only { bottom: 34px; font-size: 13px; letter-spacing: 0.22em; }
+    #title-back-btn { bottom: 58px; min-width: 112px; padding: 6px 16px; font-size: 13px; }
   }
 
   /* 80年代液晶風コントロールパネル */
@@ -528,6 +544,7 @@
   </section>
   <div id="title-bottom-bar"><span id="title-copyright">&copy;keroppa</span></div>
   <div id="title-pc-only">PC PLAY ONLY</div>
+  <button id="title-back-btn" type="button" hidden>戻る</button>
   <button id="title-guide-btn" type="button" aria-haspopup="dialog">説明</button>
   <button id="title-demo-btn" type="button">デモ画面</button>
 </div>
@@ -929,6 +946,7 @@
     let startIndex = 0, startButtons = [];
     const guideButton = document.getElementById('title-guide-btn');
     const demoButton = document.getElementById('title-demo-btn');
+    const backButton = document.getElementById('title-back-btn');
     const guideOverlay = document.getElementById('title-guide-overlay');
     // スマホはプレイできないので、タイトルでは「説明」と「デモ画面」の
     // タッチだけを受け付ける。放置での自動デモも、車・コース選択もしない。
@@ -1125,7 +1143,30 @@
       startButtons.forEach((button, i) => button.classList.toggle('active', i === startIndex));
       guideButton.hidden = stage !== 'car';
       demoButton.hidden = stage !== 'car';
+      backButton.hidden = stage === 'car';
     };
+    const goBack = () => {
+      if (starting || stage === 'car') return;
+      playSelectionClick();
+      if (stage === 'start') {
+        stage = 'course';
+        startScreen.hidden = true;
+        courseScreen.hidden = false;
+      } else if (stage === 'course') {
+        stage = 'group';
+        courseScreen.hidden = true;
+        groupScreen.hidden = false;
+      } else if (stage === 'group') {
+        stage = 'car';
+        groupScreen.hidden = true;
+        carScreen.hidden = false;
+      }
+      paint();
+    };
+    backButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      goBack();
+    });
     const showGroups = () => {
       if (stage !== 'car') return;
       playSelectionClick();
