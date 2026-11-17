@@ -63,6 +63,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = COURSE_ORDER;   // デモはメニューに出す全コースからランダムに選ぶ
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
+  // デモのマップ切替回数をURLで引き継ぎ、4マップ目ごとに夜間にする。
+  // 0始まりなので count=3,7,11... が夜。
+  const DEMO_MAP_COUNT = Math.max(0, Number.parseInt(pageQuery.get('demoMapCount') || '0', 10) || 0);
+  const DEMO_CYCLE_NIGHT = DEMO_SEQUENCE_ACTIVE && DEMO_MAP_COUNT % 4 === 3;
   // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
   // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
   const DEMO_EMBEDDED = pageQuery.get('demoEmbedded') === '1';
@@ -7662,8 +7666,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       weatherTopHsl.l = WEATHER_DEFAULT_TOP_L;
       weatherHorizonHsl.l = WEATHER_DEFAULT_HORIZON_L;
     }
-    if (demoTrackMode === 'night') nightMode = true;
-    else if (nightMode) nightMode = false;
+    // 夜間は曲ではなく、マップ切替4回に1回の周期で決める。
+    nightMode = DEMO_CYCLE_NIGHT;
+    document.body.dataset.demoCycleNight = String(DEMO_CYCLE_NIGHT);
     // 空の反映と、それに合わせた地表の明るさをまとめてやり直す。
     applyNight();
     refreshWeatherControls();
@@ -7721,6 +7726,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     nextQuery.set('course', course);
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(Math.max(0, DEMO_SEQUENCE.indexOf(course))));
+    nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
     if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
@@ -7867,6 +7873,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(nextStage));
     // 流れている曲の見せ方をコース切替後も引き継ぐ（親からの通知が届く前の初期値）。
+    nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
     if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
@@ -7911,9 +7918,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
     }
     document.body.dataset.demoSequenceActions = String(demoSequenceActionCount);
-    // 夜の曲は昼夜の切替演出を打ち消して、常に夜のままにする。
-    if (demoTrackMode === 'night' && !nightMode) {
+    // 4マップに1回の周期で夜間を維持する。曲の種類には左右されない。
+    if (DEMO_CYCLE_NIGHT && !nightMode) {
       nightMode = true;
+      applyNight();
+    } else if (!DEMO_CYCLE_NIGHT && nightMode) {
+      nightMode = false;
       applyNight();
     }
     if (demoTrackMode === 'sea-sunset') {
