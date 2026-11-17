@@ -13,11 +13,13 @@ export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.03
 
 export function buildAkagiMap(data) {
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-  // ふもと側の終わりに、まっすぐな道を 150m 足す(ループの暗転 2 秒のあいだに道が終わらないように)。向きと下りの傾きは、終わりの 30m と同じ
+  // ふもと側の終わりの先に、まっすぐな道を 250m 足す(のぼりのループは、この直線の上に戻ってくる)。向きと下りの傾きは、終わりの 30m と同じ
+  const BOTTOM_EXT = 84;
   {
     const e = route[route.length - 1], q = route[route.length - 11], dx = (e.x - q.x) / 10, dz = (e.z - q.z) / 10, dy = THREE.MathUtils.clamp((e.y - q.y) / 10, -0.2, 0);
-    for (let k = 1; k <= 50; k++) route.push(new THREE.Vector3(e.x + dx * k, e.y + dy * k, e.z + dz * k));
+    for (let k = 1; k <= BOTTOM_EXT; k++) route.push(new THREE.Vector3(e.x + dx * k, e.y + dy * k, e.z + dz * k));
   }
+  const bottomStraight = route.length - BOTTOM_EXT - 1;   // ふもと側のまっすぐな道のはじまり(もとの道の終わり)
   const akagiNightLights = []; // [発光材質, 光だまり]
   const n = route.length;
   const clampI = (i) => Math.max(0, Math.min(n - 1, i));
@@ -787,7 +789,7 @@ export function buildAkagiMap(data) {
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
-  return { parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  return { bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }

@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261117-cars-spread';
+import { buildAkagiMap } from './akagi-map.js?v=20261117-loop-straight';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -2781,7 +2781,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         && Math.abs(roadAhead.point.y - player.pos.y) < maxHeightDifference;
     });
   }
-  // ---- 赤城山のループ: くだりで駐車場を過ぎる / のぼりで草原を抜ける手前 → 2 秒で暗転 → 反対側の端を走っている状態に戻る ----
+  // ---- 赤城山のループ: くだりで駐車場を過ぎる / のぼりで草原を抜ける手前 → 2 秒で暗転 → 反対側の端を走っている状態に戻る(のぼりはふもとの直線の上) ----
   const akagiLoop = { fadeStart: 0, to: null, el: null, clearAt: 0, bottom: -1, top: -1 };
   function akagiLoopStep() {
     const route = gunmaCourse.route, n = route.length, L = akagiLoop, now = performance.now();
@@ -2811,9 +2811,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       return;
     }
     if (now - L.fadeStart < 2000 && ci > 2 && ci < n - 3) return;   // 暗転のあいだ(道の端まで来たらすぐ)
-    // 反対側の端へ: 向きと車線は、開始位置を選んだときと同じ決め方(くだり = 案内所の前、のぼり = 駐車場の前)
+    // 反対側の端へ: くだり = 案内所の前、のぼり = ふもとの直線の上。車線は開始位置を選んだときと同じ
     const down = L.to === 'top'; let index = gunmaCourse.start;
-    if (!down) { let q = Infinity; for (let i = 0; i < n; i++) { const d = (route[i].x + 1447) ** 2 + (route[i].z - 1776) ** 2; if (d < q) { q = d; index = i; } } }
+    if (!down) index = Math.min(n - 3, (gunmaCourse.bottomStraight ?? n - 40) + 45);   // のぼり: ふもとの直線の上(道の終わりから 135m 先)。上り向きで直線を走ってから駐車場の前へ
     const p = route[index], nx = route[down ? Math.min(n - 1, index + 1) : Math.max(0, index - 1)], nn = gunmaCourse.tangents[index], off = down ? 1.2 : -1.8;
     const heading = Math.atan2(nx.x - p.x, nx.z - p.z), speed = Math.hypot(player.vel.x, player.vel.z);
     player.pos.set(p.x + nn.x * off, p.y + 0.05, p.z + nn.z * off);
