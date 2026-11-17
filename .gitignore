@@ -7,3 +7,4 @@ tools/akagi/paint/park_ref.png
 tools/akagi/paint/pick_*.json
 tools/akagi/paint/picked_*.json
 tools/akagi/paint/match_*.json
+test/_*_tmp.mjs

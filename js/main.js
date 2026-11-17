@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261118-demo-2';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261118-demo-5';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -7620,10 +7620,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     location.href = location.pathname;
   }
 
-  // デモ用の道すじ(湘南・TOKYO)。湘南は国道134号のルート(大磯行き)、TOKYO は始めの位置から道路を
-  // まっすぐに近い方へたどる(一方通行は向きを守る)
+  // デモ用の道すじ(湘南・TOKYO)。湘南は国道134号のルート(大磯行き)、TOKYO は塗ってもらった周回の道すじ。
+  // どちらも無いときは始めの位置から道路をまっすぐに近い方へたどる(一方通行は向きを守る)
   async function buildOsmDemoRoute() {
     try {
+      // 塗ってもらった周回の道すじ(TOKYO)。tools/tokyo_demo/paint_to_route.py で作る
+      if (MAP_CONFIG.demoRouteData) {
+        const d = await (await fetch(MAP_CONFIG.demoRouteData)).json();
+        return d.loop.map(([x, z]) => ({ x, z }));
+      }
       if (MAP_CONFIG.routeData) {
         const d = await (await fetch(MAP_CONFIG.routeData)).json();
         return d.west.map(([x, z]) => ({ x, z }));
@@ -9278,17 +9283,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         return { throttle: true, brake: false, handbrake: false, steer: 0 };
       }
     }
-    if (autoMode === 'shonanRoute') {
-      // 行き先まで: 先のカーブを見て速度を決め、終点で止まる(ループしない)
+    if (autoMode === 'shonanRoute' || autoMode === 'cityLoop') {
+      // 行き先まで: 先のカーブを見て速度を決め、終点で止まる(ループしない)。cityLoop(TOKYO)は周回して止まらない
+      const loop = autoMode === 'cityLoop';
+      const W = (i) => wps[loop ? ((i % n) + n) % n : i];
       // 車線(左の車線の中心線)をなぞる: いちばん近い点を探し、そこから道に沿って先の点を見る(角を内側へ切らない)
-      const near = (i0, i1) => { let b = i0, bd = Infinity; for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i++) { const d = (wps[i].x - player.pos.x) ** 2 + (wps[i].z - player.pos.z) ** 2; if (d < bd) { bd = d; b = i; } } return [b, Math.sqrt(bd)]; };
+      const near = (i0, i1) => { if (!loop) { i0 = Math.max(0, i0); i1 = Math.min(n - 1, i1); } let b = i0, bd = Infinity; for (let i = i0; i <= i1; i++) { const d = (W(i).x - player.pos.x) ** 2 + (W(i).z - player.pos.z) ** 2; if (d < bd) { bd = d; b = i; } } return [loop ? ((b % n) + n) % n : b, Math.sqrt(bd)]; };
       let [ni, nd] = autoIdx < 0 ? near(0, n - 1) : near(autoIdx - 5, autoIdx + 60);
       if (nd > 40) [ni, nd] = near(0, n - 1);
       autoIdx = ni;
       { // 点ではなく線分までの距離(車線からのずれ)
         let best = nd;
-        for (const j of [ni - 1, ni]) { if (j < 0 || j >= n - 1) continue;
-          const ax = wps[j].x, az = wps[j].z, dx = wps[j + 1].x - ax, dz = wps[j + 1].z - az, L2 = dx * dx + dz * dz || 1;
+        for (const j of [ni - 1, ni]) { if (!loop && (j < 0 || j >= n - 1)) continue;
+          const ax = W(j).x, az = W(j).z, dx = W(j + 1).x - ax, dz = W(j + 1).z - az, L2 = dx * dx + dz * dz || 1;
           const u = Math.max(0, Math.min(1, ((player.pos.x - ax) * dx + (player.pos.z - az) * dz) / L2));
           best = Math.min(best, Math.hypot(ax + dx * u - player.pos.x, az + dz * u - player.pos.z)); }
         nd = best;
@@ -9296,19 +9303,25 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       // 車線から外れているほど近くを見て早く戻る
       const look = Math.max(5, Math.min(speed * 0.7, 30)) * (nd > 2 ? 0.6 : 1);
       let acc = 0, k = autoIdx;
-      while (k < n - 1 && acc < look) { acc += Math.hypot(wps[k + 1].x - wps[k].x, wps[k + 1].z - wps[k].z); k++; }
-      let wp = wps[k];
+      while ((loop || k < n - 1) && acc < look) { acc += Math.hypot(W(k + 1).x - W(k).x, W(k + 1).z - W(k).z); k++; }
+      let wp = W(k);
       const left = n - 1 - autoIdx;
       document.body.dataset.autoDriveLaneError = nd.toFixed(2);
-      if (left <= 2 && Math.hypot(wps[n - 1].x - player.pos.x, wps[n - 1].z - player.pos.z) < 15) {
+      if (!loop && left <= 2 && Math.hypot(wps[n - 1].x - player.pos.x, wps[n - 1].z - player.pos.z) < 15) {
         if (speed < 0.5) { autoDrive = false; document.body.dataset.autoDrive = 'false'; document.body.dataset.autoDriveArrived = '1'; }
         return { throttle: false, brake: true, handbrake: false, steer: 0 };
       }
       const diff = angleTo(wp);
       let curve = 0;
-      for (const kk of [6, 12, 20]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + kk)])));
+      if (loop) {
+        // 点の間隔がまちまちなので、道のりで 15〜60m 先の曲がり具合を見る
+        let a2 = 0, kk = autoIdx;
+        while (a2 < 60) { a2 += Math.hypot(W(kk + 1).x - W(kk).x, W(kk + 1).z - W(kk).z); kk++; if (a2 > 15) curve = Math.max(curve, Math.abs(angleTo(W(kk)))); }
+      } else {
+        for (const kk of [6, 12, 20]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + kk)])));
+      }
       let targetKmh = curve > 0.6 ? 30 : curve > 0.35 ? 45 : curve > 0.18 ? 60 : 70;
-      if (left < 12) targetKmh = Math.min(targetKmh, 20 + left * 3);   // 終点の手前で減速
+      if (!loop && left < 12) targetKmh = Math.min(targetKmh, 20 + left * 3);   // 終点の手前で減速
       const target = targetKmh / 3.6;
       document.body.dataset.autoDriveTargetKmh = String(targetKmh);
       return { throttle: speed < target, brake: speed > target + 2, handbrake: false, steer: clamp(diff * 2.0, -1, 1) };
