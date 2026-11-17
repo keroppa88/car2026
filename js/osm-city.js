@@ -2346,7 +2346,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (native && data.barriers) T('buildBarriers', () => buildBarriers(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
-    if (br) T('buildUnderPiers', () => buildUnderPiers(data, br, city, blocked.onRoad));   // TOKYO: 首都高をくぐる道路の両側(道路の端から 10m)だけに橋脚
+    // 首都高の高架に橋脚は立てない(buildUnderPiers は呼ばない)
     T('buildArches', () => buildArches(data, city));
     const shopMat = shopWindowMat(); glow.push(shopMat);
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { shopMat, smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS, groundAt: native ? (x, z) => Math.min(0, native.at(x, z)?.y ?? 0) : null }));

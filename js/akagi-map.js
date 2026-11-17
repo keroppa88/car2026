@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261117-piers-3';
+import { treeBillboards } from './osm-city.js?v=20261117-piers-0';
 
 // 赤城山(県道4号 前橋赤城線、赤城山総合観光案内所の前 → 姫百合駐車場の前)。
 // map/akagi-course.json(tools/akagi/make_akagi.py)から組み立てる。
