@@ -504,28 +504,23 @@ export function buildAkagiMap(data) {
     const P = parkings.find((q) => inPoly(q, tx, tz) || edgeDist(q, tx, tz) < 6);
     let ang = 0;   // 向き: 駐車場のいちばん長い辺にそろえる
     if (P) { let L = 0; for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) { const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], l = Math.hypot(dx, dz); if (l > L) { L = l; ang = Math.atan2(-dz, dx); } } }
+    ang += Math.PI / 2;   // 90度回す
     const y = P ? P.y : H(tx, tz);
     const body = new THREE.Mesh(new THREE.BoxGeometry(6, 3.2, 4), new THREE.MeshLambertMaterial({ color: 0x59351f }));
     body.position.set(tx, y + 1.6, tz); body.rotation.y = ang; body.name = 'akagi-toilet'; scenery.add(body);
-    // 駐車場中央を向く壁面に黒い矩形の入口を追加(装飾や枠は付けない)。
+    // 駐車場の出入口(スロープ)の方を向く壁に、左右 2 つの黒い入口
     if (P) {
-      const cx = P.pts.reduce((s, q) => s + q[0], 0) / P.pts.length;
-      const cz = P.pts.reduce((s, q) => s + q[1], 0) / P.pts.length;
-      const dx = cx - tx, dz = cz - tz;
-      const lx = Math.cos(ang) * dx - Math.sin(ang) * dz;
-      const lz = Math.sin(ang) * dx + Math.cos(ang) * dz;
+      let ri = 0; for (let i = 1; i < n; i++) if (Math.abs(routeS[i] - P.rampS) < Math.abs(routeS[ri] - P.rampS)) ri = i;
+      body.updateMatrixWorld();
+      const l = body.worldToLocal(new THREE.Vector3(route[ri].x, y + 1.6, route[ri].z));   // スロープの位置(建物から見て)
       const doorMat = new THREE.MeshBasicMaterial({ color: 0x08090a, side: THREE.DoubleSide });
-      let door;
-      if (Math.abs(lx) / 3 >= Math.abs(lz) / 2) {
-        door = new THREE.Mesh(new THREE.BoxGeometry(0.035, 2.25, 1.15), doorMat);
-        door.position.set(Math.sign(lx) * 3.025, 1.125, 0);
-      } else {
-        door = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.25, 0.035), doorMat);
-        door.position.set(0, 1.125, Math.sign(lz) * 2.025);
+      const onX = Math.abs(l.x) / 3 >= Math.abs(l.z) / 2, half = onX ? 2 : 3;   // 向く壁: x の面(幅 4m)か z の面(幅 6m)
+      for (const sd of [-1, 1]) {
+        const door = new THREE.Mesh(onX ? new THREE.BoxGeometry(0.035, 2.1, 1.0) : new THREE.BoxGeometry(1.0, 2.1, 0.035), doorMat);
+        if (onX) door.position.set(Math.sign(l.x) * 3.025, -1.6 + 1.05, sd * half * 0.55);
+        else door.position.set(sd * half * 0.55, -1.6 + 1.05, Math.sign(l.z) * 2.025);
+        door.name = 'akagi-toilet-entrance'; body.add(door);
       }
-      door.position.y += y;
-      door.position.x += tx; door.position.z += tz; door.rotation.y = ang;
-      door.name = 'akagi-toilet-entrance'; scenery.add(door);
     }
     const roofGeo = new THREE.BufferGeometry();
     roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([
