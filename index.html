@@ -613,7 +613,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS } from './js/game-config.js?v=20261117-menu-1';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS, DEMO_MAPS } from './js/game-config.js?v=20261117-demo-1';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -623,313 +623,126 @@
     && COURSE_ORDER.includes(requestedCourse);
 
   if (isDemoShell) {
-    // マップを15秒ごとに読み替えてもBGMを切らさない、デモ専用の外枠。
-    // 実際のゲームは全画面iframe内で動き、操作や描画は通常プレイと同じ。
+    // デモ専用の外枠。ゲームは全画面 iframe の中で動く。1 マップ 2 分ずつ、ランダムに巡る。
+    // マップごとに曲・空・昼夜が決まっている(game-config.js の DEMO_MAPS)。曲はこの外枠が鳴らす。
     document.body.className = 'demo-shell';
     document.body.replaceChildren();
+    const DEMO_MAP_MS = Number(query.get('demoMapMs')) || 120000;   // 1 マップの時間(確かめ用に ?demoMapMs= で短くできる)
+    const DEMO_RECENT_KEY = 'car2026.demoRecentMaps';  // 直近 5 回に出たマップ(この中からは選ばない)
+    const DEMO_IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const carKeys = Object.keys(CAR_CONFIGS);
+    const readRecent = () => { try { return JSON.parse(localStorage.getItem(DEMO_RECENT_KEY) || '[]').filter((c) => DEMO_MAPS.some((d) => d.course === c)); } catch { return []; } };
+    const pickNext = () => {
+      const recent = readRecent(), keep = Math.min(5, DEMO_MAPS.length - 1);
+      const cand = DEMO_MAPS.filter((d) => !recent.slice(-keep).includes(d.course));
+      const entry = cand[Math.floor(Math.random() * cand.length)];
+      try { localStorage.setItem(DEMO_RECENT_KEY, JSON.stringify([...recent, entry.course].slice(-5))); } catch { /* 保存できなくても動く */ }
+      return entry;
+    };
     const demoFrame = document.createElement('iframe');
     demoFrame.title = 'イニシャルT デモ';
     demoFrame.allow = 'autoplay; fullscreen';
     demoFrame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#16202a;';
-    const demoQuery = new URLSearchParams();
-    demoQuery.set('car', Object.hasOwn(CAR_CONFIGS, requestedCar) ? requestedCar : 'toyota86');
-    const demoStage = Math.floor(Math.random() * COURSE_ORDER.length);   // 最初のコースもランダム
-    demoQuery.set('course', COURSE_ORDER[demoStage]);
-    demoQuery.set('demo', '1');
-    demoQuery.set('demoStage', String(demoStage));
-    demoQuery.set('demoMapCount', '0');
-    demoQuery.set('demoEmbedded', '1');
-    if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
-    demoFrame.src = `${location.pathname}?${demoQuery}`;
     document.body.append(demoFrame);
     demoFrame.addEventListener('load', () => demoFrame.contentWindow?.focus());
-
-    // 曲名はシェル側(iframeの上)に出す。iframeはコース切替のたびに読み込み
-    // 直されるので、ゲーム側に置くと切替のあいだ曲名が数秒消えてしまう。
-    // 曲はシェルのプレイヤーが途切れず鳴らしているので、表示もシェルが持つ。
-    // 見た目はゲーム内の「再生中」表示(setNowPlaying)と同じにする。
-    const demoTrackLabelEl = document.createElement('div');
-    demoTrackLabelEl.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);'
+    // 曲名(画面の下)。マップを読み込み直しても消えないよう、外枠に置く
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);'
       + 'z-index:5;color:#00ffd5;font-weight:400;font-size:21px;letter-spacing:1.5px;'
       + 'text-shadow:0 1px 2px rgba(0,0,0,0.95),0 0 1px rgba(0,0,0,0.9);'
       + 'pointer-events:none;white-space:nowrap;display:none;'
       + 'font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;';
-    document.body.append(demoTrackLabelEl);
-    const setDemoTrackLabel = (text) => {
-      demoTrackLabelEl.textContent = text ? `♪ ${text}` : '';
-      demoTrackLabelEl.style.display = text ? 'block' : 'none';
-      document.body.dataset.demoTrackLabel = text || '';
-    };
+    document.body.append(labelEl);
+    const setLabel = (text) => { labelEl.textContent = text ? `♪ ${text}` : ''; labelEl.style.display = text ? 'block' : 'none'; document.body.dataset.demoTrackLabel = text || ''; };
 
-    // デモのBGMは曲を順に流し、曲がデモの見せ方そのものを決める。
-    // 1曲終わるごとに次の曲へ進み、曲ごとの演出指示をゲーム側(iframe)へ送る。
-    //   mode 'normal'     : 4コースを巡る通常デモ
-    //   mode 'sea-sunset' : 海岸線だけを走り、指定の空とカメラ切替にする
-    //   mode 'sunset'     : sea-sunsetと同じ空。コース遷移は通常どおり
-    //   mode 'night'      : コースは通常どおりで、空は常に夜(Nモード)
-    //   mode 'rain'       : コースは通常どおりで、走行中は雨を降らせる
-    const DEMO_TRACKS = [
-      // AO3uZdHDpNQは所有者が外部埋め込みを禁止しているため、
-      // 同じ曲「Lovers Of The World」の埋め込み可能版を使用する。
-      { id: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World', mode: 'normal' },
-      { id: '5igDtWadYms', label: 'Eagles,Take it Easy', mode: 'normal' },
-      { id: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women', mode: 'sea-sunset' },
-      { id: '4k6YWc59Se4', label: '井上陽水,今夜、私に', mode: 'night' },
-      { id: 'xnEYzp6IpqQ', label: 'Snoop Dogg,Smoke Weed Everyday', mode: 'normal' },
-      { id: '2ljSD1rZzUE', label: '稲垣潤一,ドラマティック・レイン', mode: 'rain' },
-      { id: 'E5ofVsxTPoc', label: "Billy Joel,The Stranger", mode: 'normal' },
-      { id: 'hPPS0_rqwcw', label: 'Jevetta Steele,Calling You', mode: 'sunset' },
-      { id: 'fNFzfwLM72c', label: "Bee Gees,Stayin' Alive", mode: 'normal' },
-      { id: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方', mode: 'normal' },
-    ];
-    const DEMO_TRACK_LABEL_DELAY_MS = 3000;
-    // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
-    // 「再生開始から3秒」だと音の立ち上がりと重なって早すぎる。
-    const DEMO_TRACK1_LABEL_AT_MS = 12000;
-    const demoShellStartedAt = performance.now();
-    let demoTrackLabelTimer = 0;
-    // スマホ/タブレットは「操作なしの音付き自動再生」をブラウザが拒否する。
-    // デモはタイトルの放置から始まるので操作がなく、そのままだと曲が鳴らない。
-    // まずミュートで鳴らし始め、最初のタップ等で音を戻す。
-    const DEMO_IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-    // 自動再生が拒否されたかの判定。読込が遅いだけの回線を巻き込まないよう、
-    // BUFFERING/PLAYINGのどちらにも入らない状態が続いた時だけミュートへ落とす。
-    const DEMO_BGM_START_CHECK_MS = 5000;
-    // スマホの「デモ画面」ボタンから来た場合は操作を伴う遷移なので、
-    // 最初から音付きで鳴らしにいく。拒否されれば下のミュート再生へ落ちる。
-    const DEMO_STARTED_BY_TAP = query.get('demoTap') === '1';
-    let demoPlayer = null;
-    let demoBgmMuted = false;       // 自動再生の制限でミュート再生中か
-    let demoUserGestured = DEMO_STARTED_BY_TAP;   // 音を出してよい合図
-    let demoBgmStartCheckTimer = 0;
-    // デモを途中でやめて再びデモへ入ると、前回鳴っていた曲の次から始める。
-    // 1曲目で抜ければ次は2曲目、そこで抜ければ3曲目、という具合に進む。
-    // タイトルへ戻る＝ページ遷移なので、次の開始位置はlocalStorageに残す。
-    const DEMO_NEXT_TRACK_KEY = 'car2026.demoNextTrack';
-    const readDemoStartTrack = () => {
-      try {
-        const stored = Number.parseInt(localStorage.getItem(DEMO_NEXT_TRACK_KEY) || '', 10);
-        if (!Number.isInteger(stored)) return 0;
-        return ((stored % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
-      } catch { return 0; }
-    };
-    // 鳴らし始めた時点で「次にデモへ入った時の開始曲」を更新しておく。
-    // 途中でやめても最後まで聴いても、次は今の曲の次から始まる。
-    const saveDemoNextTrack = (index) => {
-      try {
-        localStorage.setItem(DEMO_NEXT_TRACK_KEY, String((index + 1) % DEMO_TRACKS.length));
-      } catch { /* 保存できない環境では毎回1曲目から始まる */ }
-    };
-    let demoTrackIndex = readDemoStartTrack();
-    // このデモで最初に流す曲。曲名を出すまでの間合いと、
-    // 再生できない曲からのやり直し先に使う。
-    const DEMO_START_TRACK_INDEX = demoTrackIndex;
-    saveDemoNextTrack(demoTrackIndex);
-    document.body.dataset.demoStartTrackIndex = String(DEMO_START_TRACK_INDEX);
-    let demoTrackAnnounced = -1;
-    // 曲送りは「次の曲が再生され始めるまで」受け付けない。YouTubeは曲の終わりや
-    // loadVideoById の前後で ENDED を続けて出すことがあり、素直に次へ送ると
-    // 1曲目の直後に3曲先まで飛んでしまう。
-    let demoTrackAdvancing = false;
-    let demoTrackErrorStreak = 0;
-    const demoTrackLog = [];
-
-    const demoFrameTarget = () => (location.origin === 'null' ? '*' : location.origin);
-    const sendToDemoFrame = (message) => {
-      demoFrame.contentWindow?.postMessage(message, demoFrameTarget());
-    };
-    // 現在の曲をゲーム側へ知らせる（曲ごとの見せ方を切り替えてもらう）。
-    // coldはページ再読込み直後で、既に流れている曲を引き継ぐ場合。
-    // 曲名の表示はシェルが持つので、この通知では動かない。
-    const announceTrack = (cold) => {
-      const track = DEMO_TRACKS[demoTrackIndex];
-      document.body.dataset.demoTrackIndex = String(demoTrackIndex);
-      document.body.dataset.demoTrackId = track.id;
-      document.body.dataset.demoTrackMode = track.mode;
-      sendToDemoFrame({
-        type: 'vox-demo-track',
-        index: demoTrackIndex,
-        label: track.label,
-        mode: track.mode,
-        labelDelayMs: cold ? 0 : DEMO_TRACK_LABEL_DELAY_MS,
-      });
-    };
-    // 曲名は「その曲が鳴り始めてから3秒後」に出し、曲が終わる(次の曲を読み込む)
-    // まで出し続ける。コース切替でiframeが読み込み直されても消えない。
-    const scheduleDemoTrackLabel = () => {
-      const track = DEMO_TRACKS[demoTrackIndex];
-      clearTimeout(demoTrackLabelTimer);
-      let delayMs = DEMO_TRACK_LABEL_DELAY_MS;
-      if (demoTrackIndex === DEMO_START_TRACK_INDEX) {
-        // 一巡して開始曲へ戻った時は経過が大きく、通常の3秒になる。
-        delayMs = Math.max(
-          delayMs, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoShellStartedAt)
-        );
-      }
-      demoTrackLabelTimer = setTimeout(() => setDemoTrackLabel(track.label), delayMs);
-    };
-    // ミュート再生中かどうかを状態として残す（切り分け用）。
-    const markBgmMuted = () => {
-      document.body.dataset.demoBgmMuted = String(demoBgmMuted);
-    };
-    const demoPlayerState = () => (
-      typeof demoPlayer?.getPlayerState === 'function' ? demoPlayer.getPlayerState() : -1
-    );
-    // 操作があれば音付き再生が許可される。iframe(同一オリジン)内のタップは
-    // ゲーム側から知らせが届く。
-    const resumeDemoBgmSound = () => {
-      demoUserGestured = true;
-      if (!demoPlayer || demoPlayer === 'loading') return;
-      if (demoBgmMuted) {
-        demoPlayer.unMute?.();
-        demoPlayer.setVolume?.(80);
-        demoBgmMuted = false;
-        markBgmMuted();
-      }
-      // 止まったままなら鳴らし始める。ENDED(曲送り中)には手を出さない。
-      const ytState = window.YT?.PlayerState;
-      const state = demoPlayerState();
-      if (ytState && (state === ytState.UNSTARTED
-        || state === ytState.PAUSED || state === ytState.CUED)) {
-        demoPlayer.playVideo?.();
-      }
-    };
-    window.addEventListener('pointerdown', resumeDemoBgmSound);
-    window.addEventListener('touchstart', resumeDemoBgmSound, { passive: true });
-    window.addEventListener('keydown', resumeDemoBgmSound);
-    const playTrack = (index) => {
-      demoTrackIndex = ((index % DEMO_TRACKS.length) + DEMO_TRACKS.length) % DEMO_TRACKS.length;
-      const track = DEMO_TRACKS[demoTrackIndex];
-      saveDemoNextTrack(demoTrackIndex);
-      demoTrackAnnounced = -1;
-      clearTimeout(demoTrackLabelTimer);   // 前の曲の曲名はここで消す
-      setDemoTrackLabel('');
-      demoTrackAdvancing = true;   // 次の曲がPLAYINGになるまで曲送りを止める
-      demoTrackLog.push(`load${demoTrackIndex}:${track.id}`);
-      document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
-      if (demoPlayer?.loadVideoById) demoPlayer.loadVideoById(track.id);
+    let entry = null, player = null, playerReady = false, muted = false, userGestured = query.get('demoTap') === '1';
+    let mapTimer = 0, labelTimer = 0, startCheckTimer = 0, songStarted = false;
+    // マップを開く。曲は、ゲームがデモ走行を始めた合図(vox-demo-bgm-start)で鳴らし始める
+    const openMap = (next) => {
+      entry = next; songStarted = false;
+      clearTimeout(mapTimer); clearTimeout(labelTimer); setLabel('');
+      if (playerReady) player.stopVideo?.();
+      const q = new URLSearchParams();
+      q.set('car', carKeys[Math.floor(Math.random() * carKeys.length)]);
+      q.set('course', entry.course); q.set('demo', '1'); q.set('demoEmbedded', '1');
+      if (query.get('debugMap') === '1') q.set('debugMap', '1');
+      demoFrame.src = `${location.pathname}?${q}`;
+      document.body.dataset.demoCourse = entry.course;
+      document.body.dataset.demoTrackId = entry.video;
     };
     const loadYouTubeApi = (onReady) => {
       if (window.YT?.Player) { onReady(); return; }
-      const previous = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        if (typeof previous === 'function') previous();
-        onReady();
-      };
+      window.onYouTubeIframeAPIReady = onReady;
       if (document.getElementById('yt-iframe-api')) return;
       const script = document.createElement('script');
-      script.id = 'yt-iframe-api';
-      script.src = 'https://www.youtube.com/iframe_api';
+      script.id = 'yt-iframe-api'; script.src = 'https://www.youtube.com/iframe_api';
       document.head.append(script);
     };
-    const startDemoBgm = () => {
-      if (demoPlayer) return;
-      demoPlayer = 'loading';
+    const muteForAutoplay = () => { player?.mute?.(); muted = true; document.body.dataset.demoBgmMuted = 'true'; };
+    const startSong = () => {
+      if (!entry || songStarted) return;
+      songStarted = true;
+      clearTimeout(mapTimer);
+      mapTimer = setTimeout(() => openMap(pickNext()), DEMO_MAP_MS);   // 2 分たったら次のマップ
+      if (playerReady) { player.loadVideoById(entry.video); return; }
+      if (player) return;
+      player = 'loading';
       loadYouTubeApi(() => {
         const holder = document.createElement('div');
-        holder.id = 'demo-bgm-holder';
-        // YouTubeは1px化・opacity:0の埋め込みを再生拒否する場合がある。
-        // 通常のプレイヤー寸法を保ったまま画面外へ置く。
-        holder.style.cssText =
-          'position:fixed;width:400px;height:300px;left:-400px;top:-400px;pointer-events:none;';
+        // YouTube は 1px・透明の埋め込みを再生しないことがあるので、ふつうの大きさのまま画面の外に置く
+        holder.style.cssText = 'position:fixed;width:400px;height:300px;left:-400px;top:-400px;pointer-events:none;';
         document.body.append(holder);
-        demoPlayer = new window.YT.Player(holder, {
-          width: 400,
-          height: 300,
-          videoId: DEMO_TRACKS[demoTrackIndex].id,
-          playerVars: {
-            autoplay: 1, controls: 0, playsinline: 1,
-            origin: location.origin,
-            // 読込直後の自動再生も、操作なしのスマホではミュートでないと拒否される。
-            ...(DEMO_IS_MOBILE && !demoUserGestured ? { mute: 1 } : {}),
-          },
+        player = new window.YT.Player(holder, {
+          width: 400, height: 300, videoId: entry.video,
+          playerVars: { autoplay: 1, controls: 0, playsinline: 1, origin: location.origin, ...(DEMO_IS_MOBILE && !userGestured ? { mute: 1 } : {}) },
           events: {
             onReady: (event) => {
+              playerReady = true;
               event.target.setVolume(80);
-              // 操作なしのスマホは音付きだと再生を拒否される。ミュートで始める。
-              if (DEMO_IS_MOBILE && !demoUserGestured) {
-                event.target.mute();
-                demoBgmMuted = true;
-                markBgmMuted();
-              }
+              // 操作のないスマホは音付きの自動再生を断られるので、消音で始める(最初のタップで音を出す)
+              if (DEMO_IS_MOBILE && !userGestured) muteForAutoplay();
               event.target.playVideo();
-              demoTrackAdvancing = false;   // 1曲目は最初からENDEDを受け付ける
-              // それでも鳴り始めなければ(PC側の自動再生制限など)ミュートで鳴らす。
-              clearTimeout(demoBgmStartCheckTimer);
-              demoBgmStartCheckTimer = setTimeout(() => {
-                if (demoBgmMuted) return;
-                const state = demoPlayerState();
-                if (state === window.YT.PlayerState.PLAYING
-                  || state === window.YT.PlayerState.BUFFERING) return;
-                demoPlayer?.mute?.();
-                demoBgmMuted = true;
-                markBgmMuted();
-                demoPlayer?.playVideo?.();
-              }, DEMO_BGM_START_CHECK_MS);
+              clearTimeout(startCheckTimer);
+              startCheckTimer = setTimeout(() => {   // それでも鳴らなければ(PC の自動再生の制限など)消音で鳴らす
+                const st = player.getPlayerState?.();
+                if (!muted && st !== window.YT.PlayerState.PLAYING && st !== window.YT.PlayerState.BUFFERING) { muteForAutoplay(); player.playVideo?.(); }
+              }, 5000);
             },
             onStateChange: (event) => {
-              const state = event.data;
-              demoTrackLog.push(`s${state}@${demoTrackIndex}`);
-              document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
-              if (state === window.YT.PlayerState.ENDED) {
-                // 曲の終わりだけを1回拾う。連続するENDEDは無視する。
-                if (demoTrackAdvancing) return;
-                playTrack(demoTrackIndex + 1);
-                return;
+              const st = event.data;
+              if (st === window.YT.PlayerState.ENDED) { player.seekTo?.(0); player.playVideo?.(); return; }   // 2 分より前に終わったら、もう一度
+              if (st === window.YT.PlayerState.PLAYING && !labelEl.textContent) {
+                clearTimeout(labelTimer);
+                const label = entry.label; labelTimer = setTimeout(() => setLabel(label), 3000);   // 鳴り始めて 3 秒後に曲名
               }
-              if (state !== window.YT.PlayerState.PLAYING) return;
-              demoTrackAdvancing = false;   // ここから次の曲送りを受け付ける
-              demoTrackErrorStreak = 0;     // 鳴った時点で連続エラーは解消
-              if (demoTrackAnnounced === demoTrackIndex) return;
-              demoTrackAnnounced = demoTrackIndex;
-              announceTrack(false);
-              scheduleDemoTrackLabel();
             },
-            onError: (event) => {
-              // 101/150は所有者が外部埋め込みを禁止、100は動画なし。
-              // どの曲で何が起きたか残しておく（曲順が飛ぶ原因の切り分け用）。
-              const track = DEMO_TRACKS[demoTrackIndex];
-              demoTrackLog.push(`err${event.data}@${demoTrackIndex}:${track.id}`);
-              document.body.dataset.demoTrackLog = demoTrackLog.slice(-12).join(' ');
-              document.body.dataset.demoTrackError = `${track.id}:${event.data}`;
-              demoTrackErrorStreak++;
-              demoTrackAdvancing = false;
-              // 再生できない曲は飛ばさず、このデモの開始曲からやり直す。
-              // 開始曲自体が鳴らない時に往復し続けないよう、そこで止める。
-              if (demoTrackIndex === DEMO_START_TRACK_INDEX
-                || demoTrackErrorStreak >= DEMO_TRACKS.length) {
-                document.body.dataset.demoTrackStalled = 'true';
-                return;
-              }
-              playTrack(DEMO_START_TRACK_INDEX);
-            },
+            onError: (event) => { document.body.dataset.demoTrackError = `${entry.video}:${event.data}`; },
           },
         });
-        document.body.dataset.demoBgmVolume = '80';
       });
     };
-    // ゲーム側がデモ走行開始から7秒を数えた後、再生要求を送ってくる。
-    document.body.dataset.demoBgmDelayMs = '7000';
-
+    const resumeSound = () => {
+      userGestured = true;
+      if (!playerReady) return;
+      if (muted) { player.unMute?.(); player.setVolume?.(80); muted = false; document.body.dataset.demoBgmMuted = 'false'; }
+      const st = player.getPlayerState?.(), S = window.YT?.PlayerState;
+      if (S && (st === S.UNSTARTED || st === S.PAUSED || st === S.CUED)) player.playVideo?.();
+    };
+    window.addEventListener('pointerdown', resumeSound);
+    window.addEventListener('touchstart', resumeSound, { passive: true });
     window.addEventListener('message', (event) => {
       if (event.source !== demoFrame.contentWindow) return;
-      if (event.data?.type === 'vox-demo-bgm-start') startDemoBgm();
+      if (event.data?.type === 'vox-demo-bgm-start') startSong();
       if (event.data?.type === 'vox-demo-exit') location.href = location.pathname;
-      // iframe内(ゲーム画面)のタップ等。ここで音を出せるようになる。
-      if (event.data?.type === 'vox-demo-user-gesture') resumeDemoBgmSound();
-      // コース切替でiframeが読み込み直されたら、流れている曲を伝え直す。
-      if (event.data?.type === 'vox-demo-ready' && demoTrackAnnounced >= 0) {
-        announceTrack(true);
-      }
+      if (event.data?.type === 'vox-demo-user-gesture') resumeSound();
     });
-    // iframeにフォーカスが移る前に押されたPCキーも「タイトルへ戻る」に含める。
-    if (!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
-      window.addEventListener('keydown', () => { location.href = location.pathname; });
-    }
+    // キーを押したらタイトルへ(iframe にフォーカスが移る前に押されたキーも)
+    if (!DEMO_IS_MOBILE) window.addEventListener('keydown', () => { location.href = location.pathname; });
+    openMap(pickNext());
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261117-loop-straight');
+    import('./js/main.js?v=20261117-demo-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);

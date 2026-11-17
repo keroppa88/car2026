@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './game-config.js?v=20261117-menu-1';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261117-demo-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -61,16 +61,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
-  const DEMO_SEQUENCE = COURSE_ORDER;   // デモはメニューに出す全コースからランダムに選ぶ
+  const DEMO_SEQUENCE = DEMO_MAPS.map((d) => d.course);   // デモのマップ(game-config.js の DEMO_MAPS。曲・空・昼夜もそこに)
+  const DEMO_MAP = DEMO_MAPS.find((d) => d.course === COURSE_KEY) || null;
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
   // 直近5コースをURLで引き継ぎ、同じマップが6コース以内に再登場しないようにする。
   const DEMO_RECENT_COURSES = (pageQuery.get('demoRecentCourses') || '')
     .split(',').filter((course) => DEMO_SEQUENCE.includes(course)).slice(-5);
   const DEMO_BLOCKED_COURSES = new Set([...DEMO_RECENT_COURSES, COURSE_KEY]);
-  // デモのマップ切替回数をURLで引き継ぎ、4マップ目ごとに夜間にする。
-  // 0始まりなので count=3,7,11... が夜。
-  const DEMO_MAP_COUNT = Math.max(0, Number.parseInt(pageQuery.get('demoMapCount') || '0', 10) || 0);
-  const DEMO_CYCLE_NIGHT = DEMO_SEQUENCE_ACTIVE && DEMO_MAP_COUNT % 4 === 3;
   // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
   // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
   const DEMO_EMBEDDED = pageQuery.get('demoEmbedded') === '1';
@@ -82,8 +79,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     && DEMO_SEQUENCE[requestedDemoStage] === COURSE_KEY
       ? requestedDemoStage
       : Math.max(0, courseDemoStage);
-  // デモ1コースあたりの表示時間。首都高は+10秒、他の3コースは+6秒（ユーザー指定）。
-  const DEMO_SEQUENCE_STAGE_MS = COURSE_KEY === 'tokyo' ? 25000 : 21000;
+  const DEMO_SEQUENCE_STAGE_MS = 120000;   // 1 マップ 2 分(デモの外枠の中では、外枠が次のマップへ移す)
   const carParam = (pageQuery.get('car') || 'toyota86').toLowerCase();
   const PLAYER_CAR_KEY = Object.hasOwn(CAR_CONFIGS, carParam) ? carParam : 'toyota86';
   const MAP_GLTF = MAP_CONFIG.surfaceData || MAP_CONFIG.file;
@@ -2283,7 +2279,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let demoCamUserHeld = false;       // ドラッグでユーザーがカメラを握っているか
   let demoSequenceStartedAt = 0;
   let demoSequenceActionCount = 0;
-  let demoSequenceWeatherCount = 0;
   let demoSequenceLeaving = false;
 
   // ------------------------------------------------------------- camera ---
@@ -7567,11 +7562,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.style.cssText =
       'position:fixed;width:400px;height:300px;left:-400px;top:-400px;border:0;pointer-events:none;';
-    // AO3uZdHDpNQは所有者が外部埋め込みを禁止しているため、
-    // 同じ曲の埋め込み可能版をデバッグ直アクセス時にも使う。
+    // デモの外枠を通さず直接開いたとき(?demo=1)も、このマップの曲を鳴らす
+    const vid = DEMO_MAP?.video || 'N9JN4aqMduo';
     frame.src =
-      'https://www.youtube.com/embed/N9JN4aqMduo'
-      + '?autoplay=1&loop=1&playlist=N9JN4aqMduo&controls=0&playsinline=1&enablejsapi=1'
+      `https://www.youtube.com/embed/${vid}`
+      + `?autoplay=1&loop=1&playlist=${vid}&controls=0&playsinline=1&enablejsapi=1`
       + `&origin=${encodeURIComponent(location.origin)}`;
     document.body.appendChild(frame);
     document.body.dataset.demoBgmVolume = '80';
@@ -7596,130 +7591,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     }, { once: true });
   }
 
-  // ------------------------------------------- demo track (BGM) driven mode --
-  // デモは曲ごとに見せ方が変わる。曲の切替は親シェルが管理し、ここへ通知が来る。
-  //   'sea-sunset' : 海岸線だけを走り、指定の空とカメラ切替にする
-  //   'sunset'     : sea-sunsetと同じ空。コース遷移は通常どおり
-  //   'night'      : コースは通常どおりで、空は常に夜(Nモード)
-  //   'rain'       : コースは通常どおりで、走行中は雨を降らせる
-  // 親シェルから曲情報が届かない場合（?demoTrack= での確認や、親なしの直接起動）
-  // に備えて、曲順と見せ方の対応はゲーム側にも持っておく。
-  const DEMO_TRACK_LABELS = [
-    'Jerry Wallace,Lovers Of The World',
-    'Eagles,Take it Easy',
-    'Elton John,Understanding Women',
-    '井上陽水,今夜、私に',
-    'Snoop Dogg,Smoke Weed Everyday',
-    '稲垣潤一,ドラマティック・レイン',
-    "Billy Joel,The Stranger",
-    'Jevetta Steele,Calling You',
-    "Bee Gees,Stayin' Alive",
-    '薬師丸ひろ子,ステキな恋の忘れ方',
-  ];
-  const DEMO_TRACK_MODES = [
-    'normal', 'normal', 'sea-sunset', 'night',
-    'normal', 'rain', 'normal', 'sunset', 'normal', 'normal',
-  ];
-  const requestedDemoTrack = Number.parseInt(pageQuery.get('demoTrack') || '', 10);
-  const DEMO_TRACK_INDEX = Number.isInteger(requestedDemoTrack)
-    && requestedDemoTrack >= 0
-    && requestedDemoTrack < DEMO_TRACK_MODES.length
-      ? requestedDemoTrack
-      : 0;
-  let demoTrackMode = DEMO_TRACK_MODES[DEMO_TRACK_INDEX];
-  let demoTrackLabelTimer = 0;
-  let demoTrackCameraAt = 0;
-  const DEMO_TRACK_CAMERA_INTERVAL_MS = 20000;
-  const DEMO_TRACK_LABEL_DELAY_MS = 3000;   // 再生開始から曲名を出すまで
-  // 曲1だけはデモ突入から数える。BGMはデモ突入の7秒後に鳴り始めるので、
-  // 「再生開始から3秒」だと音が鳴る前に曲名が出てしまう。
-  const DEMO_TRACK1_LABEL_AT_MS = 12000;
-  // 曲3の空。パネルの各メーター%をそのままHSLへ直した値。
-  const DEMO_SUNSET_HORIZON = { h: 0.10, s: 1.00, meter: 0.20 };
-  const DEMO_SUNSET_SKY = { h: 0.95, s: 0.95, meter: 0.35 };
-  // 雨の曲の明るさ。上空・地平線ともパネルの明暗メーター25%相当。
-  const DEMO_RAIN_BRIGHTNESS = 0.25;
-
-  // 曲3と同じ夕景の空にする。明暗メーターの%(0〜1)は
-  // HSLのlの0.10〜0.98へ割り当てられている。
-  function applyDemoSunsetSky() {
-    weatherHorizonHsl.h = DEMO_SUNSET_HORIZON.h;
-    weatherHorizonHsl.s = DEMO_SUNSET_HORIZON.s;
-    weatherHorizonHsl.l = 0.1 + DEMO_SUNSET_HORIZON.meter * 0.88;
-    weatherTopHsl.h = DEMO_SUNSET_SKY.h;
-    weatherTopHsl.s = DEMO_SUNSET_SKY.s;
-    weatherTopHsl.l = 0.1 + DEMO_SUNSET_SKY.meter * 0.88;
-  }
-
-  function applyDemoTrackMode() {
-    if (!DEMO_SEQUENCE_ACTIVE) return;
-    document.body.dataset.demoTrackMode = demoTrackMode;
-    const raining = demoTrackMode === 'rain';
-    // 雨の曲だけ雨雲と雨を出し、それ以外の曲では必ず晴れへ戻す。
-    weatherRain = raining;
-    weatherCloudMode = raining ? 1 : 0;
-    if (demoTrackMode === 'sea-sunset' || demoTrackMode === 'sunset') {
-      applyDemoSunsetSky();
-    } else if (raining) {
-      // 上空・地平線とも明暗メーター25%まで落とし、雨雲の下の暗さにする。
-      // 色相と彩度は触らないので、デモ中のランダムな色変えはそのまま効く。
-      weatherTopHsl.l = 0.1 + DEMO_RAIN_BRIGHTNESS * 0.88;
-      weatherHorizonHsl.l = 0.1 + DEMO_RAIN_BRIGHTNESS * 0.88;
-    } else {
-      // 夕景や雨で落とした明るさを既定へ戻す。
-      weatherTopHsl.l = WEATHER_DEFAULT_TOP_L;
-      weatherHorizonHsl.l = WEATHER_DEFAULT_HORIZON_L;
-    }
-    // 夜間は曲ではなく、マップ切替4回に1回の周期で決める。
-    nightMode = DEMO_CYCLE_NIGHT;
-    document.body.dataset.demoCycleNight = String(DEMO_CYCLE_NIGHT);
-    // 空の反映と、それに合わせた地表の明るさをまとめてやり直す。
-    applyNight();
+  // ---- デモの見せ方: マップごとに決まった空・雲・雨・昼夜(game-config.js の DEMO_MAPS)。走っているあいだは変えない ----
+  function applyDemoMapLook() {
+    if (!DEMO_SEQUENCE_ACTIVE || !DEMO_MAP) return;
+    const tone = (hex, hsl) => { const t = { h: 0, s: 0, l: 0 }; new THREE.Color(`#${hex}`).getHSL(t); hsl.h = t.h; hsl.s = t.s; hsl.l = clamp(t.l, 0.1, 0.98); };
+    if (DEMO_MAP.top) tone(DEMO_MAP.top, weatherTopHsl);
+    if (DEMO_MAP.horizon) tone(DEMO_MAP.horizon, weatherHorizonHsl);
+    if (DEMO_MAP.clouds != null) weatherCloudMode = DEMO_MAP.clouds;
+    weatherRain = !!DEMO_MAP.rain;
+    weatherStars = !!DEMO_MAP.night;
+    weatherFlatSky = false;
+    nightMode = !!DEMO_MAP.night;
+    applyNight();             // 空と、それに合わせた地表の明るさ
     refreshWeatherControls();
-    if (demoTrackMode === 'sea-sunset') demoTrackCameraAt = performance.now();
-  }
-
-  function setDemoTrack(data) {
-    const index = Number.isInteger(data.index) ? data.index : 0;
-    const nextMode = data.mode || DEMO_TRACK_MODES[index] || 'normal';
-    demoTrackMode = nextMode;
-    document.body.dataset.demoTrackIndex = String(index);
-    // 冪等なので毎回適用する。初期モードと一致する場合に飛ばすと、
-    // ?demoTrack= 起動や曲を引き継いだ再読込みで空設定が入らない。
-    applyDemoTrackMode();
-    clearTimeout(demoTrackLabelTimer);
-    const label = data.label || DEMO_TRACK_LABELS[index] || '';
-    // デモシェルの中で動いている時、曲名はシェル側が出す。コース切替のたびに
-    // このページは読み込み直されるので、ここで出すと切替のあいだ曲名が消える。
-    if (DEMO_EMBEDDED) {
-      document.body.dataset.demoTrackLabel = label;
-    } else {
-      // 単独起動(?demo=1 や ?demoTrack= での確認)では従来どおりここで出す。
-      // 曲名は「再生開始の3秒後」に、通常の再生中表示と同じ見た目で出す。
-      const show = () => {
-        if (!demoActive) return;
-        setNowPlaying(label);      // 通常の再生中表示と同じ「♪ 曲名」になる
-        document.body.dataset.demoTrackLabel = label;
-      };
-      // このデモの開始曲はデモ突入から12秒後(音が鳴ってから)に出す。
-      let delayMs = data.labelDelayMs > 0 ? data.labelDelayMs : 0;
-      if (index === DEMO_TRACK_INDEX && delayMs > 0) {
-        delayMs = Math.max(
-          0, DEMO_TRACK1_LABEL_AT_MS - (performance.now() - demoSequenceStartedAt)
-        );
-      }
-      if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
-      else show();
-    }
-    // 曲3は海岸線だけを走る。ただし直近5コースに海岸線が含まれる場合は、
-    // 同じマップの短期間での再登場を避け、現在のコースで夕景を見せる。
-    if (
-      demoTrackMode === 'sea-sunset'
-      && COURSE_KEY !== 'sea'
-      && !DEMO_BLOCKED_COURSES.has('sea')
-    ) {
-      jumpDemoToCourse('sea');
-    }
+    document.body.dataset.demoMapLook = JSON.stringify(DEMO_MAP);
   }
 
   function setDemoRecentCourses(nextQuery) {
@@ -7727,51 +7612,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     nextQuery.set('demoRecentCourses', history.join(','));
   }
 
-  function currentDemoTrackIndex() {
-    const shown = Number.parseInt(document.body.dataset.demoTrackIndex || '', 10);
-    return Number.isInteger(shown) ? shown : DEMO_TRACK_INDEX;
-  }
-
-  function jumpDemoToCourse(course) {
-    if (demoSequenceLeaving) return;
-    demoSequenceLeaving = true;
-    const nextQuery = new URLSearchParams();
-    nextQuery.set('car', PLAYER_CAR_KEY);
-    nextQuery.set('course', course);
-    nextQuery.set('demo', '1');
-    nextQuery.set('demoStage', String(Math.max(0, DEMO_SEQUENCE.indexOf(course))));
-    nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
-    setDemoRecentCourses(nextQuery);
-    nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
-    if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
-    if (DEBUG_MAP) nextQuery.set('debugMap', '1');
-    location.replace(`${location.pathname}?${nextQuery}`);
-  }
-
-  window.addEventListener('message', (event) => {
-    if (!DEMO_SEQUENCE_ACTIVE || event.source !== window.parent) return;
-    if (event.data?.type === 'vox-demo-track') setDemoTrack(event.data);
-  });
-
   function exitDemoSequenceToTitle() {
     if (!demoActive || demoSequenceLeaving) return;
     demoSequenceLeaving = true;
     document.body.dataset.demoSequenceLeaving = 'true';
     if (postDemoShellMessage('vox-demo-exit')) return;
     location.href = location.pathname;
-  }
-
-  function randomizeSeaDemoSky() {
-    // 明るさはユーザー設定を維持し、指定どおり上空/地平線それぞれの
-    // sea-sunset・sunsetは指定の空を見せるので、ランダム変更はしない。
-    if (demoTrackMode === 'sea-sunset' || demoTrackMode === 'sunset') return;
-    // 色調と彩度だけを独立してランダム変更する。
-    weatherTopHsl.h = Math.random();
-    weatherTopHsl.s = 0.38 + Math.random() * 0.57;
-    weatherHorizonHsl.h = Math.random();
-    weatherHorizonHsl.s = 0.30 + Math.random() * 0.65;
-    applyWeatherSky();
-    document.body.dataset.demoWeatherChanges = String(demoSequenceWeatherCount);
   }
 
   // デモ用の道すじ(湘南・TOKYO)。湘南は国道134号のルート(大磯行き)、TOKYO は始めの位置から道路を
@@ -7812,7 +7658,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!DEMO_SEQUENCE_ACTIVE || !car2AutoRoute || car2AutoRoute.length < 2) return false;
     demoSequenceStartedAt = performance.now();
     demoSequenceActionCount = 0;
-    demoSequenceWeatherCount = 0;
     demoSequenceLeaving = false;
     autoIdx = -1;
     autoDrive = false;
@@ -7838,15 +7683,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     document.body.dataset.demoSequenceCourse = COURSE_KEY;
     document.body.dataset.demoSequenceElapsed = '0.0';
     document.body.dataset.demoBgmDelayMs = '7000';
-    // コース切替で読み込み直された直後は、既に流れている曲を教えてもらう。
-    // 親がいない直接起動や ?demoTrack= 指定では、その曲の設定で始める。
-    postDemoShellMessage('vox-demo-ready');
-    setDemoTrack({
-      index: DEMO_TRACK_INDEX,
-      mode: DEMO_TRACK_MODES[DEMO_TRACK_INDEX],
-      label: DEMO_TRACK_LABELS[DEMO_TRACK_INDEX],
-      labelDelayMs: DEMO_TRACK_LABEL_DELAY_MS,
-    });
+    applyDemoMapLook();   // このマップの空・雲・雨・昼夜
     setTimeout(() => {
       if (demoActive && DEMO_SEQUENCE_ACTIVE && !demoSequenceLeaving) {
         requestDemoBackgroundMusic();
@@ -7891,10 +7728,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     nextQuery.set('course', nextCourse);
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(nextStage));
-    // 流れている曲の見せ方をコース切替後も引き継ぐ（親からの通知が届く前の初期値）。
-    nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
     setDemoRecentCourses(nextQuery);
-    nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
     if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
     document.body.dataset.demoNextCar = nextCar;
@@ -7906,59 +7740,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const elapsed = Math.max(0, (now - demoSequenceStartedAt) / 1000);
     document.body.dataset.demoSequenceElapsed = elapsed.toFixed(1);
 
-    if (COURSE_KEY === 'tokyo') {
-      const expected = Math.min(2, Math.floor(elapsed / 5));
-      while (demoSequenceActionCount < expected) {
-        nightMode = !nightMode;     // N相当: 5秒/10秒
-        applyNight();
-        demoSequenceActionCount++;
-      }
-    } else if (COURSE_KEY === 'sea') {
+    // 海岸線と森林地帯は、カメラを切り替えて見せる(空・昼夜はマップごとに決まっていて変えない)
+    if (COURSE_KEY === 'sea') {
       const expectedViews = Math.min(2, Math.floor(elapsed / 5));
       while (demoSequenceActionCount < expectedViews) {
         switchDemoCameraView();             // V相当: 5秒/10秒
         demoSequenceActionCount++;
-      }
-      const expectedWeather = Math.min(3, Math.floor(elapsed / 4));
-      while (demoSequenceWeatherCount < expectedWeather) {
-        demoSequenceWeatherCount++;
-        randomizeSeaDemoSky();
       }
     } else if (COURSE_KEY === 'forest') {
       if (elapsed >= 10 && demoSequenceActionCount === 0) {
         switchDemoCameraView();             // V相当: 10秒
         demoSequenceActionCount = 1;
       }
-    } else if (COURSE_KEY === 'indy') {
-      const expected = Math.min(2, Math.floor(elapsed / 5));
-      while (demoSequenceActionCount < expected) {
-        nightMode = !nightMode;     // N相当: 5秒/10秒
-        applyNight();
-        demoSequenceActionCount++;
-      }
     }
     document.body.dataset.demoSequenceActions = String(demoSequenceActionCount);
-    // 4マップに1回の周期で夜間を維持する。曲の種類には左右されない。
-    if (DEMO_CYCLE_NIGHT && !nightMode) {
-      nightMode = true;
-      applyNight();
-    } else if (!DEMO_CYCLE_NIGHT && nightMode) {
-      nightMode = false;
-      applyNight();
-    }
-    if (demoTrackMode === 'sea-sunset') {
-      // 曲3は海岸線に留まり、コースを先へ進めない。
-      // カメラだけを20秒ごとに切り替えて見せ場を変える。
-      if (now - demoTrackCameraAt >= DEMO_TRACK_CAMERA_INTERVAL_MS) {
-        demoTrackCameraAt = now;
-        switchDemoCameraView();
-        document.body.dataset.demoTrackCameraSwitches = String(
-          Number(document.body.dataset.demoTrackCameraSwitches || 0) + 1
-        );
-      }
-      return;
-    }
-    if (elapsed >= DEMO_SEQUENCE_STAGE_MS / 1000) advanceDemoSequence();
+    // 2 分たったら次のマップ。デモの外枠の中では、外枠が曲と一緒に次のマップへ移すので、ここでは移さない
+    if (!DEMO_EMBEDDED && elapsed >= DEMO_SEQUENCE_STAGE_MS / 1000) advanceDemoSequence();
   }
 
   // ルートを追い、コーナーでは積極的にサイドブレーキでドリフトする自動運転。

@@ -753,14 +753,14 @@ export const MENU_GROUPS = [
     ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'],
   ] },
 ];
-// デモ: 1 回のデモ = 1 マップ。マップごとに曲・空・昼夜が決まっている。タイトルからデモを始めるたびに、直近 5 回に出たマップを除いて選ぶ。
+// デモ: 1 マップ 2 分ずつ、ランダムに巡る(直近 5 回に出たマップは選ばない)。マップごとに曲・空・昼夜が決まっている
 //  sky: 'default' = そのマップの初期の空のまま。top / horizon = 空と地平線の色、clouds = 雲(1 / 2)、rain = 雨、night = 夜(星も出す)
 export const DEMO_MAPS = [
   { course: 'sea', video: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women (1992)', top: '923924', horizon: '804ecd', clouds: 1 },
   { course: 'moor', video: '1oUcmForp_E', label: 'Ryuichi Sakamoto,Wuthering Heights (1992)', sky: 'default' },
   { course: 'route66', video: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World マンダム～男の世界 (1970)', top: 'c69f2d', horizon: '517694' },
   { course: 'neo', video: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方 (1985)', night: true },
-  { course: 'tokyo', video: 'rRWMyMXpQ3o', label: '大沢誉志幸,そして、僕は途方に暮れる (1984)', top: '38dac6', horizon: 'fcf771' },
+  { course: 'tokyo', video: 'fNFzfwLM72c', label: "Bee Gees,Stayin' Alive (1977)", top: 'ca2f31', horizon: '7ba139', clouds: 1 },
   { course: 'indy', video: 'KRsg4sy9yqo', label: '井上陽水,今夜、私に (1988)', night: true },
   { course: 'fuji', video: '8SC7jU4kTRc', label: 'T-SQUARE,TRUTH (1987)', sky: 'default' },
   { course: 'akagi', video: 'fQxg16yG4oE', label: 'NIKO,Night of Fire (1997)', night: true },
