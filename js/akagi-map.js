@@ -160,10 +160,11 @@ export function buildAkagiMap(data) {
       if (!entrance || d < entrance.d) entrance = { d, s: routeS[r.i] };
     }
     P.rampS = entrance ? entrance.s : routeS[nearestRoute(P.pts[0][0], P.pts[0][1]).i];
-    // 出入口: 駐車場が道に接している区間のまん中。駐車場の高さは、そこの道の高さに合わせる(スロープの所で段差なし)
+    // 出入口: 駐車場が道に接している区間の北の端。駐車場の高さは、そこの道の高さに合わせる(スロープの所で段差なし)
     const touch = [];
     for (let i = 0; i < n; i++) for (const sd of [-1, 1]) if (inPoly(P, route[i].x + tangents[i].x * sd * (EDGE + 0.8), route[i].z + tangents[i].z * sd * (EDGE + 0.8))) { touch.push(i); break; }
-    if (touch.length) { const mid = touch[Math.floor(touch.length / 2)]; P.rampS = routeS[mid]; P.roadY = route[mid].y; P.y = P.roadY - PARK_DROP; }
+    // 絵の赤枠: 接している区間の北の端(下り側の端)。幅 6m ぶんが入るよう、端から 2 点(6m)手前をまん中にする
+    if (touch.length) { const mid = touch[Math.max(0, touch.length - 3)]; P.rampS = routeS[mid]; P.roadY = route[mid].y; P.y = P.roadY - PARK_DROP; }
   }
   const PARK_ENTRANCE_HALF_LENGTH = 3;  // 出入口のスロープの幅は車 2 台ぶん(6m)。それ以外は段差(コンクリートの壁)
   const PARK_MAX_STEP = 0.75; // 姫百合駐車場の黄色指定区間。ここより段差が大きい箇所は閉鎖
