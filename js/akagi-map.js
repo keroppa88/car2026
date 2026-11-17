@@ -460,28 +460,32 @@ export function buildAkagiMap(data) {
       m.name = 'akagi-parking-apron'; scenery.add(m);
     }
   }
-  // ---- 駐車場の車 7 台: 金網の辺に頭を向けて並べる(トイレ・出入口のそばは空ける)。当たり判定あり ----
+  // ---- 駐車場の車 7 台: 駐車場の中に散らばるように置く(奥にかたまらないように。トイレ・出入口のそばは空ける)。当たり判定あり ----
   {
     let seed = 20261117; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
     const cars = [];
     for (const P of parkings) {
       let ri = 0; for (let i = 1; i < n; i++) if (Math.abs(routeS[i] - P.rampS) < Math.abs(routeS[ri] - P.rampS)) ri = i;
+      // 置ける所: 駐車場の中を 3m おきに見て、ふちから 3m 以上内側・道のそば・出入口の前・トイレの前を除く。
+      // 向きは駐車場のいちばん長い辺にそろえる(少しだけばらつかせる)
+      let longest = 0, baseAng = 0;
+      for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) { const dx = P.pts[i][0] - P.pts[j][0], dz = P.pts[i][1] - P.pts[j][1], l = Math.hypot(dx, dz); if (l > longest) { longest = l; baseAng = Math.atan2(dx, dz); } }
       const cand = [];
-      for (let i = 0, j = P.pts.length - 1; i < P.pts.length; j = i++) {
-        const a = P.pts[j], b = P.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 6) continue;
-        const tx = (b[0] - a[0]) / L, tz = (b[1] - a[1]) / L; let nx = -tz, nz = tx;
-        if (!inPoly(P, (a[0] + b[0]) / 2 + nx * 2, (a[1] + b[1]) / 2 + nz * 2)) { nx = -nx; nz = -nz; }   // 内向き
-        for (let s2 = 2.2; s2 < L - 2.2; s2 += 2.7) {
-          const x = a[0] + tx * s2 + nx * 3.2, z = a[1] + tz * s2 + nz * 3.2, r = roadAt(x, z);
-          if (!inPoly(P, x, z) || (r && r.d < EDGE + 9)) continue;                        // 道のそばには置かない
-          if (Math.hypot(x - route[ri].x, z - route[ri].z) < 16) continue;                 // 出入口の前は空ける
-          if (toiletPts.some(([qx, qz]) => Math.hypot(qx - x, qz - z) < 7)) continue;      // トイレの前は空ける
-          let clear = true; for (const o of [1.2, 2.6, 4.2]) if (!inPoly(P, x + nx * o * 0.5 - nx * 2.4, z + nz * o * 0.5 - nz * 2.4)) clear = false;
-          if (clear) cand.push([x, z, Math.atan2(-nx, -nz)]);                               // 頭を金網の方へ
-        }
+      for (let x = P.x0; x <= P.x1; x += 3) for (let z = P.z0; z <= P.z1; z += 3) {
+        const r = roadAt(x, z);
+        if (!inPoly(P, x, z) || edgeDist(P, x, z) < 3.2 || (r && r.d < EDGE + 9)) continue;
+        if (Math.hypot(x - route[ri].x, z - route[ri].z) < 16) continue;                 // 出入口の前は空ける
+        if (toiletPts.some(([qx, qz]) => Math.hypot(qx - x, qz - z) < 7)) continue;      // トイレの前は空ける
+        cand.push([x, z, baseAng + (rnd() < 0.5 ? 0 : Math.PI) + (rnd() - 0.5) * 0.12]);
       }
-      for (let k = cand.length - 1; k > 0; k--) { const q = Math.floor(rnd() * (k + 1)); [cand[k], cand[q]] = [cand[q], cand[k]]; }
-      for (const c of cand) { if (cars.length >= 7) break; if (cars.every((o) => Math.hypot(o[0] - c[0], o[1] - c[1]) > 2.6)) cars.push([...c, P.y]); }
+      // 散らばるように選ぶ: 1 台目はランダム、そのあとは、もう置いた車からいちばん遠い候補(少しだけ乱数を混ぜる)
+      while (cars.length < 7 && cand.length) {
+        let bi = 0;
+        if (cars.length) { let bd = -1; cand.forEach((c, k) => { const d = Math.min(...cars.map((o) => Math.hypot(o[0] - c[0], o[1] - c[1]))) * (0.75 + 0.5 * rnd()); if (d > bd) { bd = d; bi = k; } }); }
+        else bi = Math.floor(rnd() * cand.length);
+        const [c] = cand.splice(bi, 1);
+        if (cars.every((o) => Math.hypot(o[0] - c[0], o[1] - c[1]) > 5)) cars.push([...c, P.y]);
+      }
     }
     if (cars.length) {
       const palette = [0xf4f4f2, 0xc9ccce, 0x2a2c2f, 0x7d8286, 0xc8232c, 0x1f4fa8, 0xe0e0d8];
