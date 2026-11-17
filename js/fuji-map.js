@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261117-piers-0';
+import { treeBillboards } from './osm-city.js?v=20261117-tidy-1';
 
 // 富士スピードウェイ(本コース)。map/fuji-course.json(tools/fuji/make_fuji.py)から組み立てる。
 // コースの線は OpenStreetMap、起伏は PLATEAU 小山町の地形、建物は OpenStreetMap。
@@ -486,7 +486,6 @@ export function buildFujiMap(data, landcover = null) {   // landcover: 地面の
     if (opt.front === false) return;
     // 前: 通路(2m)・柵・芝生。前の辺に沿って 2m ごと
     const path = [], lawn = [], rail = [], railUv = [], net = [], netUv = [], posts = { p: [], n: [] };
-    const quadH = (P, a, b2, ya, yb) => P.push(a[0], ya, a[1], b2[0], yb, b2[1], b2[0], yb, b2[1]);
     const flat = (P, p0, p1, p2, p3) => { const y = (pt) => gy(pt[0], pt[1]) + 0.03; P.push(p0[0], y(p0), p0[1], p1[0], y(p1), p1[1], p2[0], y(p2), p2[1], p0[0], y(p0), p0[1], p2[0], y(p2), p2[1], p3[0], y(p3), p3[1]); };
     const wallQ = (P, U, a, b2, y0a, y0b, h, u0, u1, vmax) => { P.push(a[0], y0a, a[1], b2[0], y0b, b2[1], b2[0], y0b + h, b2[1], a[0], y0a, a[1], b2[0], y0b + h, b2[1], a[0], y0a + h, a[1]); U.push(u0, 0, u1, 0, u1, vmax, u0, 0, u1, vmax, u0, vmax); };
     const FENCE = 2.2;   // 柵は観客席の前から 2.2m 手前(通路 2m)

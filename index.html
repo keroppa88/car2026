@@ -408,8 +408,17 @@
   .select-kicker { margin: 0 0 28px; color: #ff8c1a; letter-spacing: .38em; }
   .select-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
   .select-grid.cars { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
-  /* コースは9つ。1段5つにして2段に収める。 */
-  #course-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* 分野(Cruising / Driving / Others)は 3 つ、コースは分野ごとに 4 つ */
+  #group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #course-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .group-mosaic { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; height: 142px; }
+  .group-mosaic img { width: 100%; height: 69px; object-fit: cover; border-radius: 5px; }
+  .group-card strong { font-size: 22px; letter-spacing: .08em; }
+  /* マウスを重ねたときだけ出す紹介文(絵の下の方に重ねる) */
+  .select-card { position: relative; }
+  .select-desc { position: absolute; left: 12px; right: 12px; top: 96px; padding: 6px 8px; border-radius: 0 0 7px 7px;
+    background: rgba(0,0,0,.78); color: #fff; font-size: 14px; line-height: 1.35; opacity: 0; transition: opacity 120ms; pointer-events: none; }
+  .select-card:hover .select-desc { opacity: 1; }
   /* ドラクエ風の窓: 黒地・白枠・白文字、→ で選ぶ */
   .dq-window { width: 300px; margin: 18px auto 0; background: #000; border: 4px solid #fff; border-radius: 8px;
     box-shadow: 0 0 0 4px #000; padding: 16px 22px; color: #fff; font: 600 22px "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif; text-align: left; }
@@ -502,9 +511,14 @@
     <p class="select-kicker">SELECT CAR</p>
     <div id="car-grid" class="select-grid cars"></div>
   </section>
+  <section id="group-screen" class="select-screen" aria-label="分野の選択" hidden>
+    <h1 class="select-logo">イニシャルT</h1>
+    <p class="select-kicker">SELECT CATEGORY</p>
+    <div id="group-grid" class="select-grid"></div>
+  </section>
   <section id="course-screen" class="select-screen" aria-label="コース選択" hidden>
     <h1 class="select-logo">イニシャルT</h1>
-    <p class="select-kicker">SELECT COURSE</p>
+    <p id="course-kicker" class="select-kicker">SELECT COURSE</p>
     <div id="course-grid" class="select-grid"></div>
   </section>
   <section id="start-screen" class="select-screen" aria-label="スタート地点" hidden>
@@ -582,7 +596,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './js/game-config.js?v=20261112-fuji-6';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS } from './js/game-config.js?v=20261117-menu-1';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -602,9 +616,10 @@
     demoFrame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#16202a;';
     const demoQuery = new URLSearchParams();
     demoQuery.set('car', Object.hasOwn(CAR_CONFIGS, requestedCar) ? requestedCar : 'toyota86');
-    demoQuery.set('course', 'tokyo');
+    const demoStage = Math.floor(Math.random() * COURSE_ORDER.length);   // 最初のコースもランダム
+    demoQuery.set('course', COURSE_ORDER[demoStage]);
     demoQuery.set('demo', '1');
-    demoQuery.set('demoStage', '0');
+    demoQuery.set('demoStage', String(demoStage));
     demoQuery.set('demoEmbedded', '1');
     if (query.get('debugMap') === '1') demoQuery.set('debugMap', '1');
     demoFrame.src = `${location.pathname}?${demoQuery}`;
@@ -896,12 +911,16 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261117-apron-3');
+    import('./js/main.js?v=20261117-tidy-1');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
     let carIndex = Math.max(0, carKeys.indexOf(requestedCar));
-    let courseIndex = Math.max(0, COURSE_ORDER.indexOf(requestedCourse));
+    // 分野とその中のコース。URL の course= があれば、その分野・コースを選んだ状態から
+    let groupIndex = Math.max(0, MENU_GROUPS.findIndex((g) => g.courses.some(([k]) => k === requestedCourse)));
+    let courseIndex = Math.max(0, MENU_GROUPS[groupIndex].courses.findIndex(([k]) => k === requestedCourse));
+    const courseKey = () => MENU_GROUPS[groupIndex].courses[courseIndex][0];
+    const groupScreen = document.getElementById('group-screen');
     let stage = 'car';
     let starting = false;
     const carScreen = document.getElementById('car-screen');
@@ -934,7 +953,7 @@
       location.href = `${location.pathname}?${demoQuery}`;
     };
 
-    // タイトルを60秒操作しないと、4コースを巡るアトラクトデモを開始する。
+    // タイトルを60秒操作しないと、全コースからランダムに巡るアトラクトデモを開始する。
     // デモからタイトルへ戻った直後も、再び60秒放置すれば同じループへ入る。
     // スマホは「デモ画面」ボタンのタッチでだけデモへ入る（勝手に遷移しない）。
     const DEMO_IDLE_MS = 60000;
@@ -1065,6 +1084,7 @@
       const label = document.createElement('strong');
       label.textContent = config.label;
       button.append(visual, label);
+      if (config.desc) button.append(Object.assign(document.createElement('div'), { className: 'select-desc', textContent: config.desc }));
       return button;
     };
 
@@ -1073,29 +1093,60 @@
       document.getElementById('car-grid').append(button);
       return button;
     });
-    const courseButtons = COURSE_ORDER.map((key) => {
-      const button = makeCard(key, MAP_CONFIGS[key], 'course');
-      document.getElementById('course-grid').append(button);
+    // 分野のカード: 中の 4 コースの絵を 2×2 に並べる
+    const groupButtons = MENU_GROUPS.map((g, gi) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'select-card group-card'; button.dataset.key = g.key;
+      const mosaic = document.createElement('div'); mosaic.className = 'group-mosaic';
+      for (const [k] of g.courses) mosaic.append(Object.assign(document.createElement('img'), { src: MAP_CONFIGS[k].preview, alt: '' }));
+      button.append(mosaic, Object.assign(document.createElement('strong'), { textContent: g.label }));
+      button.addEventListener('click', () => { if (IS_MOBILE) return; groupIndex = gi; paint(); });
+      button.addEventListener('dblclick', () => { if (!IS_MOBILE) { groupIndex = gi; showCourses(); } });
+      document.getElementById('group-grid').append(button);
       return button;
     });
+    // 選んだ分野の 4 コース(分野を選ぶたびに作り直す)
+    let courseButtons = [], builtGroup = groupIndex;   // builtGroup: いまの courseIndex がどの分野のものか
+    const buildCourseCards = () => {
+      const grid = document.getElementById('course-grid'); grid.replaceChildren();
+      document.getElementById('course-kicker').textContent = MENU_GROUPS[groupIndex].label.toUpperCase();
+      courseButtons = MENU_GROUPS[groupIndex].courses.map(([key, desc], i) => {
+        const button = makeCard(key, { ...MAP_CONFIGS[key], desc }, 'course');
+        button.addEventListener('click', () => { if (IS_MOBILE) return; courseIndex = i; paint(); });
+        button.addEventListener('dblclick', () => { if (!IS_MOBILE) { courseIndex = i; start(); } });
+        grid.append(button);
+        return button;
+      });
+    };
     const paint = () => {
       carButtons.forEach((button, i) => button.classList.toggle('active', i === carIndex));
+      groupButtons.forEach((button, i) => button.classList.toggle('active', i === groupIndex));
       courseButtons.forEach((button, i) => button.classList.toggle('active', i === courseIndex));
       startButtons.forEach((button, i) => button.classList.toggle('active', i === startIndex));
       guideButton.hidden = stage !== 'car';
       demoButton.hidden = stage !== 'car';
     };
-    const showCourses = () => {
+    const showGroups = () => {
       if (stage !== 'car') return;
       playSelectionClick();
-      stage = 'course';
+      stage = 'group';
       carScreen.hidden = true;
+      groupScreen.hidden = false;
+      paint();
+    };
+    const showCourses = () => {
+      if (stage !== 'group') return;
+      playSelectionClick();
+      if (builtGroup !== groupIndex) { courseIndex = 0; builtGroup = groupIndex; }   // 分野を変えたら 1 つめのコースから
+      buildCourseCards();
+      stage = 'course';
+      groupScreen.hidden = true;
       courseScreen.hidden = false;
       paint();
     };
     // スタート地点を選ぶコース(湘南)は、コースの次にスタート地点の画面を出す
     const showStarts = () => {
-      const starts = MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts;
+      const starts = MAP_CONFIGS[courseKey()].starts;
       playSelectionClick();
       stage = 'start';
       courseScreen.hidden = true;
@@ -1114,14 +1165,14 @@
       paint();
     };
     const start = () => {
-      if (stage === 'course' && MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts) { showStarts(); return; }
+      if (stage === 'course' && MAP_CONFIGS[courseKey()].starts) { showStarts(); return; }
       if (starting) return;
       starting = true;
       clearTimeout(demoIdleTimer);
       const next = new URLSearchParams();
       next.set('car', carKeys[carIndex]);
-      next.set('course', COURSE_ORDER[courseIndex]);
-      if (stage === 'start') next.set('start', MAP_CONFIGS[COURSE_ORDER[courseIndex]].starts[startIndex].key);
+      next.set('course', courseKey());
+      if (stage === 'start') next.set('start', MAP_CONFIGS[courseKey()].starts[startIndex].key);
       if (query.get('debugMap') === '1') next.set('debugMap', '1');
       const destination = `${location.pathname}?${next}`;
       playSelectionClick();
@@ -1134,15 +1185,7 @@
         carIndex = i;
         paint();
       });
-      button.addEventListener('dblclick', () => { if (!IS_MOBILE) showCourses(); });
-    });
-    courseButtons.forEach((button, i) => {
-      button.addEventListener('click', () => {
-        if (IS_MOBILE) return;
-        courseIndex = i;
-        paint();
-      });
-      button.addEventListener('dblclick', () => { if (!IS_MOBILE) start(); });
+      button.addEventListener('dblclick', () => { if (!IS_MOBILE) showGroups(); });
     });
     window.addEventListener('keydown', (event) => {
       // スマホは説明・デモ画面のタッチ以外を受け付けない(外付けキーボード含む)。
@@ -1164,18 +1207,26 @@
         return;
       }
       if (event.key === 'Escape' && stage === 'course') {
-        stage = 'car';
+        stage = 'group';
         courseScreen.hidden = true;
+        groupScreen.hidden = false;
+        paint();
+        return;
+      }
+      if (event.key === 'Escape' && stage === 'group') {
+        stage = 'car';
+        groupScreen.hidden = true;
         carScreen.hidden = false;
         paint();
         return;
       }
-      if (event.key === 'Enter') { stage === 'car' ? showCourses() : start(); return; }
+      if (event.key === 'Enter') { stage === 'car' ? showGroups() : stage === 'group' ? showCourses() : start(); return; }
       const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
       // 選択カーソルは端で折り返さない。
       if (stage === 'car') carIndex = Math.max(0, Math.min(carKeys.length - 1, carIndex + delta));
       else if (stage === 'start') startIndex = Math.max(0, Math.min(startButtons.length - 1, startIndex + delta));
-      else courseIndex = Math.max(0, Math.min(COURSE_ORDER.length - 1, courseIndex + delta));
+      else if (stage === 'group') groupIndex = Math.max(0, Math.min(MENU_GROUPS.length - 1, groupIndex + delta));
+      else courseIndex = Math.max(0, Math.min(courseButtons.length - 1, courseIndex + delta));
       paint();
     });
     window.addEventListener('pointerdown', armDemoIdleTimer, { passive: true });

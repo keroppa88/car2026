@@ -17,8 +17,6 @@ const WALL_COLORS = [
   0xc9bfae, 0x9fa6ab, 0xe2dccd, 0xb9ab95, 0x8f9498, 0xcfd3d6, 0xa3988a,
 ];
 // ニューヨーク: れんが・砂岩・石灰岩。香港: 白・クリーム・淡い色のマンション。
-const NY_COLORS = [0x8a5a44, 0xa0654c, 0xb98a6a, 0xc9b79c, 0xb8a58a, 0x9b8b7a, 0x7d5242];
-const HK_COLORS = [0xe9e3d3, 0xd8e2e6, 0xe6d6c8, 0xcfd8c4, 0xe3d9e6, 0xf0ece2, 0xc9d3db];
 const GLASS_COLORS = [0x9fb4c4, 0x8ea6b8, 0xa9bccb, 0x7f97aa, 0xb3c3cf];
 
 // 窓の模様の種類。1枚の絵 = 横 bays 区画 × 縦 floors 階。tileW・tileH はその実寸(m)。
@@ -224,7 +222,6 @@ function disc(x, z, r, y, out) {
   }
 }
 const roadWidth = (r) => (r.lanes === 1 && !r.oneway ? 4.5 : r.lanes * LANE);
-function polyLen(p) { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return L; }
 function cumLen(p) { const s = [0]; for (let i = 1; i < p.length; i++) s.push(s[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1])); return s; }
 function cut(p, s, a, b) {
   const out = [];
@@ -527,79 +524,6 @@ function placeCrosswalks(data, shared, J, white) {
   }
   for (const c of keep) { c.draw(c.sh); c.cx += c.tx * c.sh; c.cz += c.tz * c.sh; }
   data._crosswalks = keep.map(({ cx, cz, ang, tx, tz, nx, nz, W }) => ({ cx, cz, ang, tx, tz, nx, nz, W }));
-}
-
-// ---- 高速道路の下を道路がくぐる所: 道路の端から 10m 離れた両側だけに橋脚(2m × 3m の柱)。それ以外に橋脚はなし ----
-function buildUnderPiers(data, br, g, onRoad = () => false) {
-  const overWater = makeWaterMask(data, 3), placed = [];
-  const [X0, Z0, X1, Z1] = data.bounds, C = 2, W = Math.ceil((X1 - X0) / C), H = Math.ceil((Z1 - Z0) / C);
-  const deckY = new Float32Array(W * H);   // 0 = 高架なし
-  const mark = (x, z, y) => { const i = Math.floor((x - X0) / C), j = Math.floor((z - Z0) / C); if (i < 0 || j < 0 || i >= W || j >= H) return; const k = j * W + i; if (!deckY[k] || y < deckY[k]) deckY[k] = y; };
-  // PLATEAU の首都高: 上面の三角形を升目に塗る
-  for (const b of (br && br.bridges) || []) {
-    const t = b.top;
-    for (let k = 0; k + 8 < t.length; k += 9) {
-      const ax = t[k], ay = t[k + 1], az = t[k + 2], bx = t[k + 3], by = t[k + 4], bz = t[k + 5], cx = t[k + 6], cy = t[k + 7], cz = t[k + 8];
-      const y = Math.min(ay, by, cy); if (y < 4) continue;
-      const n = Math.ceil(Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - ax, cz - az)) / 1.5) + 1;
-      for (let u = 0; u <= n; u++) for (let v = 0; u + v <= n; v++) mark(ax + (bx - ax) * u / n + (cx - ax) * v / n, az + (bz - az) * u / n + (cz - az) * v / n, y);
-    }
-  }
-  // OSM の首都高(板)
-  const EH = data.elevH ?? 9.5;
-  for (const e of data.elevated || []) {
-    const hs = e.hs || e.pts.map(() => EH), w = e.lanes * LANE / 2 + 0.75;
-    for (let i = 0; i + 1 < e.pts.length; i++) {
-      const [x0, z0] = e.pts[i], [x1, z1] = e.pts[i + 1], L = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(L / 1.5);
-      for (let k = 0; k <= n; k++) {
-        const y = hs[i] + (hs[i + 1] - hs[i]) * k / n; if (y < 4) continue;
-        const cx = x0 + (x1 - x0) * k / n, cz = z0 + (z1 - z0) * k / n;
-        for (let d = -w; d <= w; d += 1.5) mark(cx + (z1 - z0) / L * d, cz - (x1 - x0) / L * d, y - 0.7);
-      }
-    }
-  }
-  const at = (x, z) => { const i = Math.floor((x - X0) / C), j = Math.floor((z - Z0) / C); return i < 0 || j < 0 || i >= W || j >= H ? 0 : deckY[j * W + i]; };
-  const out = { p: [], n: [] };
-  const box = (x, z, ang, len, wid, h) => {   // 中心 x,z、向き ang(進む向き)、長さ len、厚み wid、高さ h
-    const geo = new THREE.BoxGeometry(wid, h, len).toNonIndexed();
-    geo.rotateY(ang); geo.translate(x, h / 2, z);
-    out.p.push(...geo.getAttribute('position').array); out.n.push(...geo.getAttribute('normal').array); geo.dispose();
-  };
-  for (const r of data.roads) {
-    if (r.bridge || r.pts.length < 2) continue;
-    const half = roadWidth(r) / 2, p = r.pts;
-    for (let i = 0; i + 1 < p.length; i++) {
-      const [x0, z0] = p[i], [x1, z1] = p[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 1) continue;
-      const tx = (x1 - x0) / L, tz = (z1 - z0) / L, nx = tz, nz = -tx, ang = Math.atan2(tx, tz);
-      // 道路の中心がデッキの下にある区間(連続した所)ごとに、両側へ橋脚
-      let s0 = null, ymin = 1e9;
-      const flush = (s1) => {
-        if (s0 === null) return;
-        const len = s1 - s0;
-        if (len >= 2) {
-          const mx = x0 + tx * (s0 + s1) / 2, mz = z0 + tz * (s0 + s1) / 2, h = ymin - 0.8;
-          // くぐる所だけ: 道路にそって前後 40m 先もデッキの下なら、高架の下を並んで走っている道なので立てない
-          const along = at(mx + tx * 40, mz + tz * 40) && at(mx - tx * 40, mz - tz * 40);
-          if (h > 2 && !along) for (const sd of [-1, 1]) {
-            const ox = mx + nx * sd * (half + 10.0), oz = mz + nz * sd * (half + 10.0);   // 道路の端から 10m 離す
-            if (!at(ox, oz)) continue;                                                       // 橋脚の所もデッキの下の時だけ
-            // 柱(2m × 3m)。ほかの道路の上・水の上には立てない。近く(8m 以内)にもう立っていれば立てない
-            let bad = overWater(ox, oz) || placed.some(([qx, qz]) => Math.hypot(qx - ox, qz - oz) < 8);
-            for (let u = -2.5; u <= 2.5 && !bad; u += 1.25) for (let w = -2; w <= 2 && !bad; w += 1) if (onRoad(ox + tx * u + nx * w, oz + tz * u + nz * w)) bad = true;
-            if (bad) continue;
-            placed.push([ox, oz]); box(ox, oz, ang, 3, 2, h);
-          }
-        }
-        s0 = null; ymin = 1e9;
-      };
-      for (let s = 0; s <= L; s += 1) {
-        const y = at(x0 + tx * s, z0 + tz * s);
-        if (y) { if (s0 === null) s0 = s; ymin = Math.min(ymin, y); } else flush(s);
-      }
-      flush(L);
-    }
-  }
-  if (out.p.length) { const m = solidMesh(out, new THREE.MeshLambertMaterial({ color: CONCRETE })); m.name = 'under-piers'; g.add(m); }
 }
 
 // ---- 橋のアーチ(飾り。道路の両わきに弓なりの桁と吊り材) ----
@@ -2346,7 +2270,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (native && data.barriers) T('buildBarriers', () => buildBarriers(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
-    // 首都高の高架に橋脚は立てない(buildUnderPiers は呼ばない)
+    // 首都高の高架に橋脚は立てない
     T('buildArches', () => buildArches(data, city));
     const shopMat = shopWindowMat(); glow.push(shopMat);
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { shopMat, smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS, groundAt: native ? (x, z) => Math.min(0, native.at(x, z)?.y ?? 0) : null }));

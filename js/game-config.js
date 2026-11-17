@@ -427,7 +427,7 @@ export const MAP_CONFIGS = {
     ...commonMap,
     label: '赤城山',
     file: 'procedural:akagi',
-    preview: 'picture/akagi.png?v=20261114',
+    preview: 'picture/akagi.png?v=20261117',
     courseData: 'map/akagi-course.json?v=20261117-1',
     scale: 1,
     roadMaterial: 'GunmaRoad',
@@ -741,4 +741,17 @@ export const MAP_CONFIGS = {
   },
 };
 
-export const COURSE_ORDER = ['tokyo', 'sea', 'forest', 'indy', 'gunma', 'moor', 'route66', 'neo', 'shonan', 'nihonbashi', 'fuji', 'akagi'];   // メトロポリス(tokyoeki)は湘南に置き換え
+// コース選択: まず分野(Cruising / Driving / Others)を選び、その分野のコースを選ぶ。desc はカードにマウスを重ねたときに出す紹介文
+export const MENU_GROUPS = [
+  { key: 'cruising', label: 'Cruising', courses: [
+    ['sea', 'どこかの海岸線'], ['moor', 'イングランド・ヨークシャー'], ['route66', 'アメリカ・モハベ砂漠'], ['neo', '日本の街中'],
+  ] },
+  { key: 'driving', label: 'Driving', courses: [
+    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'],
+  ] },
+  { key: 'others', label: 'Others', courses: [
+    ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'],
+  ] },
+];
+// メニューに出すコース(デモもこの中からランダムに選ぶ)。モンテカルロ(monaco)・メトロポリス(tokyoeki)は設定だけ残してメニューには出さない
+export const COURSE_ORDER = MENU_GROUPS.flatMap((g) => g.courses.map(([key]) => key));

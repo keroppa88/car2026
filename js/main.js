@@ -8,20 +8,20 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js';
 import { decorateTokyoEki } from './tokyoeki-city.js?v=20261024-eki-29';
-import { decorateOsmCity } from './osm-city.js?v=20261117-piers-0';
+import { decorateOsmCity } from './osm-city.js?v=20261117-tidy-1';
 import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS } from './game-config.js?v=20261114-akagi-start-1';
+import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER } from './game-config.js?v=20261117-menu-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
 import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-1';
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
-import { buildFujiMap } from './fuji-map.js?v=20261117-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261117-apron-3';
+import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
+import { buildAkagiMap } from './akagi-map.js?v=20261117-tidy-1';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -61,7 +61,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
-  const DEMO_SEQUENCE = ['tokyo', 'sea', 'forest', 'indy', 'gunma'];
+  const DEMO_SEQUENCE = COURSE_ORDER;   // デモはメニューに出す全コースからランダムに選ぶ
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
   // デモシェル(?demoShell=1)のiframeとして動いているか。曲名など、コース切替の
   // ページ再読込をまたいで出し続けるものはシェル側が受け持つ。
@@ -174,7 +174,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let gunmaCanopy = null;
   const CAR2_MODE = COURSE_KEY === 'tokyo';
   const SUZUKA_MODE = false;
-  const NIHONBASHI_MODE = false;
   let mapRoot = null;              // set when a custom map is loaded (ground raycasts)
   let roadMeshes = [];
   let wallMeshes = [];             // 地図ごとに明示された垂直壁材質
@@ -936,7 +935,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let nightMode = false;
   // Pボタンの手動点灯/消灯。null は自動(夜間モード・空の暗さ)に任せる。
   let lampOverride = null;
-  const NIGHT_SKY = 0x050a12;
   const nightLampGroups = [];        // 車両・街灯を含む完全夜間用の灯火
   const vehicleLampGroups = [];      // 薄暗い天候でも点灯する車両灯火だけ
   let playerHeadlights = [];         // 自車の前方約5mだけ照らす実光源(左右2灯)
@@ -2481,9 +2479,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const roadTiltEuler = new THREE.Euler(0, 0, 0, 'XYZ');
   const roadTiltTarget = new THREE.Quaternion();
   const aiRoadNormal = new THREE.Vector3();
-  const aiRoadLocalUp = new THREE.Vector3();
-  const aiRoadTiltEuler = new THREE.Euler(0, 0, 0, 'XYZ');
-  const aiRoadTiltTarget = new THREE.Quaternion();
   const driveTiltEuler = new THREE.Euler(0, 0, 0, 'XYZ');
   const driveTiltTarget = new THREE.Quaternion();
   const smoothedRoadTilt = new THREE.Quaternion();
@@ -2917,7 +2912,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     return collided;
   }
 
-  const TOKYO_LOOP_CENTER_X = -128.55;
   const TOKYO_LOOP_EDGE_Z = 1652.25;
   // 「1周ぶん」の距離。CPU車の走行ラインの端から端(z=+1644〜-1644)と同じ値にする。
   // 地図コピーの間隔・自車のループ周期・CPU車の巻き戻し量をすべてこれに揃える。
@@ -4033,7 +4027,6 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // 直線ではユーザー車の自動運転ライン（＝中心線そのもの）から横へ寄せて追突を防ぎ、
   // カーブでは寄せ量を0に戻して中心線をなぞる。
   // 寄せたままカーブへ入ると、曲がりの内外どちらかで壁側へはみ出すため。
-  const CAR2_CPU_LANE_OFFSET = 2.4;     // 直線での横寄せ量
   const CAR2_CPU_STRAIGHT_TURN = 0.06;  // これ以下の曲がり角は直線扱い（約3.4度）
   const CAR2_CPU_CURVE_TURN = 0.20;     // これ以上はカーブ扱い（約11.5度）。間は線形に補間
   const CAR2_CPU_CURVE_MARGIN = 2;      // カーブの何点手前から中心線へ戻し始めるか
@@ -7282,6 +7275,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       });
       initFx();
 
+      // 湘南・TOKYO は自動運転のルートを持たないので、デモのときだけ作る
+      if (DEMO_SEQUENCE_ACTIVE && OSM_COURSE && !(car2AutoRoute?.length >= 2)) car2AutoRoute = await buildOsmDemoRoute();
       if (DEMO_SEQUENCE_ACTIVE && car2AutoRoute?.length >= 2) {
         enterDemoSequence();
       } else {
@@ -7758,6 +7753,40 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     document.body.dataset.demoWeatherChanges = String(demoSequenceWeatherCount);
   }
 
+  // デモ用の道すじ(湘南・TOKYO)。湘南は国道134号のルート(大磯行き)、TOKYO は始めの位置から道路を
+  // まっすぐに近い方へたどる(一方通行は向きを守る)
+  async function buildOsmDemoRoute() {
+    try {
+      if (MAP_CONFIG.routeData) {
+        const d = await (await fetch(MAP_CONFIG.routeData)).json();
+        return d.west.map(([x, z]) => ({ x, z }));
+      }
+      const roads = (await (await fetch(MAP_CONFIG.cityData)).json()).roads.filter((r) => !r.bridge && r.pts.length >= 2 && !['service', 'footway', 'path', 'track'].includes(r.kind));
+      const key = ([x, z]) => `${Math.round(x)},${Math.round(z)}`, at = new Map();
+      roads.forEach((r, ri) => r.pts.forEach((p, k) => { if (k === 0 || k === r.pts.length - 1) { const q = key(p); if (!at.has(q)) at.set(q, []); at.get(q).push([ri, k]); } }));
+      // 始め: いちばん近い道路の区間と、車の向きに合う向き
+      let best = null; const px = player.pos.x, pz = player.pos.z, hx = Math.sin(player.heading), hz = Math.cos(player.heading);
+      roads.forEach((r, ri) => { for (let k = 0; k + 1 < r.pts.length; k++) { const [ax, az] = r.pts[k], [bx, bz] = r.pts[k + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L2)), d = Math.hypot(ax + dx * t - px, az + dz * t - pz); if (!best || d < best.d) best = { d, ri, k, fwd: dx * hx + dz * hz >= 0 }; } });
+      if (!best) return null;
+      const pts = []; let ri = best.ri, fwd = best.fwd, k = best.k, len = 0, guard = 0;
+      while (len < 3000 && guard++ < 400) {
+        const r = roads[ri], seq = fwd ? r.pts.slice(k + 1) : r.pts.slice(0, k + 1).reverse();
+        for (const p of seq) { if (pts.length) len += Math.hypot(p[0] - pts[pts.length - 1][0], p[1] - pts[pts.length - 1][1]); pts.push(p); }
+        const end = pts[pts.length - 1], prev = pts[pts.length - 2] || end, dir = Math.atan2(end[0] - prev[0], end[1] - prev[1]);
+        let next = null;
+        for (const [rj, kk] of at.get(key(end)) || []) {
+          if (rj === ri) continue; const q = roads[rj], f = kk === 0; if (q.oneway && !f) continue;
+          const a2 = f ? q.pts[1] : q.pts[q.pts.length - 2], turn = Math.abs(Math.atan2(Math.sin(Math.atan2(a2[0] - end[0], a2[1] - end[1]) - dir), Math.cos(Math.atan2(a2[0] - end[0], a2[1] - end[1]) - dir)));
+          if (turn < 1.0 && (!next || turn < next.turn)) next = { rj, f, turn };
+        }
+        if (!next) break;
+        ri = next.rj; fwd = next.f; k = fwd ? 0 : roads[ri].pts.length - 1;
+      }
+      const out = pts.map(([x, z]) => ({ x, z }));   // 道路の中心線(始めの道は一方通行 3 車線の真ん中)
+      return out.length >= 2 ? out : null;
+    } catch { return null; }
+  }
+
   function enterDemoSequence() {
     if (!DEMO_SEQUENCE_ACTIVE || !car2AutoRoute || car2AutoRoute.length < 2) return false;
     demoSequenceStartedAt = performance.now();
@@ -7828,12 +7857,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   function advanceDemoSequence() {
     if (demoSequenceLeaving) return;
     demoSequenceLeaving = true;
-    const nextStage = (DEMO_SEQUENCE_STAGE + 1) % DEMO_SEQUENCE.length;
-    // 5コースを一巡して首都高速へ戻るたび、デモ車を
-    // Toyota 86 → Volvo 240 → Toyota 86… の順で交互にする。
-    const nextCar = nextStage === 0
-      ? (PLAYER_CAR_KEY === 'toyota86' ? 'volvo240' : 'toyota86')
-      : PLAYER_CAR_KEY;
+    // 次のコースはランダム(いまのコース以外)。車もランダム
+    let nextStage = Math.floor(Math.random() * (DEMO_SEQUENCE.length - 1));
+    if (nextStage >= DEMO_SEQUENCE_STAGE) nextStage++;
+    const carKeys = Object.keys(CAR_CONFIGS), nextCar = carKeys[Math.floor(Math.random() * carKeys.length)];
     const nextQuery = new URLSearchParams();
     nextQuery.set('car', nextCar);
     nextQuery.set('course', DEMO_SEQUENCE[nextStage]);

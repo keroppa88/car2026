@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.js';
-import { treeBillboards } from './osm-city.js?v=20261117-piers-0';
+import { treeBillboards } from './osm-city.js?v=20261117-tidy-1';
 
 // 赤城山(県道4号 前橋赤城線、赤城山総合観光案内所の前 → 姫百合駐車場の前)。
 // map/akagi-course.json(tools/akagi/make_akagi.py)から組み立てる。
@@ -160,7 +160,6 @@ export function buildAkagiMap(data) {
   }
   const PARK_DROP = 0;         // 駐車場の高さ = いちばん近い所の道の高さ(そこが出入口のスロープ)
   const PARK_RAMP_ANGLE = 15;
-  const PARK_RAMP = PARK_DROP / Math.tan(PARK_RAMP_ANGLE * Math.PI / 180); // 15度の直線スロープ(約0.93m)
   for (const P of parkings) {
     let best = null;
     for (const q of P.pts) {
@@ -188,7 +187,6 @@ export function buildAkagiMap(data) {
     if (touch.length) { const mid = touch[Math.max(0, touch.length - 3)]; P.rampS = routeS[mid]; P.roadY = route[mid].y; P.y = P.roadY - PARK_DROP; }
   }
   const PARK_ENTRANCE_HALF_LENGTH = 3;  // 出入口のスロープの幅は車 2 台ぶん(6m)。それ以外は段差(コンクリートの壁)
-  const PARK_MAX_STEP = 0.75; // 姫百合駐車場の黄色指定区間。ここより段差が大きい箇所は閉鎖
   const rampInfo = (P, x, z) => {
     const r = roadAt(x, z);
     if (!r || Math.abs(routeS[r.i] - P.rampS) > PARK_ENTRANCE_HALF_LENGTH) return null;
@@ -295,7 +293,7 @@ export function buildAkagiMap(data) {
       const base = v.length / 3;
       for (let i = 0; i < n; i++) {
         const p = route[i], nn = tangents[i];
-        let px = p.x + nn.x * side * EDGE, pz = p.z + nn.z * side * EDGE, py = p.y - 0.05, prevY = py, stop = false;
+        let px = p.x + nn.x * side * EDGE, pz = p.z + nn.z * side * EDGE, py = p.y - 0.05, stop = false;
         for (let k = 0; k < m; k++) {
           const o = EDGE + OFF[k], x = p.x + nn.x * side * o, z = p.z + nn.z * side * o;
           const legs = legsAt(x, z);
@@ -304,10 +302,10 @@ export function buildAkagiMap(data) {
           if (k > 0 && !stop && !(legs.length && Math.abs(legs[0].i - i) <= 4 && legs.every((l) => l === legs[0] || l.d > EDGE + 1.5))) stop = true;
           if (k === 0 || !stop) { px = x; pz = z; py = k === 0 ? p.y - 0.05 : H(x, z); }
           v.push(px, py, pz); cutV.push(T(px, pz) - py);
-          const slope = k ? (py - prevY) / Math.max(0.3, OFF[k] - OFF[k - 1]) : 0, far = THREE.MathUtils.smoothstep(OFF[k], 2.5, 7);
+          const far = THREE.MathUtils.smoothstep(OFF[k], 2.5, 7);
           let col = grass.map((g, j) => g + (forest[j] - g) * far);
           if (inAny(meadows, px, pz)) col = MEADOW.slice(); else if (inAny(bushes, px, pz)) col = BUSHY.slice();
-          prevY = py; c.push(...col);
+          c.push(...col);
         }
       }
       // つづら折りの内側では、隣の道の近くまで地面が伸びて三角形が路面へかぶることがある。
