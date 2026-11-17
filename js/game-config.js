@@ -758,7 +758,7 @@ export const MENU_GROUPS = [
 export const DEMO_MAPS = [
   { course: 'sea', video: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women (1992)', top: '923924', horizon: '804ecd', clouds: 1 },
   { course: 'moor', video: '1oUcmForp_E', label: 'Ryuichi Sakamoto,Wuthering Heights (1992)', sky: 'default' },
-  { course: 'route66', video: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World マンダム～男の世界 (1970)', top: 'c69f2d', horizon: '517694' },
+  { course: 'route66', video: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World マンダム～男の世界 (1970)', top: '8ecbef', horizon: 'eaf4fb', clouds: 1 },
   { course: 'neo', video: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方 (1985)', night: true },
   { course: 'tokyo', video: 'fNFzfwLM72c', label: "Bee Gees,Stayin' Alive (1977)", top: 'ca2f31', horizon: '7ba139', clouds: 1 },
   { course: 'indy', video: 'KRsg4sy9yqo', label: '井上陽水,今夜、私に (1988)', night: true },
