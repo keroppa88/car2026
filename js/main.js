@@ -63,6 +63,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = COURSE_ORDER;   // デモはメニューに出す全コースからランダムに選ぶ
   const DEMO_SEQUENCE_ACTIVE = pageQuery.get('demo') === '1';
+  // 直近5コースをURLで引き継ぎ、同じマップが6コース以内に再登場しないようにする。
+  const DEMO_RECENT_COURSES = (pageQuery.get('demoRecentCourses') || '')
+    .split(',').filter((course) => DEMO_SEQUENCE.includes(course)).slice(-5);
+  const DEMO_BLOCKED_COURSES = new Set([...DEMO_RECENT_COURSES, COURSE_KEY]);
   // デモのマップ切替回数をURLで引き継ぎ、4マップ目ごとに夜間にする。
   // 0始まりなので count=3,7,11... が夜。
   const DEMO_MAP_COUNT = Math.max(0, Number.parseInt(pageQuery.get('demoMapCount') || '0', 10) || 0);
@@ -7707,10 +7711,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (delayMs > 0) demoTrackLabelTimer = setTimeout(show, delayMs);
       else show();
     }
-    // 曲3は海岸線だけを走る。別コースにいるなら海岸線へ移す。
-    if (demoTrackMode === 'sea-sunset' && COURSE_KEY !== 'sea') {
+    // 曲3は海岸線だけを走る。ただし直近5コースに海岸線が含まれる場合は、
+    // 同じマップの短期間での再登場を避け、現在のコースで夕景を見せる。
+    if (
+      demoTrackMode === 'sea-sunset'
+      && COURSE_KEY !== 'sea'
+      && !DEMO_BLOCKED_COURSES.has('sea')
+    ) {
       jumpDemoToCourse('sea');
     }
+  }
+
+  function setDemoRecentCourses(nextQuery) {
+    const history = [...DEMO_RECENT_COURSES, COURSE_KEY].slice(-5);
+    nextQuery.set('demoRecentCourses', history.join(','));
   }
 
   function currentDemoTrackIndex() {
@@ -7727,6 +7741,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(Math.max(0, DEMO_SEQUENCE.indexOf(course))));
     nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
+    setDemoRecentCourses(nextQuery);
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
     if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
@@ -7863,17 +7878,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   function advanceDemoSequence() {
     if (demoSequenceLeaving) return;
     demoSequenceLeaving = true;
-    // 次のコースはランダム(いまのコース以外)。車もランダム
-    let nextStage = Math.floor(Math.random() * (DEMO_SEQUENCE.length - 1));
-    if (nextStage >= DEMO_SEQUENCE_STAGE) nextStage++;
+    // 直近5コースと現在のコースを除外してランダム選択する。
+    const candidates = DEMO_SEQUENCE
+      .map((course, stage) => ({ course, stage }))
+      .filter(({ course }) => !DEMO_BLOCKED_COURSES.has(course));
+    const selected = candidates[Math.floor(Math.random() * candidates.length)];
+    const nextStage = selected.stage;
+    const nextCourse = selected.course;
     const carKeys = Object.keys(CAR_CONFIGS), nextCar = carKeys[Math.floor(Math.random() * carKeys.length)];
     const nextQuery = new URLSearchParams();
     nextQuery.set('car', nextCar);
-    nextQuery.set('course', DEMO_SEQUENCE[nextStage]);
+    nextQuery.set('course', nextCourse);
     nextQuery.set('demo', '1');
     nextQuery.set('demoStage', String(nextStage));
     // 流れている曲の見せ方をコース切替後も引き継ぐ（親からの通知が届く前の初期値）。
     nextQuery.set('demoMapCount', String(DEMO_MAP_COUNT + 1));
+    setDemoRecentCourses(nextQuery);
     nextQuery.set('demoTrack', String(currentDemoTrackIndex()));
     if (DEMO_EMBEDDED) nextQuery.set('demoEmbedded', '1');
     if (DEBUG_MAP) nextQuery.set('debugMap', '1');
