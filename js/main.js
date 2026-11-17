@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261114-2';
-import { buildAkagiMap } from './akagi-map.js?v=20261117-fastload';
+import { buildAkagiMap } from './akagi-map.js?v=20261117-loop';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -2786,6 +2786,47 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         && Math.abs(roadAhead.point.y - player.pos.y) < maxHeightDifference;
     });
   }
+  // ---- 赤城山のループ: くだりで駐車場を過ぎる / のぼりで草原を抜ける手前 → 2 秒で暗転 → 反対側の端を走っている状態に戻る ----
+  const akagiLoop = { fadeStart: 0, to: null, el: null, clearAt: 0, bottom: -1, top: -1 };
+  function akagiLoopStep() {
+    const route = gunmaCourse.route, n = route.length, L = akagiLoop, now = performance.now();
+    if (!L.el) {
+      // 暗転の幕: カメラのすぐ前に置いた黒い板(画面の合成に頼らないので、重くならない)
+      L.el = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
+      L.el.position.z = -0.7; L.el.renderOrder = 9999; L.el.visible = false; L.el.frustumCulled = false;
+      if (!camera.parent) scene.add(camera);
+      camera.add(L.el);
+      // 下の端: 駐車場が道に接する所を過ぎた点(道の終わりから 110m 手前まで)。上の端: 草原に入る点から 100m ふもと側
+      L.bottom = Math.min(n - 37, (gunmaCourse.parkingEnd > 0 ? gunmaCourse.parkingEnd : n - 40) + 3);
+      L.top = Math.max(gunmaCourse.start + 4, (gunmaCourse.meadowFrom ?? gunmaCourse.start) + 33);
+    }
+    // 幕の濃さ: 暗転は 2 秒かけて 0 → 1、戻ったあとは 0.5 秒で 1 → 0
+    const dark = L.to ? Math.min(1, (now - L.fadeStart) / 2000) : L.clearAt ? THREE.MathUtils.clamp(1 - (now - L.clearAt) / 500, 0, 1) : 0;
+    if (!L.to && L.clearAt && dark <= 0) L.clearAt = 0;
+    L.el.material.opacity = dark; L.el.visible = dark > 0;
+    let ci = 0, bd = Infinity;
+    for (let i = 0; i < n; i++) { const d = (player.pos.x - route[i].x) ** 2 + (player.pos.z - route[i].z) ** 2; if (d < bd) { bd = d; ci = i; } }
+    if (bd > 30 * 30) return;   // 道から離れている
+    const a = route[Math.max(0, ci - 1)], b = route[Math.min(n - 1, ci + 1)];
+    const along = player.vel.x * (b.x - a.x) + player.vel.z * (b.z - a.z);   // > 0: くだり
+    if (!L.to) {
+      if (Math.hypot(player.vel.x, player.vel.z) < 2) return;   // 止まっているときは何もしない
+      if (along > 0 && ci >= L.bottom) L.to = 'top'; else if (along < 0 && ci <= L.top) L.to = 'bottom';
+      if (L.to) L.fadeStart = now;
+      return;
+    }
+    if (now - L.fadeStart < 2000 && ci > 2 && ci < n - 3) return;   // 暗転のあいだ(道の端まで来たらすぐ)
+    // 反対側の端へ: 向きと車線は、開始位置を選んだときと同じ決め方(くだり = 案内所の前、のぼり = 駐車場の前)
+    const down = L.to === 'top'; let index = gunmaCourse.start;
+    if (!down) { let q = Infinity; for (let i = 0; i < n; i++) { const d = (route[i].x + 1447) ** 2 + (route[i].z - 1776) ** 2; if (d < q) { q = d; index = i; } } }
+    const p = route[index], nx = route[down ? Math.min(n - 1, index + 1) : Math.max(0, index - 1)], nn = gunmaCourse.tangents[index], off = down ? 1.2 : -1.8;
+    const heading = Math.atan2(nx.x - p.x, nx.z - p.z), speed = Math.hypot(player.vel.x, player.vel.z);
+    player.pos.set(p.x + nn.x * off, p.y + 0.05, p.z + nn.z * off);
+    player.heading = heading; player.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);
+    car2LastRoadPos.copy(player.pos);
+    L.to = null; L.clearAt = now + 150;   // 0.15 秒は真っ暗のまま、そのあと明るくする
+    document.body.dataset.akagiLoopCount = String(Number(document.body.dataset.akagiLoopCount || 0) + 1);
+  }
   function collideWalls(dt) {
     if (!mapRoot || MAP_CONFIG.ignoreMapWallCollisions) return false;
     const speed = player.vel.length();
@@ -2957,6 +2998,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       }
       seaSurfaceBridge = null;
     }
+    if (AKAGI_COURSE && gunmaCourse?.route.length) akagiLoopStep();
     if (TOUGE_COURSE && gunmaCourse?.route.length) {
       // Past either end the road is a copy of the other end: warp by one seam.
       const seam = gunmaCourse.seam;

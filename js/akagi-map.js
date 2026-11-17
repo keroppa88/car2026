@@ -13,6 +13,11 @@ export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.03
 
 export function buildAkagiMap(data) {
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+  // ふもと側の終わりに、まっすぐな道を 150m 足す(ループの暗転 2 秒のあいだに道が終わらないように)。向きと下りの傾きは、終わりの 30m と同じ
+  {
+    const e = route[route.length - 1], q = route[route.length - 11], dx = (e.x - q.x) / 10, dz = (e.z - q.z) / 10, dy = THREE.MathUtils.clamp((e.y - q.y) / 10, -0.2, 0);
+    for (let k = 1; k <= 50; k++) route.push(new THREE.Vector3(e.x + dx * k, e.y + dy * k, e.z + dz * k));
+  }
   const akagiNightLights = []; // [発光材質, 光だまり]
   const n = route.length;
   const clampI = (i) => Math.max(0, Math.min(n - 1, i));
@@ -179,6 +184,7 @@ export function buildAkagiMap(data) {
     const touch = [];
     for (let i = 0; i < n; i++) for (const sd of [-1, 1]) if (inPoly(P, route[i].x + tangents[i].x * sd * (EDGE + 0.8), route[i].z + tangents[i].z * sd * (EDGE + 0.8))) { touch.push(i); break; }
     // 絵の赤枠: 接している区間の北の端(下り側の端)。幅 6m ぶんが入るよう、端から 2 点(6m)手前をまん中にする
+    if (touch.length) P.touchEnd = touch[touch.length - 1];
     if (touch.length) { const mid = touch[Math.max(0, touch.length - 3)]; P.rampS = routeS[mid]; P.roadY = route[mid].y; P.y = P.roadY - PARK_DROP; }
   }
   const PARK_ENTRANCE_HALF_LENGTH = 3;  // 出入口のスロープの幅は車 2 台ぶん(6m)。それ以外は段差(コンクリートの壁)
@@ -733,7 +739,9 @@ export function buildAkagiMap(data) {
   })();
   const setNight = (on) => { for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
-  return { setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
+  const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
+  return { parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
