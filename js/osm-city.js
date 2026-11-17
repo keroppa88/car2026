@@ -529,8 +529,9 @@ function placeCrosswalks(data, shared, J, white) {
   data._crosswalks = keep.map(({ cx, cz, ang, tx, tz, nx, nz, W }) => ({ cx, cz, ang, tx, tz, nx, nz, W }));
 }
 
-// ---- 高速道路の下を道路がくぐる所: 道路の両側だけに橋脚(厚み 2m × くぐる長さ) ----
-function buildUnderPiers(data, br, g) {
+// ---- 高速道路の下を道路がくぐる所: 道路の端から 10m 離れた両側だけに橋脚(2m × 3m の柱)。それ以外に橋脚はなし ----
+function buildUnderPiers(data, br, g, onRoad = () => false) {
+  const overWater = makeWaterMask(data, 3), placed = [];
   const [X0, Z0, X1, Z1] = data.bounds, C = 2, W = Math.ceil((X1 - X0) / C), H = Math.ceil((Z1 - Z0) / C);
   const deckY = new Float32Array(W * H);   // 0 = 高架なし
   const mark = (x, z, y) => { const i = Math.floor((x - X0) / C), j = Math.floor((z - Z0) / C); if (i < 0 || j < 0 || i >= W || j >= H) return; const k = j * W + i; if (!deckY[k] || y < deckY[k]) deckY[k] = y; };
@@ -577,9 +578,16 @@ function buildUnderPiers(data, br, g) {
         const len = s1 - s0;
         if (len >= 2) {
           const mx = x0 + tx * (s0 + s1) / 2, mz = z0 + tz * (s0 + s1) / 2, h = ymin - 0.8;
-          if (h > 2) for (const sd of [-1, 1]) {
-            const ox = mx + nx * sd * (half + 2.0), oz = mz + nz * sd * (half + 2.0);
-            if (at(ox, oz)) box(ox, oz, ang, len, 2, h);   // 橋脚の所もデッキの下の時だけ
+          // くぐる所だけ: 道路にそって前後 40m 先もデッキの下なら、高架の下を並んで走っている道なので立てない
+          const along = at(mx + tx * 40, mz + tz * 40) && at(mx - tx * 40, mz - tz * 40);
+          if (h > 2 && !along) for (const sd of [-1, 1]) {
+            const ox = mx + nx * sd * (half + 10.0), oz = mz + nz * sd * (half + 10.0);   // 道路の端から 10m 離す
+            if (!at(ox, oz)) continue;                                                       // 橋脚の所もデッキの下の時だけ
+            // 柱(2m × 3m)。ほかの道路の上・水の上には立てない。近く(8m 以内)にもう立っていれば立てない
+            let bad = overWater(ox, oz) || placed.some(([qx, qz]) => Math.hypot(qx - ox, qz - oz) < 8);
+            for (let u = -2.5; u <= 2.5 && !bad; u += 1.25) for (let w = -2; w <= 2 && !bad; w += 1) if (onRoad(ox + tx * u + nx * w, oz + tz * u + nz * w)) bad = true;
+            if (bad) continue;
+            placed.push([ox, oz]); box(ox, oz, ang, 3, 2, h);
           }
         }
         s0 = null; ymin = 1e9;
@@ -2338,6 +2346,7 @@ export function decorateOsmCity(root, url, landmarkUrl, bridgeUrl, terrainUrl, s
     if (native && data.barriers) T('buildBarriers', () => buildBarriers(data, city, native));   // 横断歩道の位置がわかってから(植え込みを途切れさせる)
     T('buildElevated', () => buildElevated(data, city));
     if (br) T('buildBridges', () => buildBridges(br, city, data.area));
+    if (br) T('buildUnderPiers', () => buildUnderPiers(data, br, city, blocked.onRoad));   // TOKYO: 首都高をくぐる道路の両側(道路の端から 10m)だけに橋脚
     T('buildArches', () => buildArches(data, city));
     const shopMat = shopWindowMat(); glow.push(shopMat);
     T('buildBuildings', () => buildBuildings(data, city, wallMats, roofMat, { shopMat, smallColors: surfaceUrl ? SHONAN_SMALL_COLORS : TOKYO_SMALL_COLORS, groundAt: native ? (x, z) => Math.min(0, native.at(x, z)?.y ?? 0) : null }));
