@@ -9293,12 +9293,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (nd > 40) [ni, nd] = near(0, n - 1);
       autoIdx = ni;
       { // 点ではなく線分までの距離(車線からのずれ)
-        let best = nd;
+        let best = nd, bx = W(ni).x, bz = W(ni).z;
         for (const j of [ni - 1, ni]) { if (!loop && (j < 0 || j >= n - 1)) continue;
           const ax = W(j).x, az = W(j).z, dx = W(j + 1).x - ax, dz = W(j + 1).z - az, L2 = dx * dx + dz * dz || 1;
           const u = Math.max(0, Math.min(1, ((player.pos.x - ax) * dx + (player.pos.z - az) * dz) / L2));
-          best = Math.min(best, Math.hypot(ax + dx * u - player.pos.x, az + dz * u - player.pos.z)); }
+          const dd = Math.hypot(ax + dx * u - player.pos.x, az + dz * u - player.pos.z);
+          if (dd < best) { best = dd; bx = ax + dx * u; bz = az + dz * u; } }
         nd = best;
+        // TOKYO の周回: 角で曲がりきれず歩道や建物へ寄ったら、道すじへ少しずつ戻す(引っかかって止まらないように)
+        if (loop && nd > 3.5) {
+          player.pos.x = THREE.MathUtils.lerp(player.pos.x, bx, 0.08);
+          player.pos.z = THREE.MathUtils.lerp(player.pos.z, bz, 0.08);
+        }
       }
       // 車線から外れているほど近くを見て早く戻る
       const look = Math.max(5, Math.min(speed * 0.7, 30)) * (nd > 2 ? 0.6 : 1);
@@ -9321,6 +9327,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         for (const kk of [6, 12, 20]) curve = Math.max(curve, Math.abs(angleTo(wps[Math.min(n - 1, autoIdx + kk)])));
       }
       let targetKmh = curve > 0.6 ? 30 : curve > 0.35 ? 45 : curve > 0.18 ? 60 : 70;
+      if (loop && curve > 1.2) targetKmh = 18;   // 折り返すような急な角(TOKYO)はもっと落とす
       if (!loop && left < 12) targetKmh = Math.min(targetKmh, 20 + left * 3);   // 終点の手前で減速
       const target = targetKmh / 3.6;
       document.body.dataset.autoDriveTargetKmh = String(targetKmh);
