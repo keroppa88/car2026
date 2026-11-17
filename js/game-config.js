@@ -753,5 +753,19 @@ export const MENU_GROUPS = [
     ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'],
   ] },
 ];
-// メニューに出すコース(デモもこの中からランダムに選ぶ)。モンテカルロ(monaco)・メトロポリス(tokyoeki)は設定だけ残してメニューには出さない
+// デモ: 1 回のデモ = 1 マップ。マップごとに曲・空・昼夜が決まっている。タイトルからデモを始めるたびに、直近 5 回に出たマップを除いて選ぶ。
+//  sky: 'default' = そのマップの初期の空のまま。top / horizon = 空と地平線の色、clouds = 雲(1 / 2)、rain = 雨、night = 夜(星も出す)
+export const DEMO_MAPS = [
+  { course: 'sea', video: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women (1992)', top: '923924', horizon: '804ecd', clouds: 1 },
+  { course: 'moor', video: '1oUcmForp_E', label: 'Ryuichi Sakamoto,Wuthering Heights (1992)', sky: 'default' },
+  { course: 'route66', video: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World マンダム～男の世界 (1970)', top: 'c69f2d', horizon: '517694' },
+  { course: 'neo', video: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方 (1985)', night: true },
+  { course: 'tokyo', video: 'rRWMyMXpQ3o', label: '大沢誉志幸,そして、僕は途方に暮れる (1984)', top: '38dac6', horizon: 'fcf771' },
+  { course: 'indy', video: 'KRsg4sy9yqo', label: '井上陽水,今夜、私に (1988)', night: true },
+  { course: 'fuji', video: '8SC7jU4kTRc', label: 'T-SQUARE,TRUTH (1987)', sky: 'default' },
+  { course: 'akagi', video: 'fQxg16yG4oE', label: 'NIKO,Night of Fire (1997)', night: true },
+  { course: 'nihonbashi', video: '3mIbWMIGkMM', label: '三善英史,雨 (1972)', top: '36789e', horizon: 'c1a450', rain: true, clouds: 2 },
+  { course: 'shonan', video: '0P1FloeKyF0', label: 'サザンオールスターズ,真夏の果実 (1990)', top: 'd57e63', horizon: 'd2a252', clouds: 2 },
+];
+// メニューに出すコース。モンテカルロ(monaco)・メトロポリス(tokyoeki)は設定だけ残してメニューには出さない
 export const COURSE_ORDER = MENU_GROUPS.flatMap((g) => g.courses.map(([key]) => key));
