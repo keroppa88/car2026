@@ -1,2 +1,9 @@
 tools/tokyo-center.osm
 tools/shonan.osm
+# 赤城山: 位置合わせの途中のファイル(自前の空撮・対応点)。tools/akagi/register_rail.py などで作り直せる
+tools/akagi/paint/tile_*.png
+tools/akagi/paint/pv_*.png
+tools/akagi/paint/park_ref.png
+tools/akagi/paint/pick_*.json
+tools/akagi/paint/picked_*.json
+tools/akagi/paint/match_*.json
