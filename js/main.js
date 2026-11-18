@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261118-demo-5';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261118-sky-1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -7605,6 +7605,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ---- デモの見せ方: マップごとに決まった空・雲・雨・昼夜(game-config.js の DEMO_MAPS)。走っているあいだは変えない ----
   function applyDemoMapLook() {
     if (!DEMO_SEQUENCE_ACTIVE || !DEMO_MAP) return;
+    if (DEMO_MAP.sky === 'music') {
+      // 曲に紐づけた空(Music⇒Sky): musiclist.txt でこの曲の行に書いた空をそのまま当てる
+      fetch('musiclist.txt', { cache: 'no-store' }).then((r) => r.text()).then((text) => {
+        const raw = text.split(/\r?\n/).find((line) => line.includes(DEMO_MAP.video) && /「.+?」/.test(line));
+        if (!raw) return;
+        const label = raw.match(/「(.+?)」/);
+        applyMusicEffects(parseMusicEffects(raw.slice(label.index + label[0].length)));
+        document.body.dataset.demoMapLook = JSON.stringify({ ...DEMO_MAP, music: raw.trim() });
+      }).catch(() => {});
+      return;
+    }
     const tone = (hex, hsl) => { const t = { h: 0, s: 0, l: 0 }; new THREE.Color(`#${hex}`).getHSL(t); hsl.h = t.h; hsl.s = t.s; hsl.l = clamp(t.l, 0.1, 0.98); };
     if (DEMO_MAP.top) tone(DEMO_MAP.top, weatherTopHsl);
     if (DEMO_MAP.horizon) tone(DEMO_MAP.horizon, weatherHorizonHsl);

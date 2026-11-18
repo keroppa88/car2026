@@ -756,9 +756,9 @@ export const MENU_GROUPS = [
   ] },
 ];
 // デモ: 1 マップ 2 分ずつ、ランダムに巡る(直近 5 回に出たマップは選ばない)。マップごとに曲・空・昼夜が決まっている
-//  sky: 'default' = そのマップの初期の空のまま。top / horizon = 空と地平線の色、clouds = 雲(1 / 2)、rain = 雨、night = 夜(星も出す)
+//  sky: 'default' = そのマップの初期の空のまま。sky: 'music' = musiclist.txt でその曲に紐づけた空(Music⇒Sky)。top / horizon = 空と地平線の色、clouds = 雲(1 / 2)、rain = 雨、night = 夜(星も出す)
 export const DEMO_MAPS = [
-  { course: 'sea', video: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women (1992)', top: '923924', horizon: '804ecd', clouds: 1 },
+  { course: 'sea', video: 'I7mI-HYHDbM', label: 'Elton John,Understanding Women (1992)', sky: 'music' },
   { course: 'moor', video: '1oUcmForp_E', label: 'Ryuichi Sakamoto,Wuthering Heights (1992)', sky: 'default' },
   { course: 'route66', video: 'N9JN4aqMduo', label: 'Jerry Wallace,Lovers Of The World マンダム～男の世界 (1970)', top: '8ecbef', horizon: 'eaf4fb', clouds: 1 },
   { course: 'neo', video: '2nywqC0LYtw', label: '薬師丸ひろ子,ステキな恋の忘れ方 (1985)', night: true },
