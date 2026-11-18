@@ -7301,6 +7301,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       document.getElementById('loading').remove();
       window.__voxDrive = {
         player, aiCars, start: () => startGame(), inDemo: () => demoActive,
+        autoRoute: () => car2AutoRoute,   // 確かめ用: 自動運転の道すじ
         soundState: () => ({
           mode: soundMode, interior: interiorCurrent,
           interiorUrl: AUDIO.interiorPlaying(),
@@ -9397,14 +9398,19 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const bend = curveAmount > 0.22;
       // 通常道路と緩いカーブは130km/hを維持。急カーブだけ
       // ドリフト旋回に必要な105km/hまで落とす。
-      const targetKmh = autoMode === 'gunmaTouge'
+      // 赤城山のデモ: ヘアピン(折り返すような角)は速度を残してドリフトで回る
+      const akagiDrift = AKAGI_COURSE && demoActive;
+      const hairpin = akagiDrift && curveAmount > 0.85;
+      const targetKmh = hairpin ? 62
+        : autoMode === 'gunmaTouge'
         ? sharp ? 48 : bend ? 78 : 105
         : sharp ? 105 : 130;
       const target = targetKmh / 3.6;
       // 遠方の急カーブを見つけた時点では減速だけ行い、サイドブレーキは
       // 実際の曲がり口へ来てから使う。長時間のロックによる失速を防ぐ。
-      const driftNow = sharp
-        && (Math.abs(diff) > 0.24 || Math.abs(diffFar) > 0.32);
+      const driftNow = hairpin
+        ? Math.abs(diff) > 0.2 || Math.abs(diffFar) > 0.28
+        : sharp && (Math.abs(diff) > 0.24 || Math.abs(diffFar) > 0.32);
       document.body.dataset.autoDriveTargetKmh = String(targetKmh);
       document.body.dataset.autoDrivePhase = driftNow
         ? (autoMode === 'gunmaTouge' ? 'gunma-hairpin' : 'forest-drift')
@@ -9414,7 +9420,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       return {
         throttle: speed < target,
         brake: sharp && speed > target + 5,
-        handbrake: driftNow && speed > 24,
+        handbrake: hairpin ? driftNow && speed > 11 : driftNow && speed > 24,
         steer: clamp(diff * (player.drifting ? 2.45 : 1.7), -1, 1),
       };
     }
