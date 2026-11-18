@@ -7703,7 +7703,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (hint) {
       hint.textContent = IS_MOBILE
         ? 'スワイプでカメラ / タップで視点切替'
-        : '何かボタンでタイトルへ / ドラッグでカメラ';
+        : 'ドラッグでカメラ移動 / 左クリックでアングル変更';
     }
     enterDemo(car2AutoRoute);
     document.body.dataset.demoSequence = 'true';
