@@ -11295,10 +11295,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         // 真後ろ → 斜め前 → 斜め横 → 横 → 遠い斜め後ろ → 真後ろ … (yaw 0=真後ろ / π=真正面)
         const shot = DEMO_CAM_SHOTS[Math.floor((t - demoCamCycleAt) / 15000) % DEMO_CAM_SHOTS.length];
         document.body.dataset.demoCamShot = shot.name;
-        const g = Math.min(1, dt * 1.2);
-        cam.yaw += (shot.yaw - cam.yaw) * g;
-        cam.pitch += (shot.pitch - cam.pitch) * g;
-        cam.dist += (shot.dist - cam.dist) * g;
+        // 次のアングルへはパッと切り替える(カメラを動かして移らない)
+        cam.yaw = shot.yaw;
+        cam.pitch = shot.pitch;
+        cam.dist = shot.dist;
       } else {
         if (t > demoCam.nextChange) {
           demoCam.until = t + 5000;

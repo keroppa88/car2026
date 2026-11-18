@@ -623,11 +623,13 @@
     && COURSE_ORDER.includes(requestedCourse);
 
   if (isDemoShell) {
-    // デモ専用の外枠。ゲームは全画面 iframe の中で動く。1 マップ 2 分ずつ、ランダムに巡る。
+    // デモ専用の外枠。ゲームは全画面 iframe の中で動く。1 マップはその曲が終わるまで。ランダムに巡る。
     // マップごとに曲・空・昼夜が決まっている(game-config.js の DEMO_MAPS)。曲はこの外枠が鳴らす。
     document.body.className = 'demo-shell';
     document.body.replaceChildren();
-    const DEMO_MAP_MS = Number(query.get('demoMapMs')) || 120000;   // 1 マップの時間(確かめ用に ?demoMapMs= で短くできる)
+    // 曲が鳴らせないとき(YouTube の不具合など)だけ、2 分で次のマップへ。確かめ用に ?demoMapMs= を付けると曲に関係なくその時間で移る
+    const DEMO_MAP_MS_FIXED = Number(query.get('demoMapMs')) || 0;
+    const DEMO_MAP_MS = DEMO_MAP_MS_FIXED || 120000;
     const DEMO_RECENT_KEY = 'car2026.demoRecentMaps';  // 直近 5 回に出たマップ(この中からは選ばない)
     const DEMO_IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     const carKeys = Object.keys(CAR_CONFIGS);
@@ -683,7 +685,7 @@
       if (!entry || songStarted) return;
       songStarted = true;
       clearTimeout(mapTimer);
-      mapTimer = setTimeout(() => openMap(pickNext()), DEMO_MAP_MS);   // 2 分たったら次のマップ
+      mapTimer = setTimeout(() => openMap(pickNext()), DEMO_MAP_MS);   // 曲が鳴り始めなかったときの保険(鳴り始めたら止める)
       if (playerReady) { player.loadVideoById(entry.video); return; }
       if (player) return;
       player = 'loading';
@@ -710,7 +712,8 @@
             },
             onStateChange: (event) => {
               const st = event.data;
-              if (st === window.YT.PlayerState.ENDED) { player.seekTo?.(0); player.playVideo?.(); return; }   // 2 分より前に終わったら、もう一度
+              if (st === window.YT.PlayerState.ENDED) { if (songStarted) openMap(pickNext()); return; }   // 曲が終わったら次のマップ
+              if (st === window.YT.PlayerState.PLAYING && !DEMO_MAP_MS_FIXED) clearTimeout(mapTimer);   // 鳴っている間は曲の終わりまで
               if (st === window.YT.PlayerState.PLAYING && !labelEl.textContent) {
                 clearTimeout(labelTimer);
                 const label = entry.label; labelTimer = setTimeout(() => setLabel(label), 3000);   // 鳴り始めて 3 秒後に曲名
@@ -742,7 +745,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261119-hint-1');
+    import('./js/main.js?v=20261119-cam-2');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
