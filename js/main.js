@@ -2277,6 +2277,15 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let demoIdx = 1;
   const demoCam = { nextChange: 0, until: 0, yaw: 0, pitch: 0.3, dist: 12 };
   let demoCamUserHeld = false;       // ドラッグでユーザーがカメラを握っているか
+  // デモ画面の第三者視点のアングル(15秒ごとに順に切り替える)
+  const DEMO_CAM_SHOTS = [
+    { name: 'rear', yaw: 0, pitch: 0.34, dist: 11 },                  // 真後ろ
+    { name: 'front-diagonal', yaw: Math.PI * 0.78, pitch: 0.2, dist: 9 },   // 斜め前
+    { name: 'side-diagonal', yaw: Math.PI * 0.64, pitch: 0.24, dist: 10 },  // 斜め横
+    { name: 'side', yaw: Math.PI * 0.5, pitch: 0.22, dist: 10 },            // 横
+    { name: 'far-rear-diagonal', yaw: Math.PI * 0.22, pitch: 0.42, dist: 24 },  // 遠い距離の斜め後ろ
+  ];
+  let demoCamCycleAt = performance.now();   // 切り替えの起点(第三者視点へ戻るたびに真後ろから)
   let demoSequenceStartedAt = 0;
   let demoSequenceActionCount = 0;
   let demoSequenceLeaving = false;
@@ -2298,6 +2307,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   function switchBonnetView() {
     bonnetView = (bonnetView + 1) % 3;
     if (bonnetView !== 0) return;
+    demoCamCycleAt = performance.now();
     cam.yaw = 0;
     cam.pitch = 0.34;
     cam.dist = 10;
@@ -2378,9 +2388,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   // ダブルクリックで視点の中心を車に戻す
   renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
   window.addEventListener('pointerup', () => {
+    // 動かしていないタップ(視点切替)や、画面外のボタンを押しただけでは「カメラを動かした」と数えない
+    if ((cam.dragging || cam.panning) && !(demoActive && demoTapMove < 12)) cam.lastDrag = performance.now();
     cam.dragging = false;
     cam.panning = false;
-    cam.lastDrag = performance.now();
     // デモ中、ほぼ動かさずに離した(クリック/タップ)なら視点を切り替える。
     // ドラッグした場合はデモを継続し、カメラだけ動かす。
     // 4コースデモを終わるのは左上の「戻る」ボタンだけ(PC・スマホ共通)。
@@ -7671,6 +7682,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     cam.pitch = 0.34;
     cam.dist = 11;
     cam.lastDrag = 0;
+    demoCamCycleAt = performance.now();   // 第三者視点のアングル切り替えは真後ろから
     if (nightMode) {
       nightMode = false;
       applyNight();
@@ -11258,33 +11270,24 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (demoActive && bonnetView === 0) {
       // スワイプ(ドラッグ)中とその直後はユーザーのカメラ操作を優先する
       const t = performance.now();
-      if (cam.dragging || t - cam.lastDrag < 2500) {
+      if (DEMO_SEQUENCE_ACTIVE && (cam.dragging || cam.lastDrag > 0)) {
+        // デモ画面: ユーザーがドラッグで動かしたアングルはそのまま保持する。
+        // 主観視点を挟んで第三者視点へ戻ると(switchBonnetView で lastDrag=0)、真後ろから切り替えを始め直す。
+      } else if (!DEMO_SEQUENCE_ACTIVE && (cam.dragging || t - cam.lastDrag < 2500)) {
         // 何もしない(ユーザーの視点を保持)。実際にドラッグされた時だけ印を付ける
         // (lastDrag=0 の起動直後を「今ドラッグした」と数えないため)。
         demoCamUserHeld = cam.lastDrag > 0;
-      } else if (demoCamUserHeld) {
-        // デモがカメラを取り戻す = アングルの強制切り替え。
-        // ドラッグで鳴り始めたエンジン音もここで消す(首都高/森林/インディ用)。
+      } else if (!DEMO_SEQUENCE_ACTIVE && demoCamUserHeld) {
         demoCamUserHeld = false;
-        resetDemoEngineSound();
       } else if (DEMO_SEQUENCE_ACTIVE) {
-        const elapsed = Math.max(0, (t - demoSequenceStartedAt) / 1000);
-        let targetYaw = 0;
-        let targetPitch = 0.34;
-        let targetDist = 11;
-        if (COURSE_KEY === 'tokyo' || COURSE_KEY === 'sea') {
-          // マウスで眺め回すように、左右・上下・距離を連続的に変える。
-          targetYaw = Math.sin(elapsed * 0.56) * 0.72
-            + Math.sin(elapsed * 0.21) * 0.18;
-          targetPitch = 0.31 + Math.sin(elapsed * 0.43 + 0.8) * 0.11;
-          targetDist = 11.5 + Math.sin(elapsed * 0.35 + 1.4) * 2.1;
-        }
-        // 森林地帯は通常位置へ固定。インディアナポリスもN演出が
-        // 見やすい通常後方視点を維持する。
-        const g = Math.min(1, dt * 2.2);
-        cam.yaw += (targetYaw - cam.yaw) * g;
-        cam.pitch += (targetPitch - cam.pitch) * g;
-        cam.dist += (targetDist - cam.dist) * g;
+        // デモ画面の第三者視点: 15秒ごとにアングルを切り替える。
+        // 真後ろ → 斜め前 → 斜め横 → 横 → 遠い斜め後ろ → 真後ろ … (yaw 0=真後ろ / π=真正面)
+        const shot = DEMO_CAM_SHOTS[Math.floor((t - demoCamCycleAt) / 15000) % DEMO_CAM_SHOTS.length];
+        document.body.dataset.demoCamShot = shot.name;
+        const g = Math.min(1, dt * 1.2);
+        cam.yaw += (shot.yaw - cam.yaw) * g;
+        cam.pitch += (shot.pitch - cam.pitch) * g;
+        cam.dist += (shot.dist - cam.dist) * g;
       } else {
         if (t > demoCam.nextChange) {
           demoCam.until = t + 5000;
