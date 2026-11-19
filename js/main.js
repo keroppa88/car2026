@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261117-loop-straight';
+import { buildAkagiMap } from './akagi-map.js?v=20261119-parked-cpu';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -4372,6 +4372,25 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const AKAGI_CPU_DOWNHILL = 4;
   const AKAGI_CPU_UPHILL = 4;
 
+  // 赤城山: 駐車場に停まっている車を CPU 車の模型にする(走らない・灯りなし)。当たり判定は akagi-map.js の箱
+  function placeAkagiParkedCars(vehicles) {
+    if (!gunmaCourse?.parkedCars?.length || !vehicles.length) return;
+    gunmaCourse.parkedCars.forEach((p, i) => {
+      const mesh = vehicles[(i * 3 + 1) % vehicles.length].mesh.clone();
+      mesh.rotation.y = MODEL_YAW;
+      mesh.position.y = -CAR_SINK;
+      mesh.castShadow = false;
+      const group = new THREE.Group();
+      group.add(mesh);
+      group.add(makeBlobShadow({ w: CAR_SHADOW.w * bodyWidthRatio(mesh), h: CAR_SHADOW.h * bodyLengthRatio(mesh) }));
+      group.position.set(p.x, p.y, p.z);
+      group.rotation.y = p.heading;
+      group.name = 'akagi-parked-car';
+      scene.add(group);
+    });
+    document.body.dataset.akagiParkedCars = String(gunmaCourse.parkedCars.length);
+  }
+
   function spawnGunmaTrafficCpuCars(vehicles) {
     if (!gunmaCourse?.route.length || !vehicles.length) return;
     // 街並みは車線が広い(中央線から車線中央まで2.8m)。
@@ -7239,6 +7258,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         }))).map((point) => ({ ...point, width: 8.64 }));
         document.body.dataset.akagiAutoDriveDirection = uphillStart ? 'uphill' : 'downhill';
         spawnGunmaTrafficCpuCars(cpuCars);
+        if (AKAGI_COURSE) placeAkagiParkedCars(cpuCars);
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
         // デモ／自動運転では先に自車を実際のバンクルートへ合わせる。

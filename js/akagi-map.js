@@ -462,6 +462,7 @@ export function buildAkagiMap(data) {
       m.name = 'akagi-parking-apron'; scenery.add(m);
     }
   }
+  const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
   // ---- 駐車場の車 7 台: 駐車場の中に散らばるように置く(奥にかたまらないように。トイレ・出入口のそばは空ける)。当たり判定あり ----
   {
     let seed = 20261117; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -489,20 +490,12 @@ export function buildAkagiMap(data) {
         if (cars.every((o) => Math.hypot(o[0] - c[0], o[1] - c[1]) > 5)) cars.push([...c, P.y]);
       }
     }
-    if (cars.length) {
-      const palette = [0xf4f4f2, 0xc9ccce, 0x2a2c2f, 0x7d8286, 0xc8232c, 0x1f4fa8, 0xe0e0d8];
-      const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1.75, 0.85, 4.3), new THREE.MeshLambertMaterial({ color: 0xffffff }), cars.length);
-      const cab = new THREE.InstancedMesh(new THREE.BoxGeometry(1.6, 0.6, 2.3), new THREE.MeshLambertMaterial({ color: 0x30363c }), cars.length);
-      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S1 = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
-      cars.forEach(([x, z, ang, y], i) => {
-        const tall = i === 3 ? 1.18 : 1; Q.setFromAxisAngle(Y, ang);
-        body.setMatrixAt(i, M.compose(V.set(x, y + 0.6, z), Q, S1.set(1, tall, 1))); body.setColorAt(i, C.setHex(palette[i % palette.length]));
-        cab.setMatrixAt(i, M.compose(V.set(x, y + 1.025 * tall, z), Q, S1.set(1, 1, tall > 1 ? 1.4 : 1)));
-        const hit = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.6, 4.3), new THREE.MeshBasicMaterial({ visible: false }));
-        hit.position.set(x, y + 0.8, z); hit.rotation.y = ang; hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
-      });
-      body.frustumCulled = cab.frustumCulled = false; body.name = cab.name = 'akagi-parked-cars'; scenery.add(body, cab);
-    }
+    // 車の見た目は main.js が CPU 車の模型で置く(parkedCars)。ここでは当たり判定だけ
+    cars.forEach(([x, z, ang, y]) => {
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.6, 4.3), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(x, y + 0.8, z); hit.rotation.y = ang; hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
+      parkedCars.push({ x, z, y, heading: ang });
+    });
   }
   // ---- 駐車場と道の間の段差: コンクリート色の壁(出入口のスロープの所は除く)。高い側の上面にふたをして、土手の斜面を隠す。当たり判定あり ----
   {
@@ -789,7 +782,7 @@ export function buildAkagiMap(data) {
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
-  return { bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  return { parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
