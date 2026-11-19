@@ -2805,8 +2805,17 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       L.el.position.z = -0.7; L.el.renderOrder = 9999; L.el.visible = false; L.el.frustumCulled = false;
       if (!camera.parent) scene.add(camera);
       camera.add(L.el);
-      // 下の端: 駐車場が道に接する所を過ぎた点(道の終わりから 110m 手前まで)。上の端: 草原に入る点から 100m ふもと側
-      L.bottom = Math.min(n - 37, (gunmaCourse.parkingEnd > 0 ? gunmaCourse.parkingEnd : n - 40) + 3);
+      // 下の端: 駐車場を過ぎて左へ曲がり終え、まっすぐな道に入った所(道の終わりから 110m 手前まで)。上の端: 草原に入る点から 100m ふもと側
+      // 曲がり終え = 向きの変わりが 10 点(30m)続けて 1 度未満になった最初の点。カーブの途中で暗くならないように
+      const head = (i) => Math.atan2(route[i + 1].x - route[i].x, route[i + 1].z - route[i].z);
+      let straightAt = gunmaCourse.parkingEnd > 0 ? gunmaCourse.parkingEnd : n - 40;
+      for (let i = straightAt; i < n - 12; i++) {
+        let calm = true;
+        for (let k = i; k < i + 10 && calm; k++) { let dh = Math.abs(head(k + 1) - head(k)); if (dh > Math.PI) dh = 2 * Math.PI - dh; calm = dh < Math.PI / 180; }
+        if (calm) { straightAt = i; break; }
+      }
+      L.bottom = Math.min(n - 37, straightAt + 8);   // 直線に入って 24m 走ってから
+      document.body.dataset.akagiLoopBottom = String(L.bottom);
       L.top = Math.max(gunmaCourse.start + 4, (gunmaCourse.meadowFrom ?? gunmaCourse.start) + 33);
     }
     // 幕の濃さ: 暗転は 2 秒かけて 0 → 1、戻ったあとは 0.5 秒で 1 → 0
@@ -7302,6 +7311,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       window.__voxDrive = {
         player, aiCars, start: () => startGame(), inDemo: () => demoActive,
         autoRoute: () => car2AutoRoute,   // 確かめ用: 自動運転の道すじ
+        course: () => gunmaCourse,   // 確かめ用: 峠コース(赤城山など)の道
         soundState: () => ({
           mode: soundMode, interior: interiorCurrent,
           interiorUrl: AUDIO.interiorPlaying(),
