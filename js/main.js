@@ -4373,10 +4373,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const AKAGI_CPU_UPHILL = 4;
 
   // 赤城山: 駐車場に停まっている車を CPU 車の模型にする(走らない・灯りなし)。当たり判定は akagi-map.js の箱
-  function placeAkagiParkedCars(vehicles) {
-    if (!gunmaCourse?.parkedCars?.length || !vehicles.length) return;
+  // 車種は決まった 7 台(トラック・軽トラは入れない。1 台ずつ別の車種)
+  const AKAGI_PARKED_VOX = ['nissan3.vox', 'vw04.vox', 'nissan180sx0.vox', 'toyotaprobox.vox', 'volvo_sedan.vox', 'vw01.vox', 'nissan2.vox'];
+  async function placeAkagiParkedCars() {
+    if (!gunmaCourse?.parkedCars?.length) return;
+    const models = await loadCpuCars(AKAGI_PARKED_VOX.map((name) => 'vox/' + encodeURIComponent(name)));
+    if (!models.length) return;
     gunmaCourse.parkedCars.forEach((p, i) => {
-      const mesh = vehicles[(i * 3 + 1) % vehicles.length].mesh.clone();
+      const mesh = models[i % models.length].mesh;
       mesh.rotation.y = MODEL_YAW;
       mesh.position.y = -CAR_SINK;
       mesh.castShadow = false;
@@ -4388,7 +4392,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       group.name = 'akagi-parked-car';
       scene.add(group);
     });
-    document.body.dataset.akagiParkedCars = String(gunmaCourse.parkedCars.length);
+    document.body.dataset.akagiParkedCars = models.map((m) => decodeURIComponent(m.url.split('/').pop())).join(',');
   }
 
   function spawnGunmaTrafficCpuCars(vehicles) {
@@ -7258,7 +7262,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         }))).map((point) => ({ ...point, width: 8.64 }));
         document.body.dataset.akagiAutoDriveDirection = uphillStart ? 'uphill' : 'downhill';
         spawnGunmaTrafficCpuCars(cpuCars);
-        if (AKAGI_COURSE) placeAkagiParkedCars(cpuCars);
+        if (AKAGI_COURSE) placeAkagiParkedCars();
         document.body.dataset.autoDriveRoutePoints = String(car2AutoRoute.length);
       } else if (COURSE_KEY === 'indy') {
         // デモ／自動運転では先に自車を実際のバンクルートへ合わせる。
