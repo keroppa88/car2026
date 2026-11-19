@@ -583,6 +583,27 @@ export function buildAkagiMap(data) {
         else door.position.set(sd * half * 0.55, -1.6 + 1.05, Math.sign(l.z) * 2.025);
         door.name = 'akagi-toilet-entrance'; body.add(door);
       }
+      // 自動販売機: 入口の壁に向かって左の横に、同じ向きで 1 台。白い箱に、商品の窓・取り出し口だけのシンプルな形。
+      // 建物の子にするので、当たり判定(colliders の建物)もいっしょに効く
+      const fx = onX ? Math.sign(l.x) : 0, fz = onX ? 0 : Math.sign(l.z);   // 入口の壁が向く向き(建物から見て)
+      const faceHalf = onX ? 3 : 2, wallHalf = onX ? 2 : 3;               // 入口の壁までの距離 / 壁の幅の半分
+      const lx = -fz, lz = fx;                                            // 入口に向かって立った人の左
+      const vm = new THREE.Group(); vm.name = 'akagi-vending-machine';
+      const white = new THREE.MeshLambertMaterial({ color: 0xf2f3f1 });
+      const VW = 1.0, VH = 1.83, VD = 0.75;
+      const box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); vm.add(m); return m; };
+      box(VW, VH, VD, white, 0, VH / 2, 0);                                                               // 本体(白)
+      box(0.84, 0.78, 0.02, new THREE.MeshLambertMaterial({ color: 0xdfe8ee }), 0, 1.36, VD / 2 + 0.006);    // 商品の窓
+      const goods = [0xd23a2a, 0x2f6fc4, 0xe8b830, 0x3a9a4a, 0xf0f0f0, 0x6a3b22, 0xe86f2a, 0x1c1c1c];
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) {                                          // 見本の缶・ボトル 3 段
+        box(0.07, 0.15, 0.03, new THREE.MeshLambertMaterial({ color: goods[(r * 3 + c * 5) % goods.length] }), -0.35 + c * 0.1, 1.1 + r * 0.25, VD / 2 + 0.025);
+        box(0.08, 0.025, 0.03, new THREE.MeshLambertMaterial({ color: 0x222222 }), -0.35 + c * 0.1, 1.0 + r * 0.25, VD / 2 + 0.025);   // 押しボタン
+      }
+      box(0.6, 0.2, 0.03, new THREE.MeshLambertMaterial({ color: 0x2a2d30 }), -0.08, 0.42, VD / 2 + 0.01);   // 取り出し口
+      box(0.12, 0.18, 0.03, new THREE.MeshLambertMaterial({ color: 0x5a5f63 }), 0.36, 0.82, VD / 2 + 0.01);  // 硬貨・お札を入れる所
+      vm.position.set(fx * (faceHalf - VD / 2) + lx * (wallHalf + 0.2 + VW / 2), -1.6, fz * (faceHalf - VD / 2) + lz * (wallHalf + 0.2 + VW / 2));
+      vm.rotation.y = Math.atan2(fx, fz);
+      body.add(vm);
     }
     const roofGeo = new THREE.BufferGeometry();
     roofGeo.setAttribute('position', new THREE.Float32BufferAttribute([
