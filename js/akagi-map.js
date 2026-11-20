@@ -317,8 +317,38 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   const groundNormalAt = (x, z) => new THREE.Vector3(H(x - 1, z) - H(x + 1, z), 2, H(x, z - 1) - H(x, z + 1)).normalize();
   const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : H(x, z));
 
-  // 地図の外の遠い地面(60m 升目、半径 6km)。高さは地形の端のまま。内側と重なる所は下げる
-  {
+  // 地図の外の遠い地面。data.far(80m 升目、tools/haruna/make_far.py)があれば、その本当の高さ。なければ 60m 升目・半径 6km で地形の端のまま。内側と重なる所は下げる
+  if (data.far) {
+    const F = data.far, fv = [], fi = [], fc = [], C1 = new THREE.Color();
+    for (let j = 0; j < F.nz; j++) for (let i = 0; i < F.nx; i++) {
+      const x = F.x0 + i * F.cell, z = F.z0 + j * F.cell, inside = x > minX + 60 && x < maxX - 60 && z > minZ + 60 && z < maxZ - 60;
+      const y = F.h[j * F.nx + i];
+      fv.push(x, inside ? groundHeightAt(x, z) - 40 : y - 0.3, z);
+      const hi = THREE.MathUtils.smoothstep(y, 300, 800), n = 0.5 + 0.5 * Math.sin(x * 0.013 + Math.sin(z * 0.011) * 2);
+      C1.setRGB(forest[0] * (1.2 + 0.5 * n) + 0.02 * hi, forest[1] * (1.2 + 0.4 * n) + 0.015 * hi, forest[2] * (1.1 + 0.3 * n) + 0.01 * hi); fc.push(C1.r, C1.g, C1.b);
+    }
+    for (let j = 0; j < F.nz - 1; j++) for (let i = 0; i < F.nx - 1; i++) { const a = j * F.nx + i, b = a + F.nx; fi.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
+    const far = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); far.name = 'AkagiFarGround'; scenery.add(far);
+    // さらに遠くの山並み(半径 25km の輪): 升目の外の山(赤城山・浅間山・谷川岳など)を、本当の向きと見かけの高さで。かすんだ青
+    const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, RING = 25000, SEG = 720, half = (F.nx - 1) * F.cell / 2;
+    const far2 = (F.peaks || []).filter(([, px, pz]) => Math.max(Math.abs(px - (F.x0 + half)), Math.abs(pz - (F.z0 + half))) > half - 2000);
+    const rv = [], ri = [], baseY = Math.min(...F.h) - 50;
+    for (let k = 0; k <= SEG; k++) {
+      const th = k / SEG * Math.PI * 2, dx = Math.sin(th), dz = -Math.cos(th);   // th: 北から時計回り
+      let top = baseY + 350 + 120 * Math.sin(th * 7.3) * Math.sin(th * 3.1 + 1) + 60 * Math.sin(th * 23);
+      for (const [, px, pz, el] of far2) {
+        const dist = Math.hypot(px - cx, pz - cz), pb = Math.atan2(px - cx, -(pz - cz)); let da = Math.abs(th - pb); if (da > Math.PI) da = 2 * Math.PI - da;
+        const w = Math.atan(5000 / dist), hgt = baseY + (el - baseY) * RING / dist;
+        top = Math.max(top, baseY + (hgt - baseY) * Math.exp(-(da * da) / (2 * w * w)));
+      }
+      rv.push(cx + dx * RING, baseY - 200, cz + dz * RING, cx + dx * RING, top, cz + dz * RING);
+      if (k < SEG) { const a = k * 2; ri.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.setIndex(ri);
+    const ring = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: 0x7d93a6, fog: false, side: THREE.DoubleSide }));
+    ring.name = 'AkagiFarRange'; ring.renderOrder = -1; scenery.add(ring);
+  } else {
     const C = 60, Rr = 6000, m = Math.ceil(Rr / C), fv = [], fi = [], fc = [];
     const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
     for (let j = -m; j <= m; j++) for (let i = -m; i <= m; i++) {
