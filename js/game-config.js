@@ -495,6 +495,42 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 榛名山: 県道33号(渋川松井田線)の頂上側 〜 伊香保。赤城山と同じ作り(tools/haruna/make_haruna.py)
+  haruna: {
+    ...commonMap,
+    label: '榛名山',
+    file: 'procedural:haruna',
+    preview: 'picture/akagi.png?v=20261117',   // 仮(あとで榛名山の絵に)
+    courseData: 'map/haruna-course.json?v=20261120-1',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaEdgeLine', 'GunmaCenterLine', 'GunmaGuardrail'],
+    drivableMaterialAliases: ['GunmaShoulder', 'GunmaGrass'],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: false,   // ガードレールに当たる(js/akagi-map.js の colliders)
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    // スタート地点はコース選択後に選ぶ。route の両端から座標と進行方向を取得する。
+    starts: [
+      { key: 'ikaho', label: '伊香保（のぼり）', routeEnd: 'goal', reverse: true },
+      { key: 'sancho', label: '頂上側（くだり）', routeEnd: 'start', reverse: false },
+    ],
+    spawnReference: 'fixed',
+    spawnReferenceX: 1.86,
+    spawnReferenceZ: -0.42,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: -0.3302,
+    spawnOffsetRight: 0,
+    laneOffset: 1.8,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261121 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   route66: {
     ...commonMap,
     label: 'ルート66',
@@ -785,7 +821,7 @@ export const MENU_GROUPS = [
     ['sea', 'どこかの海岸線'], ['moor', 'イングランド・ヨークシャー'], ['route66', 'アメリカ・モハベ砂漠'], ['neo', '日本の街中'],
   ] },
   { key: 'driving', label: 'Driving', courses: [
-    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'],
+    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'], ['haruna', '地理データ、あの漫画の舞台'],
   ] },
   { key: 'others', label: 'Others', courses: [
     ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'], ['tsukuba', '地理データ、フルーツライン'],

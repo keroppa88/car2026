@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261120-tsukuba-2';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261120-haruna';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -53,8 +53,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const OSM_COURSE = COURSE_KEY === 'nihonbashi' || COURSE_KEY === 'shonan';   // 日本橋・湘南: OpenStreetMap から組み立てる街
   const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
   const FUJI_COURSE = COURSE_KEY === 'fuji';   // 富士スピードウェイ(閉じたサーキット)
-  // 赤城山(県道4号の下り)と、同じ作りの筑波山(フルーツライン)。はじめと終わりがある1本道
-  const AKAGI_COURSE = COURSE_KEY === 'akagi' || COURSE_KEY === 'tsukuba';
+  // 赤城山(県道4号の下り)と、同じ作りの筑波山(フルーツライン)・榛名山(県道33号)。はじめと終わりがある1本道
+  const AKAGI_COURSE = COURSE_KEY === 'akagi' || COURSE_KEY === 'tsukuba' || COURSE_KEY === 'haruna';
   const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE || AKAGI_COURSE;   // 地面の高さを格子から直接読むコース
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
