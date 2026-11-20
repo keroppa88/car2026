@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261118-sky-1';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261120-tsukuba';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261119-vending';
+import { buildAkagiMap } from './akagi-map.js?v=20261120-tsukuba';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -53,7 +53,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const OSM_COURSE = COURSE_KEY === 'nihonbashi' || COURSE_KEY === 'shonan';   // 日本橋・湘南: OpenStreetMap から組み立てる街
   const TOKYOEKI_COURSE = COURSE_KEY === 'tokyoeki' || OSM_COURSE;   // 地図を使わず three.js で組み立てる街
   const FUJI_COURSE = COURSE_KEY === 'fuji';   // 富士スピードウェイ(閉じたサーキット)
-  const AKAGI_COURSE = COURSE_KEY === 'akagi';   // 赤城山(県道4号の下り。はじめと終わりがある1本道)
+  // 赤城山(県道4号の下り)と、同じ作りの筑波山(フルーツライン)。はじめと終わりがある1本道
+  const AKAGI_COURSE = COURSE_KEY === 'akagi' || COURSE_KEY === 'tsukuba';
   const GRID_GROUND_COURSE = COURSE_KEY === 'moor' || FUJI_COURSE || AKAGI_COURSE;   // 地面の高さを格子から直接読むコース
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
@@ -5913,13 +5914,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (TOUGE_COURSE) {
         gunmaCourse = FUJI_COURSE ? buildFujiMap(await (await fetch(MAP_CONFIG.courseData)).json(),
           MAP_CONFIG.landcoverImage ? await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = MAP_CONFIG.landcoverImage; }) : null)
-          : AKAGI_COURSE ? buildAkagiMap(await (await fetch(MAP_CONFIG.courseData)).json())
+          : AKAGI_COURSE ? buildAkagiMap(await (await fetch(MAP_CONFIG.courseData)).json(), { akagi: COURSE_KEY === 'akagi' })
           : COURSE_KEY === 'moor' ? buildMoorMap(GUNMA_SEED)
           : NEO_COURSE ? buildNeoMap() : buildGunmaMap(GUNMA_SEED);
         map = gunmaCourse.group;
         if (AKAGI_COURSE && MAP_CONFIG.starts) {
           const selected = MAP_CONFIG.starts.find((v) => v.key === pageQuery.get('start')) || MAP_CONFIG.starts[0];
           const isHimeyuri = selected.key === 'himeyuri';
+          const isUphill = !!selected.reverse;   // のぼりのスタート(道を逆向きに走る)
           // 姫百合側は駐車場ポリゴンを基準にしない。指定された道路センターライン座標を基準にする。
           // 指定点(-1447, 1776)に最も近いコース中心線の点を求め、その地点の接線で進行方向を決める。
           const anchor = isHimeyuri ? { x: -1447, z: 1776 } : null;
@@ -5934,7 +5936,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           }
           const p = gunmaCourse.route[index];
           // route は観光案内所→姫百合。姫百合発進は逆向き(index - 1)で上り方向。
-          const q = gunmaCourse.route[isHimeyuri ? Math.max(0, index - 1) : Math.min(gunmaCourse.route.length - 1, index + 1)];
+          const q = gunmaCourse.route[isUphill ? Math.max(0, index - 1) : Math.min(gunmaCourse.route.length - 1, index + 1)];
           const dx = q.x - p.x, dz = q.z - p.z;
           const heading = Math.atan2(dx, dz);
           // 指定座標は最近傍の道路センターラインを探すためだけに使う。
@@ -5942,8 +5944,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           // 姫百合発進は上り方向の左車線中央へ。道路メッシュと同じ法線方向に1.8mずらす。
           // spawnOffsetRight(車両 heading 基準)には依存せず、道路中心線の法線で直接配置する。
           const laneNormal = gunmaCourse.tangents[index];
-          MAP_CONFIG.spawnReferenceX = p.x + laneNormal.x * (isHimeyuri ? -1.8 : selected.key === 'kankou' ? 1.2 : 0);
-          MAP_CONFIG.spawnReferenceZ = p.z + laneNormal.z * (isHimeyuri ? -1.8 : selected.key === 'kankou' ? 1.2 : 0);
+          MAP_CONFIG.spawnReferenceX = p.x + laneNormal.x * (isUphill ? -1.8 : 1.2);
+          MAP_CONFIG.spawnReferenceZ = p.z + laneNormal.z * (isUphill ? -1.8 : 1.2);
           MAP_CONFIG.spawnOffsetRight = 0;
           // route[index].y は路面高の検索基準値。実際の発進Yは、
           // 車線オフセット後のX/Zで道路メッシュをレイキャストして取得する。
@@ -7252,7 +7254,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           MAP_CONFIG.laneOffset ?? MAP_CONFIG.spawnOffsetRight, gunmaCourse.seam.offset);
         // 赤城山の姫百合スタートは上り。ルートを逆向きにたどる対向車線側を
         // 自動運転ラインに使い、下り用ラインを追ってガードレールへ向かわないようにする。
-        const uphillStart = AKAGI_COURSE && MAP_CONFIG.startKey === 'himeyuri';
+        const uphillStart = AKAGI_COURSE && !!MAP_CONFIG.starts?.find((v) => v.key === MAP_CONFIG.startKey)?.reverse;
         const gunmaLane = (uphillStart ? gunmaPaths.oncoming : gunmaPaths.same).points;
         const gunmaSeam = uphillStart
           ? { x: -gunmaCourse.seam.offset.x, z: -gunmaCourse.seam.offset.z }

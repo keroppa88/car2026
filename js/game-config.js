@@ -459,6 +459,42 @@ export const MAP_CONFIGS = {
     mapWhiteGlow: false,
     roadNightEmissive: false,
   },
+  // 筑波山: フルーツライン(八郷広域農道)の朝日峠 〜 県道138号との合流。赤城山と同じ作り(tools/tsukuba/make_tsukuba.py)
+  tsukuba: {
+    ...commonMap,
+    label: '筑波山',
+    file: 'procedural:tsukuba',
+    preview: 'picture/akagi.png?v=20261117',   // 仮(あとで筑波山の絵に)
+    courseData: 'map/tsukuba-course.json?v=20261120-1',
+    scale: 1,
+    roadMaterial: 'GunmaRoad',
+    roadMaterialAliases: [],
+    nonWallMaterialAliases: ['GunmaShoulder', 'GunmaGrass', 'GunmaEdgeLine', 'GunmaCenterLine', 'GunmaGuardrail'],
+    drivableMaterialAliases: ['GunmaShoulder', 'GunmaGrass'],
+    supportSurfaceMode: 'drivable',
+    blockOutsideDrivableSurface: true,
+    ignoreMapWallCollisions: false,   // ガードレールに当たる(js/akagi-map.js の colliders)
+    loopMode: 'none',
+    roadMotionStep: 0.15,
+    // スタート地点はコース選択後に選ぶ。route の両端から座標と進行方向を取得する。
+    starts: [
+      { key: 'fumoto', label: '県道138号側（のぼり）', routeEnd: 'goal', reverse: true },
+      { key: 'asahi', label: '朝日峠（くだり）', routeEnd: 'start', reverse: false },
+    ],
+    spawnReference: 'fixed',
+    spawnReferenceX: 1.86,
+    spawnReferenceZ: -0.42,
+    spawnExactReference: true,
+    spawnDirectionMode: 'configured',
+    spawnHeading: -0.3302,
+    spawnOffsetRight: 0,
+    laneOffset: 1.8,
+    spawnSurfaceMode: 'roadSurface',
+    autoDriveMode: 'gunmaTouge',
+    treePlacement: { ...commonTrees, enabled: false, seed: 20261120 },
+    mapWhiteGlow: false,
+    roadNightEmissive: false,
+  },
   route66: {
     ...commonMap,
     label: 'ルート66',
@@ -749,7 +785,7 @@ export const MENU_GROUPS = [
     ['sea', 'どこかの海岸線'], ['moor', 'イングランド・ヨークシャー'], ['route66', 'アメリカ・モハベ砂漠'], ['neo', '日本の街中'],
   ] },
   { key: 'driving', label: 'Driving', courses: [
-    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'],
+    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'], ['tsukuba', '地理データ、フルーツライン'],
   ] },
   { key: 'others', label: 'Others', courses: [
     ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'],

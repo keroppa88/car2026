@@ -11,7 +11,7 @@ const RAIL = AKAGI_ROAD_HALF + SHOULDER + 0.35;   // ガードレールの位置
 // 木陰のある所(1)とない所(0)。道の木陰の模様(createCanopyShade の grove)と同じ式で、木の並びもこれに合わせる
 export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.035 + Math.sin(z * 0.048)), -0.4, 0.65);
 
-export function buildAkagiMap(data) {
+export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: 筑波山など、赤城山だけの物(トイレ・自販機・街灯)を置かない
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   // ふもと側の終わりの先に、まっすぐな道を 250m 足す(のぼりのループは、この直線の上に戻ってくる)。向きと下りの傾きは、終わりの 30m と同じ
   const BOTTOM_EXT = 84;
@@ -152,7 +152,7 @@ export function buildAkagiMap(data) {
     }
   }
   // 既存2棟を撤去し、指定座標に新しい木造トイレを1棟だけ設置。
-  const toiletPts = [[-1538.5, 1796]];   // 絵の赤丸の位置
+  const toiletPts = akagi ? [[-1538.5, 1796]] : [];   // 絵の赤丸の位置
   const inAny = (list, x, z) => list.some((P) => inPoly(P, x, z));
   // 駐車場の角で道から 10m 以内のものは、道の路肩まで寄せる(道と駐車場の間にすき間を作らない)
   for (const P of parkings) {
@@ -736,7 +736,7 @@ export function buildAkagiMap(data) {
   };
   // 姫百合駐車場内の既存街灯は撤去。
   // D：ユーザー指定座標（X=-265, Z=162）。符号を保持して固定配置。
-  addAkagiLamp(-233, 261, 'akagi-lamp-D');
+  if (akagi) addAkagiLamp(-233, 261, 'akagi-lamp-D');
 
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
