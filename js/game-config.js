@@ -462,7 +462,7 @@ export const MAP_CONFIGS = {
   // 筑波山: フルーツライン(八郷広域農道)の朝日峠 〜 県道138号との合流。赤城山と同じ作り(tools/tsukuba/make_tsukuba.py)
   tsukuba: {
     ...commonMap,
-    label: '筑波山',
+    label: '筑波山（開発中）',
     file: 'procedural:tsukuba',
     preview: 'picture/akagi.png?v=20261117',   // 仮(あとで筑波山の絵に)
     courseData: 'map/tsukuba-course.json?v=20261120-1',
@@ -785,10 +785,10 @@ export const MENU_GROUPS = [
     ['sea', 'どこかの海岸線'], ['moor', 'イングランド・ヨークシャー'], ['route66', 'アメリカ・モハベ砂漠'], ['neo', '日本の街中'],
   ] },
   { key: 'driving', label: 'Driving', courses: [
-    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'], ['tsukuba', '地理データ、フルーツライン'],
+    ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'],
   ] },
   { key: 'others', label: 'Others', courses: [
-    ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'],
+    ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'], ['tsukuba', '地理データ、フルーツライン'],
   ] },
 ];
 // デモ: 1 マップ 2 分ずつ、ランダムに巡る(直近 5 回に出たマップは選ばない)。マップごとに曲・空・昼夜が決まっている
