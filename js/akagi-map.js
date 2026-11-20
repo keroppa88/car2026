@@ -130,6 +130,25 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     return { ...region(poly), cl, ux, uz, hw, L, a };
   });
   flats.push(...sideRoads);
+  // OpenStreetMap の、本線以外の道(osmRoads: 見た目だけ。tools/haruna/osm_side_roads.py)。2m おきに区切って、近くを速く探せるように升目へ
+  const osmRoads = (data.osmRoads || []).map((r) => {
+    const pts = [];
+    for (let k = 0; k + 1 < r.pts.length; k++) { const [ax, az] = r.pts[k], [bx, bz] = r.pts[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 2)); for (let t = 0; t < m; t++) pts.push([ax + (bx - ax) * t / m, az + (bz - az) * t / m]); }
+    pts.push(r.pts[r.pts.length - 1]);
+    return { ...r, pts };
+  });
+  const osmGrid = new Map();
+  osmRoads.forEach((r, ri) => r.pts.forEach(([x, z], k) => { const key = Math.floor(x / 16) + ',' + Math.floor(z / 16); if (!osmGrid.has(key)) osmGrid.set(key, []); osmGrid.get(key).push([ri, k]); }));
+  // (x, z) が OSM の道の上(幅の半分 + margin)なら、その道。vehicle: 車の道(アスファルト・林道)だけ
+  const onOsmRoad = (x, z, margin = 0, vehicle = false) => {
+    if (!osmRoads.length) return null;
+    const bx = Math.floor(x / 16), bz = Math.floor(z / 16);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [ri, k] of osmGrid.get((bx + a) + ',' + (bz + b)) || []) {
+      const r = osmRoads[ri]; if (vehicle && r.kind === 'trail') continue;
+      const [px, pz] = r.pts[k]; if (Math.hypot(px - x, pz - z) <= r.w / 2 + margin + 1) return r;
+    }
+    return null;
+  };
   // 駐車場の拡張(駐車の向きの枠・看板があるもの)。草むら・芝生の板はここだけ
   const parkAprons = aprons.filter((A) => (data.parkGuides || []).concat(data.signs || []).some((g) => inPoly(A, g[0], g[1]) || edgeDist(A, g[0], g[1]) < 40));
   // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
@@ -235,7 +254,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     S.prof = p; return p;
   };
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
-  const underFlat = (x, z) => flats.some((A) => x > A.x0 - 1 && x < A.x1 + 1 && z > A.z0 - 1 && z < A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.6 : 0;
+  const underFlat = (x, z) => flats.some((A) => x > A.x0 - 1 && x < A.x1 + 1 && z > A.z0 - 1 && z < A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) || onOsmRoad(x, z, 1) ? 0.6 : 0;
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
@@ -326,6 +345,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   const edgeGap = (i, side) => {
     const p = route[i], nn = tangents[i];
     if (sideRoads.some((S) => Math.hypot(p.x - S.a[0], p.z - S.a[1]) <= S.hw + 6 && (S.ux * nn.x + S.uz * nn.z) * side > 0)) return true;
+    for (const o of [EDGE + 0.8, EDGE + 2]) if (onOsmRoad(p.x + nn.x * side * o, p.z + nn.z * side * o, 1.5, true)) return true;   // OSM の車の道が合流する所
     for (const o of [EDGE + 0.6, EDGE + 1.5]) { const x = p.x + nn.x * side * o, z = p.z + nn.z * side * o; if (flats.some((A) => inPoly(A, x, z)) && !inAny(meadows, x, z)) return true; }
     return false;
   };
@@ -590,6 +610,32 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const pl = new THREE.Mesh(new THREE.PlaneGeometry(S.hw * 2 + 20, 14), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: Math.min(1, 0.3 + j * 0.13), depthWrite: false, side: THREE.DoubleSide, fog: false }));
       pl.position.set(x, H(x, z) + 6.5, z); pl.rotation.y = Math.atan2(S.ux, S.uz); pl.name = 'akagi-side-road-dark'; pl.renderOrder = 5; scenery.add(pl);
     });
+  }
+  // ---- OSM の道: アスファルト(コースの路面と同じ色)・林道(土)・山道(細い土)。高さは地面を前後 6m でならしたもの、本線の近くは本線の高さへ。本線の上は描かない ----
+  {
+    const COL = { asphalt: new THREE.Color(0x4a4c4e), dirt: new THREE.Color(0x6e5f47), trail: new THREE.Color(0x5e5240) };
+    const v = [], col = [];
+    for (const r of osmRoads) {
+      const P = r.pts, hw = r.w / 2, raw = P.map(([x, z]) => H0(x, z));
+      const ys = raw.map((_, k) => { let a = 0, c = 0; for (let j = Math.max(0, k - 3); j <= Math.min(P.length - 1, k + 3); j++) { a += raw[j]; c++; } return a / c; });
+      const rows = P.map(([x, z], k) => {
+        const a = P[Math.max(0, k - 1)], b = P[Math.min(P.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l;
+        const rd = roadAt(x, z); let y = ys[k] + 0.08;
+        if (rd && rd.d < EDGE + 12) y = THREE.MathUtils.lerp(rd.y - 0.04, y, THREE.MathUtils.smoothstep(rd.d, EDGE, EDGE + 12));
+        return { x, z, nx, nz, y, onMain: rd && rd.d < EDGE - 0.3 };
+      });
+      const c = COL[r.kind];
+      for (let k = 0; k + 1 < rows.length; k++) {
+        const A = rows[k], B = rows[k + 1]; if (A.onMain || B.onMain) continue;
+        const q = [[A.x + A.nx * hw, A.y, A.z + A.nz * hw], [A.x - A.nx * hw, A.y, A.z - A.nz * hw], [B.x - B.nx * hw, B.y, B.z - B.nz * hw], [B.x + B.nx * hw, B.y, B.z + B.nz * hw]];
+        for (const t of [q[0], q[1], q[2], q[0], q[2], q[3]]) { v.push(...t); col.push(c.r, c.g, c.b); }
+      }
+    }
+    if (v.length) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      m.name = 'akagi-osm-roads'; scenery.add(m);
+    }
   }
   // ---- 駐車場の舗装: 多角形そのままの平らな板 1 枚(ふちはまっすぐ。升目のギザギザを出さない)。色はコースの路面と同じ ----
   const ROAD_COLOR = 0x4a4c4e;
@@ -1010,7 +1056,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2);   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
