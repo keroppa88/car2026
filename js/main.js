@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261120-haruna';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261120-haruna-paint';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261114-akagi-2';
@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261120-tsukuba';
+import { buildAkagiMap } from './akagi-map.js?v=20261120-haruna-paint';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -4378,10 +4378,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   const AKAGI_PARKED_VOX = ['nissan3.vox', 'vw04.vox', 'nissan180sx0.vox', 'toyotaprobox.vox', 'volvo_sedan.vox', 'vw01.vox', 'nissan2.vox'];
   async function placeAkagiParkedCars() {
     if (!gunmaCourse?.parkedCars?.length) return;
-    const models = await loadCpuCars(AKAGI_PARKED_VOX.map((name) => 'vox/' + encodeURIComponent(name)));
+    // 台数が多い所(榛名山の拡張の駐車)は車種を増やす(それでもトラック・軽トラは入れない)
+    const names = gunmaCourse.parkedCars.length > AKAGI_PARKED_VOX.length
+      ? AKAGI_PARKED_VOX.concat(['vw02.vox', 'nissan4.vox', 'nissan180sx1.vox', 'volvo1.vox', 'toyotahigh03.vox', 'toyotahigh02.vox'])
+      : AKAGI_PARKED_VOX;
+    const models = await loadCpuCars(names.map((name) => 'vox/' + encodeURIComponent(name)));
     if (!models.length) return;
     gunmaCourse.parkedCars.forEach((p, i) => {
-      const mesh = models[i % models.length].mesh;
+      const mesh = i < models.length ? models[i].mesh : models[(i * 7 + 3) % models.length].mesh.clone();
       mesh.rotation.y = MODEL_YAW;
       mesh.position.y = -CAR_SINK;
       mesh.castShadow = false;

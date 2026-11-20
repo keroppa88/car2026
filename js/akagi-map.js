@@ -118,6 +118,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z)); }
     return best; };
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
+  // 真上の絵(tools/topview/apply_paint.py)で決めた所: 道の高さのアスファルトの拡張(aprons)・木々(woods)
+  const aprons = (data.aprons || []).map(region), woods = (data.woods || []).map(region);
   // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
   const parkingBoundaryA = [-1560, 1770], parkingBoundaryB = [-1537, 1818];
   const boundarySide = (x, z) => (parkingBoundaryB[0] - parkingBoundaryA[0]) * (z - parkingBoundaryA[1])
@@ -207,9 +209,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     const t = THREE.MathUtils.clamp((info.r.d - EDGE) / info.length, 0, 1);
     return THREE.MathUtils.lerp(info.r.y - 0.05, P.y - 0.05, t);
   };
+  const APRON_BLEND = 6;
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
+    for (const A of aprons) {   // アスファルトの拡張: いちばん近い道の高さ。まわり 6m で元の地面へなめらかに戻す
+      if (x < A.x0 - APRON_BLEND || x > A.x1 + APRON_BLEND || z < A.z0 - APRON_BLEND || z > A.z1 + APRON_BLEND) continue;
+      const r = roadAt(x, z); if (!r) continue;
+      if (inPoly(A, x, z)) return r.y - 0.05;
+      const d = edgeDist(A, x, z); if (d < APRON_BLEND) h = THREE.MathUtils.lerp(r.y - 0.05, h, THREE.MathUtils.smoothstep(d, 0, APRON_BLEND));
+    }
     for (const P of parkings) {
       if (x < P.x0 - PARK_BLEND || x > P.x1 + PARK_BLEND || z < P.z0 - PARK_BLEND || z > P.z1 + PARK_BLEND) continue;
       if (inPoly(P, x, z)) return parkingRampHeight(P, x, z) ?? (P.y - 0.05);
@@ -462,7 +471,59 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       m.name = 'akagi-parking-apron'; scenery.add(m);
     }
   }
+  // ---- アスファルトの拡張(aprons): 塗った形の板を 2m 以下の三角に割って、道の高さに沿わせる。道の上(路肩まで)には描かない ----
+  if (aprons.length) {
+    const v = [], MAXE = 2;
+    const put = (a, b, c) => {
+      const L = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
+      if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
+      const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
+      if (!r || r.d < EDGE - 0.05) return;
+      for (const q of [a, b, c]) v.push(q[0], H(q[0], q[1]) + 0.02, q[1]);
+    };
+    for (const A of aprons) for (const t of THREE.ShapeUtils.triangulateShape(A.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => A.pts[k]));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: ROAD_COLOR, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    m.name = 'akagi-apron'; scenery.add(m);
+  }
   const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
+  // ---- 拡張の駐車(parkGuides の黄色い枠の向き): 枠の並びの線を拡張の中でのばし、2.7m おきに車を並べる(ところどころ空ける) ----
+  if (data.parkGuides?.length && aprons.length) {
+    let sd = 20261120; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const Gd = data.parkGuides, heading = Math.atan2(Gd.reduce((a, g) => a + Math.sin(g[2]), 0), Gd.reduce((a, g) => a + Math.cos(g[2]), 0));
+    const cx = Gd.reduce((a, g) => a + g[0], 0) / Gd.length, cz = Gd.reduce((a, g) => a + g[1], 0) / Gd.length;
+    let ux = Gd[Gd.length - 1][0] - Gd[0][0], uz = Gd[Gd.length - 1][1] - Gd[0][1]; const ul = Math.hypot(ux, uz);
+    if (ul > 0.5) { ux /= ul; uz /= ul; } else { ux = -Math.cos(heading); uz = Math.sin(heading); }   // 並ぶ向き(枠が 1 つなら車の横の向き)
+    const A = aprons.find((P) => inPoly(P, cx, cz)) || aprons[0];
+    const hx = Math.sin(heading), hz = Math.cos(heading);
+    const fits = (x, z) => [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]].every(([f, sdd]) => { const px = x + hx * f + ux * sdd, pz = z + hz * f + uz * sdd, r = roadAt(px, pz); return inPoly(A, px, pz) && r && r.d > EDGE + 1.2; });
+    for (let k = -80; k <= 80; k++) {
+      const x = cx + ux * k * 2.7, z = cz + uz * k * 2.7;
+      if (!fits(x, z) || rnd() < 0.22) continue;
+      const y = H(x, z) + 0.05;
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.6, 4.3), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(x, y + 0.8, z); hit.rotation.y = heading + (rnd() < 0.5 ? 0 : Math.PI); hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
+      parkedCars.push({ x, z, y, heading: hit.rotation.y });
+    }
+  }
+  // ---- 案内看板(signs、伊香保温泉): 木の柱 2 本に白い板、青い屋根。板は道の方を向く ----
+  for (const [sx, sz] of data.signs || []) {
+    const r = nearestRoute(sx, sz), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - sx, q.z - sz), y = H(sx, sz);
+    const sg = new THREE.Group(); sg.name = 'akagi-sign'; sg.position.set(sx, y, sz); sg.rotation.y = face;
+    const wood = new THREE.MeshLambertMaterial({ color: 0x3a2618 });
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 320; const c2 = cv.getContext('2d');
+    c2.fillStyle = '#e9e6dc'; c2.fillRect(0, 0, 128, 320); c2.strokeStyle = '#3a2618'; c2.lineWidth = 6; c2.strokeRect(3, 3, 122, 314);
+    c2.fillStyle = '#111'; c2.textAlign = 'center'; c2.font = 'bold 44px serif'; '伊香保温泉'.split('').forEach((ch, k) => c2.fillText(ch, 74, 56 + k * 50));
+    c2.font = 'bold 16px sans-serif'; 'Uターン7km先'.split('').forEach((ch, k) => c2.fillText(ch, 24, 84 + k * 18));
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const add = (geo, mat, x, yy, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, yy, z); sg.add(m); return m; };
+    for (const px of [-0.5, 0.5]) add(new THREE.BoxGeometry(0.14, 3.3, 0.14), wood, px, 1.65, 0);
+    add(new THREE.BoxGeometry(0.86, 2.15, 0.22), [wood, wood, wood, wood, new THREE.MeshLambertMaterial({ map: tex }), new THREE.MeshLambertMaterial({ map: tex })], 0, 2.05, 0);
+    for (let k = 0; k < 6; k++) add(new THREE.BoxGeometry(0.06, 0.65, 0.06), wood, -0.4 + k * 0.16, 0.45, 0);   // 下の格子
+    add(new THREE.BoxGeometry(1.0, 0.06, 0.06), wood, 0, 0.78, 0);
+    const roof = add(new THREE.BoxGeometry(1.35, 0.08, 0.6), new THREE.MeshLambertMaterial({ color: 0x2f6f8a }), 0, 3.36, 0); roof.rotation.z = 0;
+    scenery.add(sg); sg.updateMatrixWorld(true); colliders.push(sg);
+  }
   // ---- 駐車場の車 7 台: 駐車場の中に散らばるように置く(奥にかたまらないように。トイレ・出入口のそばは空ける)。当たり判定あり ----
   {
     let seed = 20261117; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -743,7 +804,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4);   // 草原・草むら・駐車場には木を立てない
+    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || aprons.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2);   // 草原・草むら・駐車場・アスファルトには木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
@@ -761,6 +822,12 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const r = roadAt(x, z); if (!r || r.d < RAIL + 10 || tooSteep(x, z) || noTree(x, z)) continue;
       trees.push([x, groundHeightAt(x, z) - 0.3, z, 11 + rnd() * 8]);
     }
+    // 塗った木々(woods): 中に 3.5m おきくらいでぎっしり
+    for (const P of woods) for (let x = P.x0; x <= P.x1; x += 3.5) for (let z = P.z0; z <= P.z1; z += 3.5) {
+      const tx = x + (rnd() - 0.5) * 2.5, tz = z + (rnd() - 0.5) * 2.5, r = roadAt(tx, tz);
+      if (!inPoly(P, tx, tz) || !r || r.d < RAIL + 0.8 || aprons.some((A) => inPoly(A, tx, tz))) continue;
+      trees.push([tx, groundHeightAt(tx, tz) - 0.3, tz, 10 + rnd() * 8]);
+    }
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
   }
 
@@ -769,7 +836,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   const shadeMeshes = [ground]; group.traverse((o) => { if (o.isMesh) shadeMeshes.push(o); }); scenery.traverse((o) => { if (o.name === 'akagi-roadside') shadeMeshes.push(o); });
   for (const mesh of shadeMeshes) {
     const pos = mesh.geometry.getAttribute('position'), mask = new Float32Array(pos.count);
-    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) ? 0 : 1; }
+    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(aprons, x, z) ? 0 : 1; }
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
