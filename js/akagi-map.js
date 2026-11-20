@@ -472,6 +472,23 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     }
   }
   // ---- アスファルトの拡張(aprons): 塗った形の板を 2m 以下の三角に割って、道の高さに沿わせる。道の上(路肩まで)には描かない ----
+  // 拡張の近くの芝生(meadows)も、塗った形のまま板で重ねる(地面の 6m 升目の色だけだと、ふちがギザギザになるため)
+  const nearAnyApron = (P) => aprons.some((A) => P.x1 > A.x0 - 25 && P.x0 < A.x1 + 25 && P.z1 > A.z0 - 25 && P.z0 < A.z1 + 25);
+  for (const P of meadows.filter(nearAnyApron)) {
+    const v = [], MAXE = 2;
+    const put = (a, b, c) => {
+      const L = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
+      if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
+      const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
+      if (!r || r.d < EDGE - 0.05) return;
+      for (const q of [a, b, c]) v.push(q[0], H(q[0], q[1]) + 0.03, q[1]);
+    };
+    for (const t of THREE.ShapeUtils.triangulateShape(P.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => P.pts[k]));
+    if (!v.length) continue;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: new THREE.Color(...MEADOW), side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.name = 'akagi-meadow-patch'; scenery.add(m);
+  }
   if (aprons.length) {
     const v = [], MAXE = 2;
     const put = (a, b, c) => {
@@ -503,10 +520,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     }
     if (spots.length) {
       const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128; const c2 = cv.getContext('2d');
-      for (let k = 0; k < 70; k++) {   // 草の葉(下から上へ細くなる線)
-        const x = 8 + Math.random() * 112, h = 50 + Math.random() * 74, lean = (Math.random() - 0.5) * 40, g = 90 + Math.random() * 80;
-        c2.strokeStyle = `rgb(${50 + Math.random() * 40},${g},${20 + Math.random() * 30})`; c2.lineWidth = 2 + Math.random() * 2.5;
-        c2.beginPath(); c2.moveTo(x, 128); c2.quadraticCurveTo(x + lean * 0.3, 128 - h * 0.6, x + lean, 128 - h); c2.stroke();
+      // 草の葉: 写真(明るい黄緑の、細くて長い葉が弓なりにしなる草むら)に合わせる。奥の葉は少し暗く、手前ほど明るい
+      for (let k = 0; k < 170; k++) {
+        const x = 4 + Math.random() * 120, h = 60 + Math.random() * 66, lean = (Math.random() - 0.5) * 70, droop = Math.random() < 0.35;
+        const lit = k / 170;   // あとで描く葉ほど明るい
+        c2.strokeStyle = `rgb(${Math.round(70 + lit * 90 + Math.random() * 25)},${Math.round(140 + lit * 70 + Math.random() * 20)},${Math.round(25 + lit * 35 + Math.random() * 20)})`;
+        c2.lineWidth = 0.7 + Math.random() * 0.9;
+        c2.beginPath(); c2.moveTo(x, 128);
+        if (droop) c2.quadraticCurveTo(x + lean * 0.2, 128 - h, x + lean * 1.3, 128 - h * 0.55);   // 先が垂れる葉
+        else c2.quadraticCurveTo(x + lean * 0.2, 128 - h * 0.6, x + lean, 128 - h);
+        c2.stroke();
       }
       const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
       const pos = [], uv = [];
@@ -515,7 +538,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
       const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide }), spots.length);
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
-      spots.forEach(([x, y, z], i) => { const w = 0.7 + rnd() * 0.7; Q.setFromAxisAngle(Y, rnd() * Math.PI); im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(w, 0.35 + rnd() * 0.45, w))); im.setColorAt(i, C.setHSL(0.22 + rnd() * 0.06, 0.5, 0.42 + rnd() * 0.18)); });
+      spots.forEach(([x, y, z], i) => { const w = 0.7 + rnd() * 0.7; Q.setFromAxisAngle(Y, rnd() * Math.PI); im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(w, 0.35 + rnd() * 0.45, w))); im.setColorAt(i, C.setHSL(0, 0, 0.75 + rnd() * 0.25)); });   // 色は絵のまま、明るさだけ少しばらつかせる
       im.name = 'akagi-grass-tufts'; im.frustumCulled = false; scenery.add(im);
     }
   }
