@@ -478,13 +478,35 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const L = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
       if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
       const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
-      if (!r || r.d < EDGE - 0.05) return;
+      if (!r || r.d < EDGE - 0.05 || inAny(meadows, cx, cz)) return;   // 道の上と、芝生の帯(緑地)には描かない
       for (const q of [a, b, c]) v.push(q[0], H(q[0], q[1]) + 0.02, q[1]);
     };
     for (const A of aprons) for (const t of THREE.ShapeUtils.triangulateShape(A.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => A.pts[k]));
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: ROAD_COLOR, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     m.name = 'akagi-apron'; scenery.add(m);
+  }
+  // ---- アスファルトと緑の境目を砂でぼかす(sandEdges の辺ぞい)。外へ 2.5m・内へ 1.2m、まん中が濃く、両はしは透明 ----
+  if (data.sandEdges?.length) {
+    let sd = 7; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const v = [], col = [], OFF = [-1.2, -0.4, 0.3, 1.2, 2.5], AL = [0, 0.75, 0.9, 0.6, 0];
+    for (const [ax, az, bx, bz] of data.sandEdges) {
+      const L = Math.hypot(bx - ax, bz - az); if (L < 0.2) continue;
+      let nx = -(bz - az) / L, nz = (bx - ax) / L;
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+      if (aprons.some((A) => inPoly(A, mx + nx, mz + nz))) { nx = -nx; nz = -nz; }   // n: 拡張の外向き
+      const steps = Math.max(1, Math.ceil(L / 1)), rows = [];
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps, x = ax + (bx - ax) * t, z = az + (bz - az) * t, wob = 0.75 + 0.5 * rnd();
+        rows.push(OFF.map((o, j) => { const px = x + nx * o * wob, pz = z + nz * o * wob; return [px, H(px, pz) + 0.06, pz, AL[j] * (0.7 + 0.3 * rnd())]; }));
+      }
+      for (let k = 0; k < steps; k++) for (let j = 0; j + 1 < OFF.length; j++) {
+        for (const q of [rows[k][j], rows[k + 1][j], rows[k + 1][j + 1], rows[k][j], rows[k + 1][j + 1], rows[k][j + 1]]) { v.push(q[0], q[1], q[2]); col.push(0.42, 0.37, 0.27, q[3]); }
+      }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.name = 'akagi-sand-edge'; m.renderOrder = 2; scenery.add(m);
   }
   const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
   // ---- 拡張の駐車(parkGuides の黄色い枠の向き): 枠の並びの線を拡張の中でのばし、2.7m おきに車を並べる(ところどころ空ける) ----
