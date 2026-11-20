@@ -77,5 +77,16 @@ for i in range(n):
         data['railL' if side > 0 else 'railR'][i] = 0 if hit else 1
         if hit: cnt[si] += 1
 summary['rail_off_L'], summary['rail_off_R'] = cnt
+# 3 点(9m)より短いガードレールの切れはしは外す(柱 1 本と板だけが残って、小さな看板のように見えるため)
+for key in ('railL', 'railR'):
+    f = data[key]; i = 0
+    while i < n:
+        if f[i] == 1:
+            j = i
+            while j + 1 < n and f[j + 1] == 1: j += 1
+            if j - i + 1 < 3 and all(f[k] == 1 for k in range(i, j + 1)) and (i == 0 or f[i - 1] == 0) and (j == n - 1 or f[j + 1] == 0):
+                for k in range(i, j + 1): f[k] = 0
+            i = j + 1
+        else: i += 1
 CJ.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
 print(summary)

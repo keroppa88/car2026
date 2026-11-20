@@ -486,28 +486,6 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: ROAD_COLOR, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     m.name = 'akagi-apron'; scenery.add(m);
   }
-  // ---- アスファルトと緑の境目を砂でぼかす(sandEdges の辺ぞい)。外へ 2.5m・内へ 1.2m、まん中が濃く、両はしは透明 ----
-  if (data.sandEdges?.length) {
-    let sd = 7; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
-    const v = [], col = [], OFF = [-1.2, -0.4, 0.3, 1.2, 2.5], AL = [0, 0.75, 0.9, 0.6, 0];
-    for (const [ax, az, bx, bz] of data.sandEdges) {
-      const L = Math.hypot(bx - ax, bz - az); if (L < 0.2) continue;
-      let nx = -(bz - az) / L, nz = (bx - ax) / L;
-      const mx = (ax + bx) / 2, mz = (az + bz) / 2;
-      if (aprons.some((A) => inPoly(A, mx + nx, mz + nz))) { nx = -nx; nz = -nz; }   // n: 拡張の外向き
-      const steps = Math.max(1, Math.ceil(L / 1)), rows = [];
-      for (let k = 0; k <= steps; k++) {
-        const t = k / steps, x = ax + (bx - ax) * t, z = az + (bz - az) * t, wob = 0.75 + 0.5 * rnd();
-        rows.push(OFF.map((o, j) => { const px = x + nx * o * wob, pz = z + nz * o * wob; return [px, H(px, pz) + 0.06, pz, AL[j] * (0.7 + 0.3 * rnd())]; }));
-      }
-      for (let k = 0; k < steps; k++) for (let j = 0; j + 1 < OFF.length; j++) {
-        for (const q of [rows[k][j], rows[k + 1][j], rows[k + 1][j + 1], rows[k][j], rows[k + 1][j + 1], rows[k][j + 1]]) { v.push(q[0], q[1], q[2]); col.push(0.42, 0.37, 0.27, q[3]); }
-      }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-    m.name = 'akagi-sand-edge'; m.renderOrder = 2; scenery.add(m);
-  }
   const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
   // ---- 拡張の駐車(parkGuides の黄色い枠の向き): 枠の並びの線を拡張の中でのばし、2.7m おきに車を並べる(ところどころ空ける) ----
   if (data.parkGuides?.length && aprons.length) {
@@ -528,10 +506,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       parkedCars.push({ x, z, y, heading: hit.rotation.y });
     }
   }
-  // ---- 案内看板(signs、伊香保温泉): 木の柱 2 本に白い板、青い屋根。板は道の方を向く ----
+  // ---- 案内看板(signs、伊香保温泉): 木の柱 2 本に白い板、青い屋根 ----
   for (const [sx, sz] of data.signs || []) {
-    const r = nearestRoute(sx, sz), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - sx, q.z - sz), y = H(sx, sz);
-    const sg = new THREE.Group(); sg.name = 'akagi-sign'; sg.position.set(sx, y, sz); sg.rotation.y = face;
+    // 板の両面に「伊香保温泉」。板は道に沿う向き(両方向から来る車に面が見える)。大きさは 1.5 倍
+    const r = nearestRoute(sx, sz), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - sx, q.z - sz) + Math.PI / 2, y = H(sx, sz);
+    const sg = new THREE.Group(); sg.name = 'akagi-sign'; sg.position.set(sx, y, sz); sg.rotation.y = face; sg.scale.setScalar(1.5);
     const wood = new THREE.MeshLambertMaterial({ color: 0x3a2618 });
     const cv = document.createElement('canvas'); cv.width = 128; cv.height = 320; const c2 = cv.getContext('2d');
     c2.fillStyle = '#e9e6dc'; c2.fillRect(0, 0, 128, 320); c2.strokeStyle = '#3a2618'; c2.lineWidth = 6; c2.strokeRect(3, 3, 122, 314);
