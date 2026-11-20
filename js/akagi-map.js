@@ -486,6 +486,39 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: ROAD_COLOR, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     m.name = 'akagi-apron'; scenery.add(m);
   }
+  // ---- 草むら(拡張のまわり): 拡張の近くの芝生の帯と、拡張の外まわり(外へ 3m)に、草の株を生やす。株は交差した 3 枚の板 ----
+  if (aprons.length) {
+    let sd = 3; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const nearApron = (x, z) => aprons.some((A) => x > A.x0 - 25 && x < A.x1 + 25 && z > A.z0 - 25 && z < A.z1 + 25 && (inPoly(A, x, z) || edgeDist(A, x, z) < 25));
+    const spots = [];
+    const tryAt = (x, z) => { const r = roadAt(x, z); if (!r || r.d < EDGE + 0.3 || aprons.some((A) => inPoly(A, x, z))) return; spots.push([x, H(x, z) - 0.02, z]); };
+    for (const P of meadows) {   // 芝生の帯(拡張の近くのものだけ)
+      if (!nearApron((P.x0 + P.x1) / 2, (P.z0 + P.z1) / 2)) continue;
+      for (let x = P.x0; x <= P.x1; x += 0.9) for (let z = P.z0; z <= P.z1; z += 0.9) { const tx = x + (rnd() - 0.5) * 0.8, tz = z + (rnd() - 0.5) * 0.8; if (inPoly(P, tx, tz)) tryAt(tx, tz); }
+    }
+    for (const A of aprons) for (let k = 0; k < A.pts.length; k++) {   // 拡張の外まわり
+      const [ax, az] = A.pts[k], [bx, bz] = A.pts[(k + 1) % A.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.3) continue;
+      let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(A, (ax + bx) / 2 + nx, (az + bz) / 2 + nz)) { nx = -nx; nz = -nz; }
+      for (let t = 0; t < L; t += 0.8) for (let o = 0.1; o < 3; o += 0.9) { if (rnd() < o / 4) continue; tryAt(ax + (bx - ax) * t / L + nx * (o + rnd() * 0.5), az + (bz - az) * t / L + nz * (o + rnd() * 0.5)); }
+    }
+    if (spots.length) {
+      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128; const c2 = cv.getContext('2d');
+      for (let k = 0; k < 70; k++) {   // 草の葉(下から上へ細くなる線)
+        const x = 8 + Math.random() * 112, h = 50 + Math.random() * 74, lean = (Math.random() - 0.5) * 40, g = 90 + Math.random() * 80;
+        c2.strokeStyle = `rgb(${50 + Math.random() * 40},${g},${20 + Math.random() * 30})`; c2.lineWidth = 2 + Math.random() * 2.5;
+        c2.beginPath(); c2.moveTo(x, 128); c2.quadraticCurveTo(x + lean * 0.3, 128 - h * 0.6, x + lean, 128 - h); c2.stroke();
+      }
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+      const pos = [], uv = [];
+      for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3, cx = Math.cos(a) * 0.5, cz = Math.sin(a) * 0.5;
+        pos.push(-cx, 0, -cz, cx, 0, cz, cx, 1, cz, -cx, 0, -cz, cx, 1, cz, -cx, 1, -cz); uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1); }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+      const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide }), spots.length);
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+      spots.forEach(([x, y, z], i) => { const w = 0.7 + rnd() * 0.7; Q.setFromAxisAngle(Y, rnd() * Math.PI); im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(w, 0.35 + rnd() * 0.45, w))); im.setColorAt(i, C.setHSL(0.22 + rnd() * 0.06, 0.5, 0.42 + rnd() * 0.18)); });
+      im.name = 'akagi-grass-tufts'; im.frustumCulled = false; scenery.add(im);
+    }
+  }
   const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
   // ---- 拡張の駐車(parkGuides の黄色い枠の向き): 枠の並びの線を拡張の中でのばし、2.7m おきに車を並べる(ところどころ空ける) ----
   if (data.parkGuides?.length && aprons.length) {
