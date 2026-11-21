@@ -430,7 +430,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const p = route[i], nn = tangents[i];
     if (sideRoads.some((S) => Math.hypot(p.x - S.a[0], p.z - S.a[1]) <= S.hw + 6 && (S.ux * nn.x + S.uz * nn.z) * side > 0)) return true;
     for (const o of [EDGE + 0.8, EDGE + 2]) if (onOsmRoad(p.x + nn.x * side * o, p.z + nn.z * side * o, 1.5, true)) return true;   // OSM の車の道が合流する所
-    for (const o of [EDGE + 0.6, EDGE + 1.5]) { const x = p.x + nn.x * side * o, z = p.z + nn.z * side * o; if (flats.some((A) => inPoly(A, x, z)) && !inAny(meadows, x, z)) return true; }
+    // 待避所(アスファルト・砂の広がり)に面する所は、白線も路肩もふつうどおり(切らない)
     return false;
   };
   for (const band of bands) {
@@ -821,7 +821,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: new THREE.Color(...MEADOW), side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     m.name = 'akagi-meadow-patch'; scenery.add(m);
   }
-  for (const [list, color, nm, mname] of [[aprons, ROAD_COLOR, 'akagi-apron', 'GunmaRoad'], [sands, new THREE.Color(0.17 * 0.8 + 0.6 * 0.2, 0.26 * 0.8 + 0.52 * 0.2, 0.08 * 0.8 + 0.32 * 0.2), 'akagi-sand', 'GunmaGrass']]) {   // 砂の所: 草地の色 8 割 + 少し黄色い砂 2 割
+  for (const [list, color, nm, mname] of [[aprons, ROAD_COLOR, 'akagi-apron', 'GunmaRoad'], [sands, new THREE.Color(forest[0] * 0.9 + 0.45 * 0.1, forest[1] * 0.9 + 0.32 * 0.1, forest[2] * 0.9 + 0.1 * 0.1), 'akagi-sand', 'GunmaGrass']]) {   // 砂の所: 草地の暗い方の色 9 割 + 黄土色 1 割
     if (!list.length) continue;
     const v = [], MAXE = 2;
     const put = (a, b, c) => {
