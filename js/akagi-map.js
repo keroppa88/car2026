@@ -384,24 +384,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const wm = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshLambertMaterial({ color: 0x3f6f86, side: THREE.DoubleSide }));
       wm.rotation.x = -Math.PI / 2; wm.position.y = W.y + 1.6; wm.name = 'AkagiFarLake'; scenery.add(wm);
     }
-    // さらに遠くの山並み(半径 25km の輪): 升目の外の山(赤城山・浅間山・谷川岳など)を、本当の向きと見かけの高さで。かすんだ青
-    const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, RING = 25000, SEG = 720, half = (F.nx - 1) * F.cell / 2;
-    const far2 = (F.peaks || []).filter(([, px, pz]) => Math.max(Math.abs(px - (F.x0 + half)), Math.abs(pz - (F.z0 + half))) > half - 2000);
-    const rv = [], ri = [], baseY = Math.min(...F.h) - 50;
-    for (let k = 0; k <= SEG; k++) {
-      const th = k / SEG * Math.PI * 2, dx = Math.sin(th), dz = -Math.cos(th);   // th: 北から時計回り
-      let top = baseY + 350 + 120 * Math.sin(th * 7.3) * Math.sin(th * 3.1 + 1) + 60 * Math.sin(th * 23);
-      for (const [, px, pz, el] of far2) {
-        const dist = Math.hypot(px - cx, pz - cz), pb = Math.atan2(px - cx, -(pz - cz)); let da = Math.abs(th - pb); if (da > Math.PI) da = 2 * Math.PI - da;
-        const w = Math.atan(5000 / dist), hgt = baseY + (el - baseY) * RING / dist;
-        top = Math.max(top, baseY + (hgt - baseY) * Math.exp(-(da * da) / (2 * w * w)));
-      }
-      rv.push(cx + dx * RING, baseY - 200, cz + dz * RING, cx + dx * RING, top, cz + dz * RING);
-      if (k < SEG) { const a = k * 2; ri.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-    }
-    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.setIndex(ri);
-    const ring = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: 0x7d93a6, fog: false, side: THREE.DoubleSide }));
-    ring.name = 'AkagiFarRange'; ring.renderOrder = -1; scenery.add(ring);
+    // (遠くの 2D の山並みの輪は、大きすぎて不自然なのでやめた)
   } else {
     const C = 60, Rr = 6000, m = Math.ceil(Rr / C), fv = [], fi = [], fc = [];
     const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
