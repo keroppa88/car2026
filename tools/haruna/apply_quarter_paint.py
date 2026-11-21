@@ -4,6 +4,7 @@
   水色   = アスファルトを足す(待避所・横道)                                    → aprons
   オレンジ = 砂の所を足す(待避所・横道)                                        → sands
   水色・オレンジのそばの赤線 = 足した所のふち(道から遠い側)に沿ったガードレール。道と足した所の間の赤は使わない → extraRails
+  紫の線 = 歩道(道の脇の、少し高いコンクリートの帯)                    → sidewalks(折れ線)
   黄緑の線 = 展望台のウッドデッキと木の柵(線の道から遠い側にデッキ)         → decks(折れ線)
 python3 tools/haruna/apply_quarter_paint.py 絵 下絵(4 分けの 1 枚) [絵 下絵 ...]
 """
@@ -40,6 +41,7 @@ for paint, base in zip(args[::2], args[1::2]):
     red = clean((d > 60) & (r_ > 150) & (g_ < 110) & (b_ < 110) & (r_ - g_ > 70), 25)
     ora = clean((d > 80) & (r_ > 200) & (g_ > 140) & (b_ < 90), 15)
     blu = clean((d > 80) & (b_ > 180) & (g_ > 170) & (r_ < 190), 15)
+    pur = clean((d > 40) & (r_ > 95) & (r_ < 190) & (b_ > 95) & (b_ < 190) & (g_ < 115) & (r_ - g_ > 25) & (b_ - g_ > 20), 20)
     lim = clean((d > 80) & (g_ > 190) & (r_ > 140) & (b_ < 90) & (r_ < 220), 40)
     have = (np.abs(Bw.astype(int) - (40, 44, 40)).sum(2) > 12)   # 下絵の区画のある所(暗い灰色でない)
     sc = math.hypot(A[0, 0], A[1, 0]) * K                         # 絵の 1 画素 = 何 m
@@ -112,9 +114,11 @@ for paint, base in zip(args[::2], args[1::2]):
       return lines
     lines = trace(extra)
     decks = trace(lim, 3)
+    walks = trace(pur, 5)
+    data['sidewalks'] = data.get('sidewalks', []) + walks
     data['decks'] = data.get('decks', []) + decks
     data['extraRails'] = data.get('extraRails', []) + lines
-    summary.append({'絵': Path(paint).name, '1画素m': round(sc, 3), 'ずれ': (round(sx, 2), round(sy, 2)), '道の点': cnt[2], '残す左右': cnt[:2], 'aprons': len(polys['aprons']), 'sands': len(polys['sands']), 'extraRails': len(lines), 'decks': len(decks)})
+    summary.append({'絵': Path(paint).name, '1画素m': round(sc, 3), 'ずれ': (round(sx, 2), round(sy, 2)), '道の点': cnt[2], '残す左右': cnt[:2], 'aprons': len(polys['aprons']), 'sands': len(polys['sands']), 'extraRails': len(lines), 'decks': len(decks), 'sidewalks': len(walks)})
 # 9m より短いガードレールの切れはしは外す
 for key in ('railL', 'railR'):
     f = data[key]; i = 0

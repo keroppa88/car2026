@@ -673,6 +673,27 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       m.name = 'akagi-osm-roads'; scenery.add(m);
     }
   }
+  // ---- 歩道(sidewalks: 塗った紫の線)。道の外側へ幅 2m、高さ 15cm のコンクリートの帯。道の路肩より内側には出ない ----
+  if (data.sidewalks?.length) {
+    const v = [], quad = (A, B, C, D) => v.push(...A, ...B, ...C, ...A, ...C, ...D);
+    for (const line of data.sidewalks) {
+      const pts = [];
+      for (let k = 0; k + 1 < line.length; k++) { const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 1.5)); for (let t = 0; t < m; t++) pts.push([ax + (bx - ax) * t / m, az + (bz - az) * t / m]); }
+      pts.push(line[line.length - 1]);
+      const rows = [];
+      for (const [x, z] of pts) {
+        const r = roadAt(x, z); if (!r) { rows.push(null); continue; }
+        const q = route[r.i]; let dx = x - q.x, dz = z - q.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+        const d0 = Math.max(r.d, EDGE + 0.05), ix = q.x + dx * d0, iz = q.z + dz * d0, ox = ix + dx * 2, oz = iz + dz * 2;
+        const y = (Math.max(r.y, H(ox, oz)) - 0.05) + 0.15;
+        rows.push([[ix, y, iz], [ox, y, oz], [ix, r.y - 0.05, iz]]);
+      }
+      for (let k = 0; k + 1 < rows.length; k++) { const A = rows[k], B = rows[k + 1]; if (!A || !B) continue; quad(A[0], B[0], B[1], A[1]); quad(A[2], B[2], B[0], A[0]); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x9b9b95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.name = 'akagi-sidewalk'; scenery.add(m);
+  }
   // ---- 駐車場の舗装: 多角形そのままの平らな板 1 枚(ふちはまっすぐ。升目のギザギザを出さない)。色はコースの路面と同じ ----
   const ROAD_COLOR = 0x4a4c4e;
   for (const P of parkings) {
@@ -1092,7 +1113,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2);   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
@@ -1165,7 +1186,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
-  return { parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  // くだりの暗転を始める所(fadeAt の近くの道の点。榛名山: 駐車場B)
+  const fadeIndex = data.fadeAt ? nearestRoute(data.fadeAt[0], data.fadeAt[1], 4).i : null;
+  return { fadeIndex, parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
