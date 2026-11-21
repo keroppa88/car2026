@@ -431,7 +431,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       (gap ? gapInd : ind).push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide })); mesh.name = band.name; group.add(mesh);
+    const lineTop = band.name === 'GunmaEdgeLine' || band.name === 'GunmaCenterLine';   // 白線・中央線は待避所や駐車場の板より必ず手前に
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide, polygonOffset: lineTop, polygonOffsetFactor: lineTop ? -6 : 0, polygonOffsetUnits: lineTop ? -6 : 0 })); mesh.name = band.name; group.add(mesh);
     // つながる所の路肩は、路面と同じ色で描く(下にすき間を作らない)。外側線はそこだけ描かない
     if (band.name === 'GunmaShoulder' && gapInd.length) {
       const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.BufferAttribute(v, 3)); g2.setIndex(gapInd); g2.computeVertexNormals();
@@ -759,7 +760,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     for (const [list, name, color] of [[v, 'GunmaShoulder', 0x9b9b95], [top, 'GunmaShoulder', 0x6a6c6e]]) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(list, 3)); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name, color, side: THREE.DoubleSide }));
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name, color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));   // 歩道は板に負けないよう手前に
       m.name = 'akagi-sidewalk'; (list === top ? group : scenery).add(m);   // 上面は木もれ日がかかるよう道と同じ group へ
     }
   }
