@@ -857,8 +857,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       // 草の葉: 細い線がたくさん立っている形(かたまりにしない)。色は草地の地面とほぼ同じ(画面で rgb(138,168,95) くらい)
       for (let k = 0; k < 90; k++) {
         const x = 3 + Math.random() * 122, h = 40 + Math.random() * 86, lean = (Math.random() - 0.5) * 18;
-        const v = 0.88 + Math.random() * 0.24;
-        c2.strokeStyle = `rgb(${Math.round(138 * v)},${Math.round(168 * v)},${Math.round(95 * v)})`;
+        // 草地の色に、木々の葉の色を 3 種類まぜる(濃い緑・緑・黄みの緑)
+        const pal = [[138, 168, 95], [138, 168, 95], [48, 112, 32], [62, 138, 40], [118, 150, 46]], [cr, cg, cb] = pal[Math.floor(Math.random() * pal.length)];
+        const v = 0.9 + Math.random() * 0.2;
+        c2.strokeStyle = `rgb(${Math.round(cr * v)},${Math.round(cg * v)},${Math.round(cb * v)})`;
         c2.lineWidth = 0.6 + Math.random() * 0.5;
         c2.beginPath(); c2.moveTo(x, 128); c2.quadraticCurveTo(x + lean * 0.3, 128 - h * 0.6, x + lean, 128 - h); c2.stroke();
       }
