@@ -1,7 +1,8 @@
 """榛名山: 遠景の地形(map/haruna-course.json の far)。コースのまわり 東西 24km × 南北 24km を 80m 升目で。
 国土地理院 DEM5A がある所はその高さ(升目の中の平均)。無い所は、近くの DEM の高さを、離れるほど地域のならした高さへ寄せ、
 主な山(榛名富士・相馬山・掃部ヶ岳・赤城山・子持山・小野子山・浅間山・妙義山など)の高さと位置で、なだらかな山を足す(大まか)。
-python3 tools/haruna/make_far.py DEM5A の xml ...
+python3 tools/haruna/make_far.py DEM5A の xml ... [基本項目の Cntr(等高線)・ElevPt(標高点)・WA(水面)の xml ...]
+DEM の無い所は、等高線と標高点があればそれを補間した高さ(10m おきの線なので大まか)。WA の大きな水面(榛名湖)は平らにして水の色
 """
 import json, math, re, sys
 from pathlib import Path
@@ -15,7 +16,8 @@ xs = np.arange(-HALF, HALF + 1, CELL) + 1000; zs = np.arange(-HALF, HALF + 1, CE
 nx, nz = len(xs), len(zs)
 LON = lon0 + xs / KX; LAT = lat0 - zs / KZ
 acc = np.zeros((nz, nx)); cnt = np.zeros((nz, nx))
-for f in sys.argv[1:]:
+DEMS = [f for f in sys.argv[1:] if 'DEM' in f]; CN = [f for f in sys.argv[1:] if '-Cntr-' in f or '-ElevPt-' in f]; WAS = [f for f in sys.argv[1:] if '-WA-' in f]
+for f in DEMS:
     s = open(f, encoding='utf-8').read()
     lo = list(map(float, re.search(r'<gml:lowerCorner>([^<]+)', s).group(1).split())); hi = list(map(float, re.search(r'<gml:upperCorner>([^<]+)', s).group(1).split()))
     gx, gy = [int(v) + 1 for v in re.search(r'<gml:high>([^<]+)', s).group(1).split()]; sx, sy = map(int, re.search(r'<gml:startPoint>([^<]+)', s).group(1).split())
@@ -27,9 +29,24 @@ for f in sys.argv[1:]:
     ix = np.round((X - xs[0]) / CELL).astype(int); iz = np.round((Z - zs[0]) / CELL).astype(int); m = (ix >= 0) & (ix < nx) & (iz >= 0) & (iz < nz)
     np.add.at(acc, (iz[m], ix[m]), g[ok][m]); np.add.at(cnt, (iz[m], ix[m]), 1)
 have = cnt > 0; h = np.where(have, acc / np.maximum(cnt, 1), np.nan)
+# 等高線・標高点から(DEM の無い所)
+XX, ZZ = np.meshgrid(xs, zs)
+if CN:
+    from scipy.interpolate import griddata
+    P = []
+    for f in CN:
+        t = open(f, encoding='utf-8').read()
+        for m in re.finditer(r'<gml:posList>([^<]*)</gml:posList>.*?<alti>([^<]+)</alti>', t, re.S):
+            a = np.array(m.group(1).split(), float).reshape(-1, 2)[::3]; P.append(np.c_[a, np.full(len(a), float(m.group(2)))])
+        for m in re.finditer(r'<gml:pos>([^<]*)</gml:pos>.*?<alti>([^<]+)</alti>', t, re.S):
+            a = np.array(m.group(1).split(), float); P.append(np.array([[a[0], a[1], float(m.group(2))]]))
+    P = np.concatenate(P); X = (P[:, 1] - lon0) * KX; Z = -(P[:, 0] - lat0) * KZ
+    g = griddata(np.c_[X, Z], P[:, 2], (XX, ZZ), method='linear')
+    use = ~have & ~np.isnan(g); h[use] = g[use]; have = have | use
+    print('等高線の点', len(P))
 # 無い所: いちばん近い DEM の高さを、離れるほど地域の高さへ(西は榛名の外輪 900m、東は平野 250m)
 dist, (iz_, ix_) = ndimage.distance_transform_edt(~have, return_indices=True); near = h[iz_, ix_]
-XX, ZZ = np.meshgrid(xs, zs); region = np.interp(XX, [-6000, 6000], [900, 250])
+region = np.interp(XX, [-6000, 6000], [900, 250])
 k = np.clip(dist * CELL / 3000, 0, 1); fill = near * (1 - k) + region * k
 # 主な山: [名前, 緯度, 経度, 標高 m, 裾の広さ m]
 PEAKS = [['榛名富士', 36.4767, 138.8578, 1391, 700], ['相馬山', 36.4967, 138.8506, 1411, 600], ['掃部ヶ岳', 36.4686, 138.8403, 1449, 900],
@@ -43,7 +60,22 @@ for name, la, lo, el, w in PEAKS:
     fill = np.maximum(fill, fill + (el - fill) * bump * 0.95) if True else fill
 h = np.where(have, h, fill)
 h = ndimage.gaussian_filter(h, 0.6)
+# 水面(WA): 1 km² ほどより大きいものだけ(榛名湖)。中を平らに(ふちの高さのいちばん低い所)
+water = []
+if WAS:
+    from matplotlib.path import Path as MPath
+    for f in WAS:
+        t = open(f, encoding='utf-8').read()
+        for m in re.finditer(r'<gml:exterior>.*?<gml:posList>([^<]*)</gml:posList>', t, re.S):
+            a = np.array(m.group(1).split(), float).reshape(-1, 2); X = (a[:, 1] - lon0) * KX; Z = -(a[:, 0] - lat0) * KZ
+            area = 0.5 * abs(np.dot(X, np.roll(Z, 1)) - np.dot(Z, np.roll(X, 1)))
+            if area < 300000: continue
+            inside = MPath(np.c_[X, Z]).contains_points(np.c_[XX.ravel(), ZZ.ravel()]).reshape(XX.shape)
+            if not inside.any(): continue
+            ring = ndimage.binary_dilation(inside) & ~inside; lvl = float(np.percentile(h[ring], 10)); h[inside] = lvl - 2
+            water.append({'pts': [[round(float(x), 1), round(float(z), 1)] for x, z in zip(X[::2], Z[::2])], 'y': round(lvl - BASE, 1)})
+    print('水面', len(water), [round(w['y'] + BASE) for w in water])
 d['far'] = {'x0': float(xs[0]), 'z0': float(zs[0]), 'cell': CELL, 'nx': nx, 'nz': nz, 'h': [round(float(v - BASE), 1) for v in h.ravel()],
-            'peaks': [[n, round((lo - lon0) * KX), round(-(la - lat0) * KZ), round(el - BASE)] for n, la, lo, el, _ in PEAKS]}
+            'water': water, 'peaks': [[n, round((lo - lon0) * KX), round(-(la - lat0) * KZ), round(el - BASE)] for n, la, lo, el, _ in PEAKS]}
 CJ.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
 print(nx, nz, 'DEM の所', round(float(have.mean()) * 100), '%', '高さ', round(float(h.min())), '〜', round(float(h.max())))

@@ -330,6 +330,12 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     for (let j = 0; j < F.nz - 1; j++) for (let i = 0; i < F.nx - 1; i++) { const a = j * F.nx + i, b = a + F.nx; fi.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
     const far = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); far.name = 'AkagiFarGround'; scenery.add(far);
+    // 湖(榛名湖など): 平らな水面
+    for (const W of F.water || []) {
+      const shape = new THREE.Shape(W.pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+      const wm = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshLambertMaterial({ color: 0x3f6f86, side: THREE.DoubleSide }));
+      wm.rotation.x = -Math.PI / 2; wm.position.y = W.y + 1.6; wm.name = 'AkagiFarLake'; scenery.add(wm);
+    }
     // さらに遠くの山並み(半径 25km の輪): 升目の外の山(赤城山・浅間山・谷川岳など)を、本当の向きと見かけの高さで。かすんだ青
     const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, RING = 25000, SEG = 720, half = (F.nx - 1) * F.cell / 2;
     const far2 = (F.peaks || []).filter(([, px, pz]) => Math.max(Math.abs(px - (F.x0 + half)), Math.abs(pz - (F.z0 + half))) > half - 2000);
