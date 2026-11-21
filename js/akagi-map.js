@@ -13,7 +13,9 @@ export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.03
 
 export function buildAkagiMap(data, { akagi = true } = {}) {
   // 山の地面の色。赤城山はもとの暗い森の影。ほかの峠(榛名山など)は、草地の色より少し暗いくらい(木々の色となじむ)
-  const AKAGI_FOREST = akagi ? [0.02, 0.035, 0.015] : [0.09, 0.14, 0.042], AKAGI_BUSH = akagi ? [0.035, 0.055, 0.02] : [0.105, 0.16, 0.048];   // akagi=false: 筑波山など、赤城山だけの物(トイレ・自販機・街灯)を置かない
+  // 草の色(榛名山など): 木々の葉の色 9 割 + 黄土色 1 割。山の地面はそれより少し暗く
+  const LEAF_GRASS = [0.055, 0.17, 0.018];
+  const AKAGI_FOREST = akagi ? [0.02, 0.035, 0.015] : LEAF_GRASS.map((c) => c * 0.8), AKAGI_BUSH = akagi ? [0.035, 0.055, 0.02] : LEAF_GRASS.map((c) => c * 0.9);   // akagi=false: 筑波山など、赤城山だけの物(トイレ・自販機・街灯)を置かない
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   // ふもと側の終わりの先に、まっすぐな道を 250m 足す(のぼりのループは、この直線の上に戻ってくる)。向きと下りの傾きは、終わりの 30m と同じ
   const BOTTOM_EXT = 84;
@@ -336,7 +338,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 粗い地面(6m 升目)。道の両わき(細かい地面の下)は少し下げて、細かい地面から突き出ないように
   const verts = new Float32Array((cols + 1) * (lines + 1) * 3), colors = new Float32Array(verts.length);
   const forest = AKAGI_FOREST, bush = AKAGI_BUSH;
-  const MEADOW = [0.19, 0.29, 0.085], BUSHY = [0.085, 0.15, 0.04];   // 草原(赤で囲んだ所)、草むら(黄で囲んだ所)   // 道から離れた所: 森の下の暗い影(草は1本ずつ描かず、地面の色だけ)
+  const MEADOW = akagi ? [0.19, 0.29, 0.085] : LEAF_GRASS.map((c) => c * 1.05), BUSHY = [0.085, 0.15, 0.04];   // 草原(赤で囲んだ所)、草むら(黄で囲んだ所)   // 道から離れた所: 森の下の暗い影(草は1本ずつ描かず、地面の色だけ)
   for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
     const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix, legs = legsAt(x, z);
     const d = legs.length ? legs[0].d : 1e9;
@@ -457,7 +459,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const OFF = [0, 0.4, DITCH, DITCH + 0.6, DITCH + 1.5, DITCH + 3, DITCH + 5, DITCH + 7.5, 11, 15, 20, 25, STRIP];
     const m = OFF.length, v = [], c = [], ind = [];
     const qInfo = [];   // 四角ごとの [側, 道の点, 横の段]
-    const grass = [0.17, 0.26, 0.08], rock = [0.15, 0.155, 0.15], C = new THREE.Color(), cutV = [];   // cutV: 削った深さ(元の地形 - 地面)
+    const grass = akagi ? [0.17, 0.26, 0.08] : LEAF_GRASS, rock = [0.15, 0.155, 0.15], C = new THREE.Color(), cutV = [];   // cutV: 削った深さ(元の地形 - 地面)
     for (const side of [-1, 1]) {
       const base = v.length / 3;
       for (let i = 0; i < n; i++) {
@@ -546,7 +548,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const t = q * 6, steep = steepQ[q], cut = cutQ[q];
       for (let j = 0; j < 6; j++) {
         if (steep) { const v2 = 0.85 + 0.25 * Math.sin(pos.getX(t + j) * 0.7 + pos.getY(t + j) * 1.3) * Math.sin(pos.getZ(t + j) * 0.5); C.setRGB(rock[0] * v2, rock[1] * v2, rock[2] * v2); }
-        else if (cut > 0.4 || cutA.getX(t + j) > 0.4) C.setRGB(0.05, 0.085, 0.03);   // 崖の上のふち・低い切り土: 茂み
+        else if (cut > 0.4 || cutA.getX(t + j) > 0.4) (akagi ? C.setRGB(0.05, 0.085, 0.03) : C.setRGB(LEAF_GRASS[0] * 0.7, LEAF_GRASS[1] * 0.7, LEAF_GRASS[2] * 0.7));   // 崖の上のふち・低い切り土: 茂み
         else C.setRGB(col.getX(t + j), col.getY(t + j), col.getZ(t + j));
         col.setXYZ(t + j, C.r, C.g, C.b);
       }
@@ -821,7 +823,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', color: new THREE.Color(...MEADOW), side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     m.name = 'akagi-meadow-patch'; scenery.add(m);
   }
-  for (const [list, color, nm, mname] of [[aprons, ROAD_COLOR, 'akagi-apron', 'GunmaRoad'], [sands, 0x8f7d5c, 'akagi-sand', 'GunmaGrass']]) {
+  for (const [list, color, nm, mname] of [[aprons, ROAD_COLOR, 'akagi-apron', 'GunmaRoad'], [sands, new THREE.Color(LEAF_GRASS[0] * 0.8 + 0.6 * 0.2, LEAF_GRASS[1] * 0.8 + 0.52 * 0.2, LEAF_GRASS[2] * 0.8 + 0.32 * 0.2), 'akagi-sand', 'GunmaGrass']]) {   // 砂の所: 草地の色 8 割 + 少し黄色い砂 2 割
     if (!list.length) continue;
     const v = [], MAXE = 2;
     const put = (a, b, c) => {
