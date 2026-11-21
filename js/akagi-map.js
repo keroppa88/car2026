@@ -528,6 +528,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
         if (around >= 3 || (g(i - 1, k) && g(i + 1, k)) || (g(i, k - 1) && g(i, k + 1))) steepQ[q] = 1;   // まわりがグレーの緑の破片
       }
     }
+    // 塗って決めた「崖にしない所」(noRock): グレーの崖にしない
+    for (const P of (data.noRock || []).map(region)) for (let q = 0; q < nQuad; q++) { if (!steepQ[q]) continue; let x = 0, z = 0; for (let j = 0; j < 6; j++) { x += pos.getX(q * 6 + j) / 6; z += pos.getZ(q * 6 + j) / 6; } if (inPoly(P, x, z)) steepQ[q] = 0; }
     for (let q = 0; q < nQuad; q++) {
       const t = q * 6, steep = steepQ[q], cut = cutQ[q];
       for (let j = 0; j < 6; j++) {
