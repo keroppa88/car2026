@@ -276,9 +276,24 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
   const underFlat = () => 0;   // 脇道も地面そのものを道の高さにするので、下げない
+  // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
+  const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
+  for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
+    const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 1.5));
+    for (let t = 0; t <= m; t++) { const x = ax + (bx - ax) * t / m, z = az + (bz - az) * t / m, r = nearestRoute(x, z); if (r.i < 0 || r.d > EDGE + 4) continue;
+      const q = route[r.i], nn = tangents[r.i]; walk[(x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1][r.i] = 1; }
+  }
+  for (const w of walk) {   // 3 点(9m)までのすき間はつなぎ、3 点より短い切れはしは消す
+    for (let i = 0; i < n; i++) if (!w[i]) { let j = i; while (j < n && !w[j]) j++; if (i > 0 && j < n && j - i <= 3) for (let k = i; k < j; k++) w[k] = 1; i = j; }
+    for (let i = 0; i < n; i++) if (w[i]) { let j = i; while (j < n && w[j]) j++; if (j - i < 3) for (let k = i; k < j; k++) w[k] = 0; i = j; }
+  }
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
+    if (lg.length && lg[0].d < EDGE + WALK + 4) {   // 歩道: 路肩の外 2m は道の高さ(歩道の板の下)。その先 4m で元の地面へ
+      const i = lg[0].i, q = route[i], nn = tangents[i], sd = (x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1;
+      if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
+    }
     { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
       const o = osmNearest(x, z, 12);
       if (o) { const y = osmProfile(o.r)[o.k], e = o.d - o.r.w / 2 - 0.6; if (e <= 0) return y; if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
@@ -704,25 +719,18 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       m.name = 'akagi-osm-roads'; scenery.add(m);
     }
   }
-  // ---- 歩道(sidewalks: 塗った紫の線)。道の外側へ幅 2m、高さ 15cm のコンクリートの帯。道の路肩より内側には出ない ----
-  if (data.sidewalks?.length) {
+  // ---- 歩道: 路肩の外へ幅 2m、道の路面より 15cm 高いコンクリートの帯(道の点に沿うので波打たない)。道ぎわは縁石の立ち上がり ----
+  {
     const v = [], quad = (A, B, C, D) => v.push(...A, ...B, ...C, ...A, ...C, ...D);
-    for (const line of data.sidewalks) {
-      const pts = [];
-      for (let k = 0; k + 1 < line.length; k++) { const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 1.5)); for (let t = 0; t < m; t++) pts.push([ax + (bx - ax) * t / m, az + (bz - az) * t / m]); }
-      pts.push(line[line.length - 1]);
-      const rows = [];
-      for (const [x, z] of pts) {
-        const r = roadAt(x, z); if (!r) { rows.push(null); continue; }
-        const q = route[r.i]; let dx = x - q.x, dz = z - q.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-        const d0 = Math.max(r.d, EDGE + 0.05), ix = q.x + dx * d0, iz = q.z + dz * d0, ox = ix + dx * 2, oz = iz + dz * 2;
-        const y = (Math.max(r.y, H(ox, oz)) - 0.05) + 0.15;
-        rows.push([[ix, y, iz], [ox, y, oz], [ix, r.y - 0.05, iz]]);
-      }
-      for (let k = 0; k + 1 < rows.length; k++) { const A = rows[k], B = rows[k + 1]; if (!A || !B) continue; quad(A[0], B[0], B[1], A[1]); quad(A[2], B[2], B[0], A[0]); }
+    for (const [si, side] of [[0, 1], [1, -1]]) for (let i = 0; i + 1 < n; i++) {
+      if (!walk[si][i] || !walk[si][i + 1]) continue;
+      const P = (j, o, dy) => { const p = route[j], nn = tangents[j]; return [p.x + nn.x * side * o, p.y + dy, p.z + nn.z * side * o]; };
+      quad(P(i, EDGE, 0.15), P(i + 1, EDGE, 0.15), P(i + 1, EDGE + WALK, 0.15), P(i, EDGE + WALK, 0.15));
+      quad(P(i, EDGE, -0.02), P(i + 1, EDGE, -0.02), P(i + 1, EDGE, 0.15), P(i, EDGE, 0.15));
+      quad(P(i, EDGE + WALK, 0.15), P(i + 1, EDGE + WALK, 0.15), P(i + 1, EDGE + WALK, -0.1), P(i, EDGE + WALK, -0.1));
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x9b9b95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', color: 0x9b9b95, side: THREE.DoubleSide }));
     m.name = 'akagi-sidewalk'; scenery.add(m);
   }
   // ---- 駐車場の舗装: 多角形そのままの平らな板 1 枚(ふちはまっすぐ。升目のギザギザを出さない)。色はコースの路面と同じ ----
