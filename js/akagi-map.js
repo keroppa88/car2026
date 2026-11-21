@@ -122,7 +122,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const meadows = (data.meadows || []).map(region), bushes = (data.bushes || []).map(region), parkings = (data.parkings || []).map(region);
   // 真上の絵(tools/topview/apply_paint.py)で決めた所: 道の高さのアスファルトの拡張(aprons)・木々(woods)
   const aprons = (data.aprons || []).map(region), woods = (data.woods || []).map(region);
-  const sands = (data.sands || []).map(region);   // 砂の待避所・横道(tools/haruna/apply_quarter_paint.py)
+  const sands = (data.sands || []).map(region);
+  const cuts = (data.cuts || []).map(region);   // 塗って消した所: アスファルト・砂・脇道をここには作らない(地面は元のまま)
+  const inCut = (x, z) => cuts.some((C) => x > C.x0 && x < C.x1 && z > C.z0 && z < C.z1 && inPoly(C, x, z));   // 砂の待避所・横道(tools/haruna/apply_quarter_paint.py)
   const flats = aprons.concat(sands);               // 道の高さにそろえる所(道から 18m より先は元の地面へ寄せる: 長い横道が浮かないように)
   // 一車線の横道(sideRoads: 中心線と幅)。本線の路面の中から始めて、奥へ。形は帯の多角形にして flats に入れる(高さの決め方は同じ)
   const sideRoads = (data.sideRoads || []).map((S) => {
@@ -296,6 +298,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const i = lg[0].i, q = route[i], nn = tangents[i], sd = (x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1;
       if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
     }
+    if (inCut(x, z)) return h;
     { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
       const o = osmNearest(x, z, 12);
       if (o) { const y = osmProfile(o.r)[o.k], e = o.d - o.r.w / 2 - 0.6; if (e <= 0) return y; if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
@@ -728,8 +731,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const strip = (list, from, to, dy, ok) => { for (let k = 0; k + 1 < rows.length; k++) { const A = rows[k], B = rows[k + 1]; if (!ok(A, B)) continue;
         const q = [[A.x + A.nx * from, A.y + dy, A.z + A.nz * from], [A.x + A.nx * to, A.y + dy, A.z + A.nz * to], [B.x + B.nx * to, B.y + dy, B.z + B.nz * to], [B.x + B.nx * from, B.y + dy, B.z + B.nz * from]];
         list.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]); } };
-      const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5;
-      const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4;
+      const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
+      const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
       strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);
       strip(bands.GunmaShoulder, -hw - SH, -hw, -0.01, away); strip(bands.GunmaShoulder, hw, hw + SH, -0.01, away);
       if (r.w >= 4.5) { strip(bands.GunmaEdgeLine, -hw + 0.1, -hw + 0.25, 0.02, away); strip(bands.GunmaEdgeLine, hw - 0.25, hw - 0.1, 0.02, away); }
@@ -812,7 +815,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
       const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
       // 道の路面の下までのばして描く(道の帯が上にかぶさるので、道とのさかいめがギザギザにならない)。芝生の帯(緑地)には描かない
-      if (!r || r.d < R - 0.3 || inAny(meadows, cx, cz)) return;
+      if (!r || r.d < R - 0.3 || inAny(meadows, cx, cz) || inCut(cx, cz)) return;
       for (const q of [a, b, c]) { const rq = roadAt(q[0], q[1]); v.push(q[0], rq && rq.d < EDGE ? rq.y - 0.06 : H(q[0], q[1]) + 0.03, q[1]); }   // 路肩の下は路肩より低く(路肩の帯が上にかぶさる)
     };
     for (const A of list) for (const t of THREE.ShapeUtils.triangulateShape(A.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => A.pts[k]));
