@@ -151,6 +151,24 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     return null;
   };
+  // いちばん近い OSM の道の点(reach m 以内): { r, k, d = 中心線からの距離 }
+  const osmNearest = (x, z, reach) => {
+    if (!osmRoads.length) return null;
+    const bx = Math.floor(x / 16), bz = Math.floor(z / 16); let best = null;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [ri, k] of osmGrid.get((bx + a) + ',' + (bz + b)) || []) {
+      const r = osmRoads[ri]; if (r.kind === 'trail') continue;
+      const [px, pz] = r.pts[k], dd = Math.hypot(px - x, pz - z); if (dd <= reach && (!best || dd < best.d)) best = { r, k, d: dd };
+    }
+    return best;
+  };
+  // OSM の道の高さの並び: 地形を前後 6m でならしたもの。本線の近く(12m)は本線の高さへ
+  const osmProfile = (r) => {
+    if (r.prof) return r.prof;
+    const raw = r.pts.map(([x, z]) => H0(x, z));
+    r.prof = r.pts.map(([x, z], k) => { let a = 0, c = 0; for (let j = Math.max(0, k - 3); j <= Math.min(r.pts.length - 1, k + 3); j++) { a += raw[j]; c++; }
+      let y = a / c; const rd = roadAt(x, z); if (rd && rd.d < EDGE + 12) y = THREE.MathUtils.lerp(rd.y - 0.05, y, THREE.MathUtils.smoothstep(rd.d, EDGE, EDGE + 12)); return y; });
+    return r.prof;
+  };
   // 駐車場の拡張(駐車の向きの枠・看板があるもの)。草むら・芝生の板はここだけ
   const parkAprons = aprons.filter((A) => (data.parkGuides || []).concat(data.signs || []).some((g) => inPoly(A, g[0], g[1]) || edgeDist(A, g[0], g[1]) < 40));
   // 姫百合駐車場だけの境界線。道路側を舗装として残し、反対側を森林へ戻す。
@@ -257,10 +275,14 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   };
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
-  const underFlat = (x, z) => onOsmRoad(x, z, 1) ? 0.35 : 0;
+  const underFlat = () => 0;   // 脇道も地面そのものを道の高さにするので、下げない
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
+    { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
+      const o = osmNearest(x, z, 12);
+      if (o) { const y = osmProfile(o.r)[o.k], e = o.d - o.r.w / 2 - 0.6; if (e <= 0) return y; if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
+    }
     for (const S of sideRoads) {   // 一車線の横道: 坂をゆるめた高さの並び(prof)に沿う。まわり 6m で元の地面へ
       if (x < S.x0 - APRON_BLEND || x > S.x1 + APRON_BLEND || z < S.z0 - APRON_BLEND || z > S.z1 + APRON_BLEND) continue;
       const t = (x - S.a[0]) * S.ux + (z - S.a[1]) * S.uz, off = Math.abs(-(x - S.a[0]) * S.uz + (z - S.a[1]) * S.ux);
@@ -390,14 +412,22 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   };
   for (const band of bands) {
     const v = new Float32Array(n * 2 * 3), ind = [];
-    const bandSide = band.name === 'GunmaEdgeLine' ? Math.sign(band.from) : 0;
+    // 外側線と路肩は、脇道・待避所がつながる所では切る(その下の舗装がつながって見える)
+    const bandSide = band.name === 'GunmaEdgeLine' || band.name === 'GunmaShoulder' ? Math.sign(band.from + band.to) : 0, gapInd = [];
     for (let i = 0; i < n; i++) {
       const p = route[i], nn = tangents[i];
       for (let s = 0; s < 2; s++) { const across = s ? band.to : band.from, o = (i * 2 + s) * 3; v[o] = p.x + nn.x * across; v[o + 1] = p.y + band.y; v[o + 2] = p.z + nn.z * across; }
-      if (i + 1 < n && !(bandSide && (edgeGap(i, bandSide) || edgeGap(i + 1, bandSide)))) ind.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+      if (i + 1 >= n) continue;
+      const gap = bandSide && (edgeGap(i, bandSide) || edgeGap(i + 1, bandSide));
+      (gap ? gapInd : ind).push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(v, 3)); geo.setIndex(ind); geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ name: band.name, color: band.color, side: THREE.DoubleSide })); mesh.name = band.name; group.add(mesh);
+    // つながる所の路肩は、路面と同じ色で描く(下にすき間を作らない)。外側線はそこだけ描かない
+    if (band.name === 'GunmaShoulder' && gapInd.length) {
+      const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.BufferAttribute(v, 3)); g2.setIndex(gapInd); g2.computeVertexNormals();
+      const m2 = new THREE.Mesh(g2, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x4a4c4e, side: THREE.DoubleSide })); m2.name = 'GunmaRoad'; group.add(m2);
+    }
   }
   // ---- 道の両わきの細かい地面(路肩の外から 30m)。山側の崖はグレー(吹き付けのコンクリート)、崖の下と谷側の斜面は草、奥は森の暗い影 ----
   {
@@ -655,12 +685,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const COL = { asphalt: new THREE.Color(0x4a4c4e), dirt: new THREE.Color(0x6e5f47), trail: new THREE.Color(0x5e5240) };
     const v = [], col = [];
     for (const r of osmRoads) {
-      const P = r.pts, hw = r.w / 2, raw = P.map(([x, z]) => H0(x, z));
-      const ys = raw.map((_, k) => { let a = 0, c = 0; for (let j = Math.max(0, k - 3); j <= Math.min(P.length - 1, k + 3); j++) { a += raw[j]; c++; } return a / c; });
+      const P = r.pts, hw = r.w / 2, ys = osmProfile(r);
       const rows = P.map(([x, z], k) => {
         const a = P[Math.max(0, k - 1)], b = P[Math.min(P.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l;
-        const rd = roadAt(x, z); let y = ys[k] + 0.08;
-        if (rd && rd.d < EDGE + 12) y = THREE.MathUtils.lerp(rd.y - 0.04, y, THREE.MathUtils.smoothstep(rd.d, EDGE, EDGE + 12));
+        const rd = roadAt(x, z); const y = rd && rd.d < EDGE ? rd.y - 0.06 : ys[k] + 0.03;   // 路肩の下は路肩より低く
         return { x, z, nx, nz, y, onMain: rd && rd.d < R * 0.5 };   // 本線の路面の下までのばす(つなぎ目がギザギザにならない)
       });
       const c = COL[r.kind];
@@ -672,7 +700,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     if (v.length) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
       m.name = 'akagi-osm-roads'; scenery.add(m);
     }
   }
