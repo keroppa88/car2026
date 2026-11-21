@@ -11,7 +11,9 @@ const RAIL = AKAGI_ROAD_HALF + SHOULDER + 0.35;   // ガードレールの位置
 // 木陰のある所(1)とない所(0)。道の木陰の模様(createCanopyShade の grove)と同じ式で、木の並びもこれに合わせる
 export const akagiGrove = (x, z) => THREE.MathUtils.smoothstep(Math.sin(x * 0.035 + Math.sin(z * 0.048)), -0.4, 0.65);
 
-export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: 筑波山など、赤城山だけの物(トイレ・自販機・街灯)を置かない
+export function buildAkagiMap(data, { akagi = true } = {}) {
+  // 山の地面の色。赤城山はもとの暗い森の影。ほかの峠(榛名山など)は、草地の色より少し暗いくらい(木々の色となじむ)
+  const AKAGI_FOREST = akagi ? [0.02, 0.035, 0.015] : [0.09, 0.14, 0.042], AKAGI_BUSH = akagi ? [0.035, 0.055, 0.02] : [0.105, 0.16, 0.048];   // akagi=false: 筑波山など、赤城山だけの物(トイレ・自販機・街灯)を置かない
   const route = data.route.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   // ふもと側の終わりの先に、まっすぐな道を 250m 足す(のぼりのループは、この直線の上に戻ってくる)。向きと下りの傾きは、終わりの 30m と同じ
   const BOTTOM_EXT = 84;
@@ -254,7 +256,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     S.prof = p; return p;
   };
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
-  const underFlat = (x, z) => flats.some((A) => x > A.x0 - 1 && x < A.x1 + 1 && z > A.z0 - 1 && z < A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) || onOsmRoad(x, z, 1) ? 0.6 : 0;
+  // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
+  const underFlat = (x, z) => onOsmRoad(x, z, 1) ? 0.35 : 0;
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
@@ -293,7 +296,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
   };
   // 粗い地面(6m 升目)。道の両わき(細かい地面の下)は少し下げて、細かい地面から突き出ないように
   const verts = new Float32Array((cols + 1) * (lines + 1) * 3), colors = new Float32Array(verts.length);
-  const forest = [0.02, 0.035, 0.015], bush = [0.035, 0.055, 0.02];
+  const forest = AKAGI_FOREST, bush = AKAGI_BUSH;
   const MEADOW = [0.19, 0.29, 0.085], BUSHY = [0.085, 0.15, 0.04];   // 草原(赤で囲んだ所)、草むら(黄で囲んだ所)   // 道から離れた所: 森の下の暗い影(草は1本ずつ描かず、地面の色だけ)
   for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
     const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix, legs = legsAt(x, z);
@@ -325,7 +328,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const y = F.h[j * F.nx + i];
       fv.push(x, inside ? groundHeightAt(x, z) - 40 : y - 0.3, z);
       const hi = THREE.MathUtils.smoothstep(y, 300, 800), n = 0.5 + 0.5 * Math.sin(x * 0.013 + Math.sin(z * 0.011) * 2);
-      C1.setRGB(forest[0] * (1.2 + 0.5 * n) + 0.02 * hi, forest[1] * (1.2 + 0.4 * n) + 0.015 * hi, forest[2] * (1.1 + 0.3 * n) + 0.01 * hi); fc.push(C1.r, C1.g, C1.b);
+      const kk = akagi ? 1.2 : 0.85, kn = akagi ? 0.5 : 0.25; C1.setRGB(forest[0] * (kk + kn * n) + 0.02 * hi, forest[1] * (kk + kn * n) + 0.015 * hi, forest[2] * (kk + kn * n) + 0.01 * hi); fc.push(C1.r, C1.g, C1.b);
     }
     for (let j = 0; j < F.nz - 1; j++) for (let i = 0; i < F.nx - 1; i++) { const a = j * F.nx + i, b = a + F.nx; fi.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
@@ -658,7 +661,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
         const a = P[Math.max(0, k - 1)], b = P[Math.min(P.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l;
         const rd = roadAt(x, z); let y = ys[k] + 0.08;
         if (rd && rd.d < EDGE + 12) y = THREE.MathUtils.lerp(rd.y - 0.04, y, THREE.MathUtils.smoothstep(rd.d, EDGE, EDGE + 12));
-        return { x, z, nx, nz, y, onMain: rd && rd.d < EDGE - 0.3 };
+        return { x, z, nx, nz, y, onMain: rd && rd.d < R * 0.5 };   // 本線の路面の下までのばす(つなぎ目がギザギザにならない)
       });
       const c = COL[r.kind];
       for (let k = 0; k + 1 < rows.length; k++) {
@@ -669,7 +672,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
     }
     if (v.length) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'GunmaShoulder', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
       m.name = 'akagi-osm-roads'; scenery.add(m);
     }
   }
@@ -747,8 +750,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {   // akagi=false: �
       const L = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
       if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
       const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
-      if (!r || r.d < EDGE - 0.05 || inAny(meadows, cx, cz)) return;   // 道の上と、芝生の帯(緑地)には描かない
-      for (const q of [a, b, c]) v.push(q[0], H(q[0], q[1]) + 0.02, q[1]);
+      // 道の路面の下までのばして描く(道の帯が上にかぶさるので、道とのさかいめがギザギザにならない)。芝生の帯(緑地)には描かない
+      if (!r || r.d < R - 0.3 || inAny(meadows, cx, cz)) return;
+      for (const q of [a, b, c]) { const rq = roadAt(q[0], q[1]); v.push(q[0], rq && rq.d < EDGE ? rq.y - 0.06 : H(q[0], q[1]) + 0.03, q[1]); }   // 路肩の下は路肩より低く(路肩の帯が上にかぶさる)
     };
     for (const A of list) for (const t of THREE.ShapeUtils.triangulateShape(A.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => A.pts[k]));
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
