@@ -371,11 +371,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     for (let j = 0; j < F.nz - 1; j++) for (let i = 0; i < F.nx - 1; i++) { const a = j * F.nx + i, b = a + F.nx; fi.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
-    // 遠くほどモヤでかすませて、遠景の 2D の山並み(かすんだ青灰色)に近づける(カメラからの距離 1.5km〜9km)
+    // 遠くほどモヤでかすませて、遠景の 2D の山並み(かすんだ青灰色)に近づける。重なる山並みが見分けられるよう 4 段階(2km・4km・6km・8.5km)
     const farMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     farMat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <project_vertex>', '#include <project_vertex>\nvHazeD = length(mvPosition.xyz);');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.49, 0.56, 0.62), smoothstep(1500.0, 9000.0, vHazeD) * 0.85);');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <dithering_fragment>', '#include <dithering_fragment>\nfloat hz = 0.22 * smoothstep(1800.0, 2400.0, vHazeD) + 0.22 * smoothstep(3500.0, 4200.0, vHazeD) + 0.22 * smoothstep(5500.0, 6300.0, vHazeD) + 0.2 * smoothstep(8000.0, 9000.0, vHazeD);\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.49, 0.56, 0.62), hz);');
     };
     const far = new THREE.Mesh(g, farMat); far.name = 'AkagiFarGround'; scenery.add(far);
     // 湖(榛名湖など): 平らな水面
