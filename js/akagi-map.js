@@ -344,7 +344,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
     const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
     const area = inAny(meadows, x, z) ? MEADOW : inAny(bushes, x, z) ? BUSHY : null;
-    for (let c = 0; c < 3; c++) colors[k * 3 + c] = area ? area[c] * (0.92 + 0.16 * mix) : forest[c] + (bush[c] - forest[c]) * mix * 0.7;
+    for (let c = 0; c < 3; c++) colors[k * 3 + c] = area ? area[c] * (0.92 + 0.16 * mix) : forest[c] + (bush[c] - forest[c]) * mix * (akagi ? 0.7 : 0.2);
   }
   const idx = [];
   for (let iz = 0; iz < lines; iz++) for (let ix = 0; ix < cols; ix++) { const a = iz * (cols + 1) + ix, b = a + cols + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
@@ -367,7 +367,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const y = F.h[j * F.nx + i];
       fv.push(x, inside ? groundHeightAt(x, z) - 40 : y - 0.3, z);
       const hi = THREE.MathUtils.smoothstep(y, 300, 800), n = 0.5 + 0.5 * Math.sin(x * 0.013 + Math.sin(z * 0.011) * 2);
-      const kk = akagi ? 1.2 : 0.85, kn = akagi ? 0.5 : 0.25; C1.setRGB(forest[0] * (kk + kn * n) + 0.02 * hi, forest[1] * (kk + kn * n) + 0.015 * hi, forest[2] * (kk + kn * n) + 0.01 * hi); fc.push(C1.r, C1.g, C1.b);
+      const kk = akagi ? 1.2 : 0.85, kn = akagi ? 0.5 : 0.06; C1.setRGB(forest[0] * (kk + kn * n) + 0.02 * hi, forest[1] * (kk + kn * n) + 0.015 * hi, forest[2] * (kk + kn * n) + 0.01 * hi); fc.push(C1.r, C1.g, C1.b);
     }
     for (let j = 0; j < F.nz - 1; j++) for (let i = 0; i < F.nx - 1; i++) { const a = j * F.nx + i, b = a + F.nx; fi.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
