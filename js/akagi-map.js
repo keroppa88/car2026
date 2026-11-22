@@ -125,6 +125,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const sands = (data.sands || []).map(region);
   const cuts = (data.cuts || []).map(region);   // 塗って消した所: アスファルト・砂・脇道をここには作らない(地面は元のまま)
   const inCut = (x, z) => cuts.some((C) => x > C.x0 && x < C.x1 && z > C.z0 && z < C.z1 && inPoly(C, x, z));   // 砂の待避所・横道(tools/haruna/apply_quarter_paint.py)
+  const slabs = (data.slabs || []).map(region);   // 板の駐車場: 中は道と同じ高さで平ら(崖の上へ張り出してよい)。ふちはコンクリートの側面
   const flats = aprons.concat(sands);               // 道の高さにそろえる所(道から 18m より先は元の地面へ寄せる: 長い横道が浮かないように)
   // 一車線の横道(sideRoads: 中心線と幅)。本線の路面の中から始めて、奥へ。形は帯の多角形にして flats に入れる(高さの決め方は同じ)
   const sideRoads = (data.sideRoads || []).map((S) => {
@@ -298,6 +299,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const i = lg[0].i, q = route[i], nn = tangents[i], sd = (x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1;
       if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
     }
+    for (const S of slabs) if (x >= S.x0 && x <= S.x1 && z >= S.z0 && z <= S.z1 && inPoly(S, x, z)) { const k = nearestRoute(x, z, 4); if (k.i >= 0) return route[k.i].y - 0.05; }   // 板の駐車場(切った所より先に見る)
     if (inCut(x, z)) return h;
     { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
       const o = osmNearest(x, z, 12);
@@ -896,6 +898,35 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       hit.position.set(x, y + 0.8, z); hit.rotation.y = heading + (rnd() < 0.5 ? 0 : Math.PI); hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
       parkedCars.push({ x, z, y, heading: hit.rotation.y });
     }
+  }
+  // ---- 板の駐車場(slabs)のふち: 板の高さから元の地面の下までコンクリートの側面 ----
+  if (slabs.length) {
+    const v = [];
+    for (const S of slabs) for (let i = 0, j = S.pts.length - 1; i < S.pts.length; j = i++) {
+      const a = S.pts[j], b = S.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.ceil(L / 1.5));
+      for (let t = 0; t < k; t++) {
+        const p0 = [a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k], p1 = [a[0] + (b[0] - a[0]) * (t + 1) / k, a[1] + (b[1] - a[1]) * (t + 1) / k];
+        const r0 = roadAt(p0[0], p0[1]), r1 = roadAt(p1[0], p1[1]); if (r0 && r1 && Math.min(r0.d, r1.d) < EDGE + 0.5) continue;   // 道に面した辺は作らない
+        const sy = (q) => { const k = nearestRoute(q[0], q[1], 4); return route[Math.max(0, k.i)].y - 0.03; }, y0 = sy(p0), y1 = sy(p1), g0 = Math.min(H0(p0[0], p0[1]), y0 - 0.3) - 1, g1 = Math.min(H0(p1[0], p1[1]), y1 - 0.3) - 1;
+        v.push(p0[0], g0, p0[1], p1[0], g1, p1[1], p1[0], y1, p1[1], p0[0], g0, p0[1], p1[0], y1, p1[1], p0[0], y0, p0[1]);
+      }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: 'HarunaSlabSide', color: 0x8c8b86, side: THREE.DoubleSide })); m.name = 'haruna-slab-side'; scenery.add(m);
+    // 上面: 路面の色の平らな板(細かく割って、各点を近い道の点の高さに)
+    const tv = [];
+    for (const S of slabs) {
+      const sy = (x, z) => { const k = nearestRoute(x, z, 4); return route[Math.max(0, k.i)].y + 0.06; };
+      for (let x = S.x0; x < S.x1; x += 1.5) for (let z = S.z0; z < S.z1; z += 1.5) {
+        const cs = [[x, z], [x + 1.5, z], [x + 1.5, z + 1.5], [x, z + 1.5]];
+        if (!cs.some(([cx, cz]) => inPoly(S, cx, cz))) continue;
+        // 升目をふちで切る(三角形の重心が中にあるものだけ。ふちの欠けは下の多角形の三角形で埋める)
+        for (const tri of [[0, 1, 2], [0, 2, 3]]) { const P3 = tri.map((t) => cs[t]); const gx = (P3[0][0] + P3[1][0] + P3[2][0]) / 3, gz = (P3[0][1] + P3[1][1] + P3[2][1]) / 3; if (inPoly(S, gx, gz) && P3.every(([px, pz]) => inPoly(S, px, pz))) for (const [px, pz] of P3) tv.push(px, sy(px, pz), pz); }
+      }
+      for (const t of THREE.ShapeUtils.triangulateShape(S.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of t) tv.push(S.pts[k][0], sy(S.pts[k][0], S.pts[k][1]) - 0.01, S.pts[k][1]);
+    }
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tv, 3)); tg.computeVertexNormals();
+    const tm = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ name: 'GunmaRoad', color: 0x4a4c4e, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); tm.name = 'haruna-slab-top'; group.add(tm);
   }
   // ---- 塗って決めた駐車(parkCars: [x, z, 向き])。車の見た目は main.js、ここは当たり判定 ----
   for (const [x, z, ang] of data.parkCars || []) {
