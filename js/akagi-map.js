@@ -631,10 +631,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   }
 
   // ---- 足した所(待避所・横道)のふちのガードレール(extraRails の折れ線)。2m おきに区切って地面の高さに沿わせる。支柱は 4m おき ----
-  if (data.extraRails?.length) {
+  for (const [railLines, mat] of [[data.extraRails, railMat], [data.blackRails, new THREE.MeshLambertMaterial({ name: 'HarunaBlackRail', color: 0x1e1f21, side: THREE.DoubleSide })]]) if (railLines?.length) {   // blackRails: 黒いガードレール
     const panel = [], wall = [], postPts = [];
     const quad = (P, A, Bq, y0, y1) => P.push(A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y0, Bq[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y1, A[2]);
-    for (const line of data.extraRails) {
+    for (const line of railLines) {
       const pts = [];
       for (let k = 0; k + 1 < line.length; k++) {
         const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 2));
@@ -647,10 +647,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let k = 1; k < P3.length; k++) { acc += Math.hypot(P3[k][0] - P3[k - 1][0], P3[k][2] - P3[k - 1][2]); if (acc >= 4 || k === P3.length - 1) { postPts.push(P3[k]); acc = 0; } }
     }
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(panel, 3)); pg.computeVertexNormals();
-    const pm = new THREE.Mesh(pg, railMat); pm.name = 'GunmaGuardrail'; scenery.add(pm);
+    const pm = new THREE.Mesh(pg, mat); pm.name = 'GunmaGuardrail'; scenery.add(pm);
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wall, 3)); wg.computeVertexNormals();
     const wm = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })); wm.name = 'akagi-guardrail'; scenery.add(wm); colliders.push(wm);
-    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), railMat, postPts.length), M = new THREE.Matrix4();
+    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), mat, postPts.length), M = new THREE.Matrix4();
     postPts.forEach(([x, y, z], i) => posts.setMatrixAt(i, M.makeTranslation(x, y + 0.4, z)));
     posts.name = 'GunmaGuardrail'; posts.computeBoundingSphere(); scenery.add(posts);
   }

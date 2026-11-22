@@ -56,7 +56,7 @@ data = {'origin': [float(lat0), float(lon0)], 'base': BASE, 'start': int(round(E
                    'h': [round(float(v), 1) for v in gh.ravel()]}}
 if OUT.exists():   # あとで塗って決めた場所(草原・ガードレールなど)は残す
     old = json.loads(OUT.read_text())
-    for key in ('meadows', 'bushes', 'parkings', 'toilets', 'railL', 'railR', 'aprons', 'woods', 'parkGuides', 'signs', 'sands', 'extraRails', 'decks', 'sideRoads', 'osmRoads', 'far', 'sidewalks', 'cuts', 'noRock', 'rock', 'fences', 'trees', 'terraces', 'fadeAt', 'parkCars', 'slabs'):
+    for key in ('meadows', 'bushes', 'parkings', 'toilets', 'railL', 'railR', 'aprons', 'woods', 'parkGuides', 'signs', 'sands', 'extraRails', 'decks', 'sideRoads', 'osmRoads', 'far', 'sidewalks', 'cuts', 'noRock', 'rock', 'fences', 'trees', 'terraces', 'fadeAt', 'parkCars', 'slabs', 'blackRails'):
         if key in old: data[key] = old[key]
 OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
 print('スタート', data['start'], 'ゴール', data['goal'], ' 長さ', round(L), 'm  点', n, ' 高さ', round(y[0]), '→', round(y[-1]), ' 基準', BASE, ' 地面', nx, 'x', nz, OUT.stat().st_size // 1024, 'KB')
