@@ -13,3 +13,13 @@ vw01.vox B
 track.vox C
 nissan2.vox A
 toyotahigh02.vox C
+roadstar0.vox A
+roadstar01.vox A
+roadstar02.vox A
+subaru0.vox S
+subaru01.vox S
+kabu.vox C
+kabu2.vox C
+kabu3.vox C
+kabu4.vox C
+kabu5.vox C

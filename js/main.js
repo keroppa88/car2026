@@ -4381,7 +4381,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     if (!gunmaCourse?.parkedCars?.length) return;
     // 台数が多い所(榛名山の拡張の駐車)は車種を増やす(それでもトラック・軽トラは入れない)
     const names = gunmaCourse.parkedCars.length > AKAGI_PARKED_VOX.length
-      ? AKAGI_PARKED_VOX.concat(['vw02.vox', 'nissan4.vox', 'nissan180sx1.vox', 'volvo1.vox', 'toyotahigh03.vox', 'toyotahigh02.vox'])
+      ? AKAGI_PARKED_VOX.concat(['vw02.vox', 'nissan4.vox', 'nissan180sx1.vox', 'volvo1.vox', 'toyotahigh03.vox', 'toyotahigh02.vox', 'roadstar0.vox', 'subaru0.vox', 'roadstar01.vox', 'subaru01.vox'])
       : AKAGI_PARKED_VOX;
     const models = await loadCpuCars(names.map((name) => 'vox/' + encodeURIComponent(name)));
     if (!models.length) return;
@@ -4443,7 +4443,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const at = sampleGunmaTrafficPath(path, initialDistance);
         const ahead = sampleGunmaTrafficPath(path, Math.min(initialDistance + 4, endDistance));
         const vehicle = vehicles[created % vehicles.length];
-        const car = makeCarGroup(vehicle.mesh.clone(), false, false, 'gunmaCpuBoost');
+        const bike = isKabuVoxUrl(vehicle.url);
+        const car = makeCarGroup(vehicle.mesh.clone(), false, bike, 'gunmaCpuBoost');
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
         // 色を強めても変わらないので、光球の大きさを2倍にして光る量を増やす。
         // トラック(前面が黄色いマーカーランプ)は元の明るさのまま。
@@ -4462,7 +4463,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           heading: Math.atan2(ahead.x - at.x, ahead.z - at.z),
           v: speedKmh / 3.6,
           base: speedKmh / 3.6,
-          radius: carRadiusFor(false, car.group),
+          radius: carRadiusFor(bike, car.group),
+          kabu: bike,
           gunmaTraffic: direction,
           gunmaPath: path,
           gunmaDistance: AKAGI_COURSE ? initialDistance : ((distance % path.length) + path.length) % path.length,
@@ -6745,21 +6747,28 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       TOUGE_COURSE ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
     // 森林地帯はCPU車なし。群馬は少数の車種だけを読み込んで複製する。
+    // バイク(kabu*.vox)を出すのは 湘南・赤城山・榛名山・TOKYO・街並み・筑波山 だけ。ほかのマップでは外す
+    const BIKE_COURSES = new Set(['shonan', 'akagi', 'haruna', 'nihonbashi', 'neo', 'tsukuba']);
     const discoveredCpuVox = COURSE_KEY === 'forest'
       ? []
-      : await discoverCpuCarVox();
+      : (await discoverCpuCarVox()).filter((url) => BIKE_COURSES.has(COURSE_KEY) || !isKabuVoxUrl(url));
     // 首都高速と海岸線は速度が車種ランク基準なので、cpu_car_list.txt の車種を
     // ひととおり読み込む（4車種だけだとランクが偏る）。
     const cpuVoxLimit = (CAR2_MODE || STRAIGHT_SEQUENCE_COURSE || COURSE_KEY === 'indy')
       ? CPU_VOX_LIMIT
       : 4;
-    const gunmaCarVox = TOUGE_COURSE
-      ? pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 2, 6, 0)
-      : [];
+    // 全マップ共通: なるべく幅広い車種を出す(車種ごとに 1 台ずつ、色違いはランダム)。バイクは 2 台まで
+    const diverseCpuVox = () => {
+      const cars = pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 1, 10, 0);
+      const bikes = shuffleArray(discoveredCpuVox.filter(isKabuVoxUrl)).slice(0, 2);   // バイクは 2 台(色違い)。前の方に混ぜて必ず走らせる
+      bikes.forEach((url, k) => cars.splice(1 + k * 3, 0, url));
+      return cars.slice(0, 12);
+    };
+    const gunmaCarVox = TOUGE_COURSE ? diverseCpuVox() : [];
     const cpuCars = COURSE_KEY === 'forest'
       ? []
       : await loadCpuCars(TOUGE_COURSE
-        ? gunmaCarVox : discoveredCpuVox.slice(0, cpuVoxLimit));
+        ? gunmaCarVox : cpuVoxLimit === CPU_VOX_LIMIT ? discoveredCpuVox.slice(0, cpuVoxLimit) : diverseCpuVox());
     const cpuMeshes = cpuCars.map((car) => car.mesh);
 
     playerCarMesh.updateMatrixWorld(true);
@@ -7292,6 +7301,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         document.body.dataset.forestCpuCars = '0';
       }
       if (COURSE_KEY === 'shonan') shonanTrafficVehicles = cpuCars;
+      document.body.dataset.cpuVehicleFiles = cpuCars.map((c) => decodeURIComponent(c.url.split('/').pop())).join(',');
       document.body.dataset.autoDriveAvailable =
         String(Boolean(car2AutoRoute?.length >= 2));
       document.body.dataset.autoDriveMode =
