@@ -531,6 +531,14 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     // 塗って決めた「崖にしない所」(noRock): グレーの崖にしない
     for (const P of (data.noRock || []).map(region)) for (let q = 0; q < nQuad; q++) { if (!steepQ[q]) continue; let x = 0, z = 0; for (let j = 0; j < 6; j++) { x += pos.getX(q * 6 + j) / 6; z += pos.getZ(q * 6 + j) / 6; } if (inPoly(P, x, z)) steepQ[q] = 0; }
+    // 塗って決めた「崖のグレーにする所」(rock)
+    //  塗った所の四角はグレーに。さらに、塗った所を通る道の点の列(同じ側)では、削った斜面(切り土で 25 度より急)を上までグレーにそろえる
+    if (data.rock?.length) {
+      const rk = data.rock.map(region), cols = new Set();
+      for (let q = 0; q < nQuad; q++) { let x = 0, z = 0; for (let j = 0; j < 6; j++) { x += pos.getX(q * 6 + j) / 6; z += pos.getZ(q * 6 + j) / 6; } if (rk.some((P) => inPoly(P, x, z))) { steepQ[q] = 1; const [sd, i] = qInfo[q]; cols.add(sd * 100000 + i); } }
+      for (const sd of [-1, 1]) { const hit = [...cols].filter((c) => Math.sign(c) === sd || (sd > 0 && c >= 0)).map((c) => c - sd * 100000).sort((a, b) => a - b); for (let k = 0; k + 1 < hit.length; k++) if (hit[k + 1] - hit[k] <= 8) for (let i = hit[k] + 1; i < hit[k + 1]; i++) cols.add(sd * 100000 + i); }   // 塗った所の間(8 点まで)も同じ崖としてそろえる
+      for (let q = 0; q < nQuad; q++) { const [sd, i] = qInfo[q]; if (steepQ[q] || !cols.has(sd * 100000 + i)) continue; const nq = triN(q * 6).add(triN(q * 6 + 3)).normalize(); if ((cutQ[q] > 0.2 && Math.abs(nq.y) < 0.9) || Math.abs(nq.y) < 0.8) steepQ[q] = 1; }
+    }
     for (let q = 0; q < nQuad; q++) {
       const t = q * 6, steep = steepQ[q], cut = cutQ[q];
       for (let j = 0; j < 6; j++) {
@@ -1178,12 +1186,100 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // D：ユーザー指定座標（X=-265, Z=162）。符号を保持して固定配置。
   if (akagi) addAkagiLamp(-233, 261, 'akagi-lamp-D');
 
+  // ---- 塗った白い柵(fences の折れ線)。高さ 1.1m、支柱 2m おき、横木 2 本。当たり判定あり ----
+  if (data.fences?.length) {
+    const bar = [], wall = [], postPts = [];
+    const quad = (P, A, Bq, y0, y1) => P.push(A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y0, Bq[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y0, A[2], Bq[0], Bq[1] + y1, Bq[2], A[0], A[1] + y1, A[2]);
+    for (const line of data.fences) {
+      const pts = [];
+      for (let k = 0; k + 1 < line.length; k++) { const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 2)); for (let t = 0; t < m; t++) pts.push([ax + (bx - ax) * t / m, az + (bz - az) * t / m]); }
+      pts.push(line[line.length - 1]);
+      const P3 = pts.map(([x, z]) => [x, H(x, z), z]);
+      for (let k = 0; k + 1 < P3.length; k++) { quad(bar, P3[k], P3[k + 1], 0.96, 1.06); quad(bar, P3[k], P3[k + 1], 0.52, 0.6); quad(wall, P3[k], P3[k + 1], -0.1, 1.2); }
+      postPts.push(...P3);
+    }
+    const white = new THREE.MeshLambertMaterial({ name: 'HarunaFence', color: 0xf2f2ee, emissive: 0x2a2a2a, side: THREE.DoubleSide });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(bar, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, white); m.name = 'haruna-fence'; scenery.add(m);
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wall, 3)); wg.computeVertexNormals();
+    const wm = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })); wm.name = 'haruna-fence-wall'; scenery.add(wm); colliders.push(wm);
+    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 1.15, 0.1), white, postPts.length), M4 = new THREE.Matrix4();
+    postPts.forEach(([x, y, z], k) => posts.setMatrixAt(k, M4.makeTranslation(x, y + 0.575, z)));
+    posts.name = 'haruna-fence'; posts.computeBoundingSphere(); scenery.add(posts);
+  }
+  // ---- 石垣の台地(terraces): 道の高さより h(1.5m) 高い平らな台。ふちは石垣。上に建物(瓦屋根・白壁)、道の側に階段 ----
+  for (const T of data.terraces || []) {
+    const pts = T.pts, cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[1], 0) / pts.length;
+    const r0 = nearestRoute(cx, cz, 60), yRef = route[Math.max(0, r0 ? r0.i : 0)].y, top = yRef + (T.h ?? 1.5);
+    // 石垣の模様(灰色の石、目地は暗い)
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128; const c2 = cv.getContext('2d');
+    c2.fillStyle = '#4a4a46'; c2.fillRect(0, 0, 128, 128);
+    let s = 7; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let row = 0; row < 4; row++) for (let x = -(row % 2) * 16; x < 128; x += 26 + rnd() * 12) { const g = 120 + rnd() * 50 | 0; c2.fillStyle = `rgb(${g},${g - 4},${g - 10})`; c2.fillRect(x + 2, row * 32 + 2, 22 + rnd() * 10, 28); }
+    const stoneTex = new THREE.CanvasTexture(cv); stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping; stoneTex.colorSpace = THREE.SRGBColorSpace;
+    const stone = new THREE.MeshLambertMaterial({ name: 'HarunaStoneWall', map: stoneTex, side: THREE.DoubleSide });
+    const v = [], uv = [];
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[j], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), ya = H(a[0], a[1]) - 0.5, yb = H(b[0], b[1]) - 0.5;
+      v.push(a[0], ya, a[1], b[0], yb, b[1], b[0], top, b[1], a[0], ya, a[1], b[0], top, b[1], a[0], top, a[1]);
+      uv.push(0, (ya - top) / 2, L / 2, (yb - top) / 2, L / 2, 0, 0, (ya - top) / 2, L / 2, 0, 0, 0);
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); wg.computeVertexNormals();
+    const wall = new THREE.Mesh(wg, stone); wall.name = 'haruna-terrace-wall'; scenery.add(wall); colliders.push(wall);
+    const tv = []; for (const t of THREE.ShapeUtils.triangulateShape(pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of t) tv.push(pts[k][0], top, pts[k][1]);
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tv, 3)); tg.computeVertexNormals();
+    const tm = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ name: 'HarunaTerraceTop', color: 0x8a8578, side: THREE.DoubleSide })); tm.name = 'haruna-terrace-top'; scenery.add(tm);
+    // 階段: 長方形のうち、台の中心から遠い辺が下(地面)、近い辺が上(台の上)
+    for (const R4 of T.stairs || []) {
+      const mids = [0, 1, 2, 3].map((k) => { const a = R4[k], b = R4[(k + 1) % 4]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; });
+      const far = mids.map((m) => Math.hypot(m[0] - cx, m[1] - cz)), lo = far.indexOf(Math.max(...far)), hi = (lo + 2) % 4;
+      const A0 = R4[lo], A1 = R4[(lo + 1) % 4], B0 = R4[(hi + 1) % 4], B1 = R4[hi];   // A0-A1 下の辺、B0-B1 上の辺(A0 と B0 が同じ側)
+      const yLo = Math.min(H(mids[lo][0], mids[lo][1]), top - 0.2), N = Math.max(3, Math.round((top - yLo) / 0.18)), sv = [];
+      const lerp = (P, Q, t) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
+      const q4 = (a, b, c, d) => sv.push(...a, ...b, ...c, ...a, ...c, ...d);
+      for (let k = 0; k < N; k++) {
+        const t0 = k / N, t1 = (k + 1) / N, y0 = yLo + (top - yLo) * k / N, y1 = yLo + (top - yLo) * (k + 1) / N;
+        const p0 = lerp(A0, B0, t0), p1 = lerp(A1, B1, t0), p2 = lerp(A1, B1, t1), p3 = lerp(A0, B0, t1);
+        q4([p0[0], y0, p0[1]], [p1[0], y0, p1[1]], [p1[0], y1, p1[1]], [p0[0], y1, p0[1]]);   // 蹴上げ
+        q4([p0[0], y1, p0[1]], [p1[0], y1, p1[1]], [p2[0], y1, p2[1]], [p3[0], y1, p3[1]]);   // 踏み面
+        for (const [a, b] of [[p0, p3], [p1, p2]]) q4([a[0], yLo - 0.3, a[1]], [b[0], yLo - 0.3, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]);   // 横
+      }
+      const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3)); sg.computeVertexNormals();
+      const sm = new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ name: 'HarunaStairs', color: 0x9a968c, side: THREE.DoubleSide })); sm.name = 'haruna-stairs'; scenery.add(sm);
+    }
+    // 建物: 白い壁(高さ 3m)、瓦屋根(切妻、棟は長い向き、軒は 0.6m 出す)
+    const rcv = document.createElement('canvas'); rcv.width = 64; rcv.height = 64; const r2 = rcv.getContext('2d');
+    r2.fillStyle = '#3c434b'; r2.fillRect(0, 0, 64, 64); r2.fillStyle = '#272c32'; for (let x = 0; x < 64; x += 8) r2.fillRect(x, 0, 2, 64); r2.fillStyle = '#4a525b'; for (let y = 0; y < 64; y += 16) r2.fillRect(0, y, 64, 2);
+    const roofTex = new THREE.CanvasTexture(rcv); roofTex.wrapS = roofTex.wrapT = THREE.RepeatWrapping; roofTex.colorSpace = THREE.SRGBColorSpace;
+    const roofMat = new THREE.MeshLambertMaterial({ name: 'HarunaKawara', map: roofTex, side: THREE.DoubleSide });
+    const wallMat = new THREE.MeshLambertMaterial({ name: 'HarunaWhiteWall', color: 0xf3f1ea, side: THREE.DoubleSide });
+    for (const B of T.buildings || []) {
+      const e01 = Math.hypot(B[1][0] - B[0][0], B[1][1] - B[0][1]), e12 = Math.hypot(B[2][0] - B[1][0], B[2][1] - B[1][1]);
+      const Q = e01 >= e12 ? B : [B[1], B[2], B[3], B[0]];   // Q0-Q1 が長い辺(棟の向き)
+      const bx = (Q[0][0] + Q[2][0]) / 2, bz = (Q[0][1] + Q[2][1]) / 2, len = Math.max(e01, e12), wid = Math.min(e01, e12);
+      const ux = (Q[1][0] - Q[0][0]) / len, uz = (Q[1][1] - Q[0][1]) / len, ang = Math.atan2(-uz, ux);
+      const g = new THREE.Group(); g.position.set(bx, top, bz); g.rotation.y = ang;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(len, 3, wid), wallMat); body.position.y = 1.5; g.add(body);
+      const base = new THREE.Mesh(new THREE.BoxGeometry(len + 0.05, 0.35, wid + 0.05), new THREE.MeshLambertMaterial({ color: 0x5a4a3a })); base.position.y = 0.17; g.add(base);
+      const OV = 0.6, RISE = Math.min(2.2, wid * 0.32), hw = wid / 2 + OV, hl = len / 2 + OV, rv = [], ru = [];
+      for (const sd of [-1, 1]) { rv.push(-hl, 3, sd * hw, hl, 3, sd * hw, hl, 3 + RISE, 0, -hl, 3, sd * hw, hl, 3 + RISE, 0, -hl, 3 + RISE, 0); ru.push(0, 0, len / 1.5, 0, len / 1.5, hw / 1.5, 0, 0, len / 1.5, hw / 1.5, 0, hw / 1.5); }
+      const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.setAttribute('uv', new THREE.Float32BufferAttribute(ru, 2)); rg.computeVertexNormals();
+      g.add(new THREE.Mesh(rg, roofMat));
+      const gv = []; for (const sx of [-1, 1]) gv.push(sx * len / 2, 3, -wid / 2, sx * len / 2, 3, wid / 2, sx * len / 2, 3 + RISE * (wid / 2) / hw, 0);   // 妻の三角(白壁)
+      const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, wallMat));
+      // 窓と戸(暗い色の板を壁の少し外に)
+      const dark = new THREE.MeshLambertMaterial({ color: 0x2a2f33 });
+      for (const sd of [-1, 1]) for (let k = -1; k <= 1; k++) { const w = new THREE.Mesh(new THREE.PlaneGeometry(k === 0 ? 1.2 : 0.9, k === 0 ? 2.1 : 0.9), dark); w.position.set(k * len * 0.3, k === 0 ? 1.05 : 1.8, sd * (wid / 2 + 0.02)); if (sd < 0) w.rotation.y = Math.PI; g.add(w); }
+      g.name = 'haruna-building'; scenery.add(g); g.updateMatrixWorld(true); colliders.push(body);
+    }
+  }
   // ---- 森(2D の木)。木陰のある所(akagiGrove。道の木陰の模様と同じ式)は、背の高い木を道のすぐ脇に並べて道にかぶせる。
   //      木陰のない所は、木は道から少し離して、日なたの草むらが見える ----
   {
     let s = 20261114; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const trees = [];
-    const noTree = (x, z) => inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const terr = (data.terraces || []).map((T) => region(T.pts));
+    const noTree = (x, z) => terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
@@ -1214,6 +1310,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       if (!r || r.d < RAIL + 2 || flats.some((A) => inPoly(A, tx, tz))) continue;
       trees.push([tx, groundHeightAt(tx, tz) - 0.3, tz, 15 + rnd() * 8]);
     }
+    // 塗って決めた木(trees: [x, z, 高さ])
+    for (const [x, z, h] of data.trees || []) trees.push([x, groundHeightAt(x, z) - 0.3, z, h]);
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
   }
 
