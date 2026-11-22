@@ -763,7 +763,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       m.name = 'akagi-osm-road'; group.add(m);
     }
   }
-  // ---- 歩道: 路肩の外へ幅 2m、道の路面より 15cm 高いコンクリートの帯(道の点に沿うので波打たない)。道ぎわは縁石の立ち上がり ----
+  // ---- 歩道(上面は道と同じ色): 路肩の外へ幅 2m、道の路面より 15cm 高いコンクリートの帯(道の点に沿うので波打たない)。道ぎわは縁石の立ち上がり ----
   {
     const v = [], top = [], quad = (A, B, C, D) => v.push(...A, ...B, ...C, ...A, ...C, ...D), quadT = (A, B, C, D) => top.push(...A, ...B, ...C, ...A, ...C, ...D);
     for (const [si, side] of [[0, 1], [1, -1]]) for (let i = 0; i + 1 < n; i++) {
@@ -773,7 +773,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       quad(P(i, EDGE, -0.02), P(i + 1, EDGE, -0.02), P(i + 1, EDGE, 0.15), P(i, EDGE, 0.15));                  // 横(縁石): 白っぽいコンクリート
       quad(P(i, EDGE + WALK, 0.15), P(i + 1, EDGE + WALK, 0.15), P(i + 1, EDGE + WALK, -0.1), P(i, EDGE + WALK, -0.1));
     }
-    for (const [list, name, color] of [[v, 'GunmaShoulder', 0x9b9b95], [top, 'GunmaShoulder', 0x6a6c6e]]) {
+    for (const [list, name, color] of [[v, 'GunmaShoulder', 0x9b9b95], [top, 'GunmaRoad', 0x4a4c4e]]) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(list, 3)); g.computeVertexNormals();
       const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name, color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));   // 歩道は板に負けないよう手前に
       m.name = 'akagi-sidewalk'; (list === top ? group : scenery).add(m);   // 上面は木もれ日がかかるよう道と同じ group へ
