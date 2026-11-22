@@ -480,6 +480,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let i = 0; i + 1 < n; i++) for (let k = 0; k + 1 < m; k++) {
         const a2 = base + i * m + k, b2 = a2 + m;
         if (!clearOfRoad([a2, b2, a2 + 1, b2 + 1])) continue;
+        if (slabs.length && [a2, b2, a2 + 1, b2 + 1].some((id) => slabs.some((S) => inPoly(S, v[id * 3], v[id * 3 + 2]) || edgeDist(S, v[id * 3], v[id * 3 + 2]) < 1))) continue;   // 板の駐車場の上・ふちには道わきの地面を張らない(盛り上がりが板にかぶらない)
         ind.push(a2, b2, a2 + 1, a2 + 1, b2, b2 + 1); qInfo.push([side, i, k]);
       }
     }
