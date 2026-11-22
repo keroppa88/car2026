@@ -538,6 +538,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let q = 0; q < nQuad; q++) { let x = 0, z = 0; for (let j = 0; j < 6; j++) { x += pos.getX(q * 6 + j) / 6; z += pos.getZ(q * 6 + j) / 6; } if (rk.some((P) => inPoly(P, x, z))) { steepQ[q] = 1; const [sd, i] = qInfo[q]; cols.add(sd * 100000 + i); } }
       for (const sd of [-1, 1]) { const hit = [...cols].filter((c) => Math.sign(c) === sd || (sd > 0 && c >= 0)).map((c) => c - sd * 100000).sort((a, b) => a - b); for (let k = 0; k + 1 < hit.length; k++) if (hit[k + 1] - hit[k] <= 8) for (let i = hit[k] + 1; i < hit[k + 1]; i++) cols.add(sd * 100000 + i); }   // 塗った所の間(8 点まで)も同じ崖としてそろえる
       for (let q = 0; q < nQuad; q++) { const [sd, i] = qInfo[q]; if (steepQ[q] || !cols.has(sd * 100000 + i)) continue; const nq = triN(q * 6).add(triN(q * 6 + 3)).normalize(); if ((cutQ[q] > 0.2 && Math.abs(nq.y) < 0.9) || Math.abs(nq.y) < 0.8) steepQ[q] = 1; }
+      // 高さでそろえる: 塗った崖の列ごとに、グレーのいちばん上の高さ(道から)を測り、前後 5 点の最大を「崖の高さ」に。それより下は全部グレー(緑と混ぜない)
+      const top = new Map(), cy = (q) => { let y = 0; for (let j = 0; j < 6; j++) y += pos.getY(q * 6 + j) / 6; return y; };
+      for (let q = 0; q < nQuad; q++) { const [sd, i] = qInfo[q], key = sd * 100000 + i; if (!steepQ[q] || !cols.has(key)) continue; let hi = -Infinity; for (let j = 0; j < 6; j++) hi = Math.max(hi, pos.getY(q * 6 + j)); top.set(key, Math.max(top.get(key) ?? -Infinity, hi - route[i].y)); }
+      const topS = new Map(); for (const key of cols) { let mx = -Infinity; for (let d = -5; d <= 5; d++) mx = Math.max(mx, top.get(key + d) ?? -Infinity); if (mx > 0) topS.set(key, mx); }
+      for (let q = 0; q < nQuad; q++) { const [sd, i] = qInfo[q], t = topS.get(sd * 100000 + i); if (t !== undefined && cy(q) - route[i].y < t - 0.3) steepQ[q] = 1; }
     }
     for (let q = 0; q < nQuad; q++) {
       const t = q * 6, steep = steepQ[q], cut = cutQ[q];
