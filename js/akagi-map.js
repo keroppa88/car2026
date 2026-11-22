@@ -1243,7 +1243,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     // 階段: 長方形のうち、台の中心から遠い辺が下(地面)、近い辺が上(台の上)
     for (const R4 of T.stairs || []) {
       const mids = [0, 1, 2, 3].map((k) => { const a = R4[k], b = R4[(k + 1) % 4]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; });
-      const far = mids.map((m) => Math.hypot(m[0] - cx, m[1] - cz)), lo = far.indexOf(Math.max(...far)), hi = (lo + 2) % 4;
+      const far = mids.map((m) => Math.hypot(m[0] - cx, m[1] - cz)), lo = T.stairsLowFirst ? 0 : far.indexOf(Math.max(...far)), hi = (lo + 2) % 4;   // stairsLowFirst: 1 辺目(0→1)が下の辺
       const A0 = R4[lo], A1 = R4[(lo + 1) % 4], B0 = R4[(hi + 1) % 4], B1 = R4[hi];   // A0-A1 下の辺、B0-B1 上の辺(A0 と B0 が同じ側)
       const yLo = Math.min(H(mids[lo][0], mids[lo][1]), top - 0.2), N = T.steps || Math.max(3, Math.round((top - yLo) / 0.18)), sv = [];
       const lerp = (P, Q, t) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
