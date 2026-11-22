@@ -897,6 +897,12 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       parkedCars.push({ x, z, y, heading: hit.rotation.y });
     }
   }
+  // ---- 塗って決めた駐車(parkCars: [x, z, 向き])。車の見た目は main.js、ここは当たり判定 ----
+  for (const [x, z, ang] of data.parkCars || []) {
+    const y = H(x, z) + 0.05, hit = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.6, 4.3), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(x, y + 0.8, z); hit.rotation.y = ang; hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
+    parkedCars.push({ x, z, y, heading: ang });
+  }
   // ---- 案内看板(signs、伊香保温泉): 木の柱 2 本に白い板、青い屋根 ----
   for (const [sx, sz] of data.signs || []) {
     // 板の両面に「伊香保温泉」。板は道に沿う向き(両方向から来る車に面が見える)。大きさは 1.5 倍
@@ -1239,7 +1245,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const mids = [0, 1, 2, 3].map((k) => { const a = R4[k], b = R4[(k + 1) % 4]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; });
       const far = mids.map((m) => Math.hypot(m[0] - cx, m[1] - cz)), lo = far.indexOf(Math.max(...far)), hi = (lo + 2) % 4;
       const A0 = R4[lo], A1 = R4[(lo + 1) % 4], B0 = R4[(hi + 1) % 4], B1 = R4[hi];   // A0-A1 下の辺、B0-B1 上の辺(A0 と B0 が同じ側)
-      const yLo = Math.min(H(mids[lo][0], mids[lo][1]), top - 0.2), N = Math.max(3, Math.round((top - yLo) / 0.18)), sv = [];
+      const yLo = Math.min(H(mids[lo][0], mids[lo][1]), top - 0.2), N = T.steps || Math.max(3, Math.round((top - yLo) / 0.18)), sv = [];
       const lerp = (P, Q, t) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
       const q4 = (a, b, c, d) => sv.push(...a, ...b, ...c, ...a, ...c, ...d);
       for (let k = 0; k < N; k++) {
@@ -1251,6 +1257,28 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       }
       const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3)); sg.computeVertexNormals();
       const sm = new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ name: 'HarunaStairs', color: 0x9a968c, side: THREE.DoubleSide })); sm.name = 'haruna-stairs'; scenery.add(sm);
+    }
+    // 日本風の塀(T.wall): 台のふちに沿って白い壁(高さ 1.6m、厚さ 0.3m)と黒い瓦の小さな三角屋根。階段の所は開ける
+    if (T.wall) {
+      const st = (T.stairs || []).map(region), wv = [], rv = [], bv = [], HW = 1.6, TH = 0.15;
+      const q4 = (arr, a, b, c, dd) => arr.push(...a, ...b, ...c, ...a, ...c, ...dd);
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const a = pts[j], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.05) continue;
+        const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L, nx = -uz, nz = ux, k = Math.max(1, Math.round(L / 1));
+        for (let t = 0; t < k; t++) {
+          const p0 = [a[0] + ux * L * t / k, a[1] + uz * L * t / k], p1 = [a[0] + ux * L * (t + 1) / k, a[1] + uz * L * (t + 1) / k], mx = (p0[0] + p1[0]) / 2, mz = (p0[1] + p1[1]) / 2;
+          if (st.some((P) => inPoly(P, mx, mz) || edgeDist(P, mx, mz) < 0.6)) continue;   // 階段の上り口は開ける
+          const y0 = top, y1 = top + HW;
+          for (const sd of [-1, 1]) { const o = sd * TH; q4(wv, [p0[0] + nx * o, y0, p0[1] + nz * o], [p1[0] + nx * o, y0, p1[1] + nz * o], [p1[0] + nx * o, y1, p1[1] + nz * o], [p0[0] + nx * o, y1, p0[1] + nz * o]);
+            q4(bv, [p0[0] + nx * o * 1.05, y0, p0[1] + nz * o * 1.05], [p1[0] + nx * o * 1.05, y0, p1[1] + nz * o * 1.05], [p1[0] + nx * o * 1.05, y0 + 0.25, p1[1] + nz * o * 1.05], [p0[0] + nx * o * 1.05, y0 + 0.25, p0[1] + nz * o * 1.05]);
+            const e = sd * (TH + 0.18); q4(rv, [p0[0] + nx * e, y1 - 0.02, p0[1] + nz * e], [p1[0] + nx * e, y1 - 0.02, p1[1] + nz * e], [p1[0], y1 + 0.28, p1[1]], [p0[0], y1 + 0.28, p0[1]]); }
+          q4(wv, [p0[0] - nx * TH, y1, p0[1] - nz * TH], [p1[0] - nx * TH, y1, p1[1] - nz * TH], [p1[0] + nx * TH, y1, p1[1] + nz * TH], [p0[0] + nx * TH, y1, p0[1] + nz * TH]);
+        }
+      }
+      for (const [arr, mat, nm] of [[wv, new THREE.MeshLambertMaterial({ name: 'HarunaWhiteWall', color: 0xf3f1ea, side: THREE.DoubleSide }), 'haruna-wall'], [bv, new THREE.MeshLambertMaterial({ color: 0x3a3a38, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 'haruna-wall-base'], [rv, new THREE.MeshLambertMaterial({ name: 'HarunaKawara', color: 0x22262b, side: THREE.DoubleSide }), 'haruna-wall-roof']]) {
+        if (!arr.length) continue; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals();
+        const m = new THREE.Mesh(g, mat); m.name = nm; scenery.add(m); if (nm === 'haruna-wall') colliders.push(m);
+      }
     }
     // 建物: 白い壁(高さ 3m)、瓦屋根(切妻、棟は長い向き、軒は 0.6m 出す)
     const rcv = document.createElement('canvas'); rcv.width = 64; rcv.height = 64; const r2 = rcv.getContext('2d');
