@@ -758,8 +758,14 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
       strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);
       strip(bands.GunmaShoulder, -hw - SH, -hw, -0.01, away); strip(bands.GunmaShoulder, hw, hw + SH, -0.01, away);
-      if (r.w >= 4.5) { strip(bands.GunmaEdgeLine, -hw + 0.1, -hw + 0.25, 0.02, away); strip(bands.GunmaEdgeLine, hw - 0.25, hw - 0.1, 0.02, away); }
-      if (r.w >= 6) strip(bands.GunmaCenterLine, -0.075, 0.075, 0.02, away);
+      // 榛名山: 指定された行き止まりの脇道(953,-1354 ～ 854,-1130)は
+      // 路面を残し、センターラインと両側の白い外側線だけを描かない。
+      const nearTarget = (x, z) => P.some(([px, pz]) => Math.hypot(px - x, pz - z) < 18);
+      const removeRoadMarkings = nearTarget(953, -1354) && nearTarget(854, -1130);
+      if (!removeRoadMarkings) {
+        if (r.w >= 4.5) { strip(bands.GunmaEdgeLine, -hw + 0.1, -hw + 0.25, 0.02, away); strip(bands.GunmaEdgeLine, hw - 0.25, hw - 0.1, 0.02, away); }
+        if (r.w >= 6) strip(bands.GunmaCenterLine, -0.075, 0.075, 0.02, away);
+      }
     }
     for (const [name, v] of Object.entries(bands)) {
       if (!v.length) continue;
