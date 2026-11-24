@@ -1498,7 +1498,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       trees.push([tx, groundHeightAt(tx, tz) - 0.3, tz, 15 + rnd() * 8]);
     }
     // 塗って決めた木(trees: [x, z, 高さ])
-    for (const [x, z, h] of data.trees || []) trees.push([x, groundHeightAt(x, z) - 0.3, z, h]);
+    for (const [x, z, h] of data.trees || []) { const r = roadAt(x, z); if ((r && r.d < RAIL + 1.5) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) continue; trees.push([x, groundHeightAt(x, z) - 0.3, z, h]); }
+    // 木もれ日の木・奥の森などで、道の上・脇道(塗った所)の上にかかったものは外す
+    for (let k = trees.length - 1; k >= 0; k--) { const [x, , z] = trees[k], r = roadAt(x, z); if ((r && r.d < RAIL + 0.8) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) trees.splice(k, 1); }
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
   }
 
