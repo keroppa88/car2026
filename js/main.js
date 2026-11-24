@@ -433,6 +433,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       // Q: 地図。1回目=右上に小さく / 2回目=全画面 / 3回目=消す
       if (k.toLowerCase() === 'q') cycleMiniMap();
       // U: 空撮(真上から、北が上)。もう一度押すと車の後ろへ戻る。ホイールで拡大縮小、右ドラッグで移動
+      // 開発用(操作説明には出さない): C = 座標表示中、指している地面の座標を「x,z」でコピー
+      if (MAP_VIEW_COURSE && k.toLowerCase() === 'c' && coordMode > 0 && lastCoord) {
+        const text = lastCoord, el = document.getElementById('cursor-coord');
+        const done = () => { if (el) { const prev = el.textContent; el.textContent = 'コピーしました ' + text; setTimeout(() => { if (el.textContent.startsWith('コピーしました')) el.textContent = prev; }, 900); } };
+        (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(done).catch(() => {
+          const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (_) {} ta.remove();
+        });
+      }
       if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') {   // U: 座標表示 → 真上から(北が上) → 元の視点・座標なし
         coordMode = (coordMode + 1) % 3;
         if (coordMode === 1) { bonnetView = 0; syncAerialCoordinateDisplay(); }
@@ -2339,6 +2347,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
   // U: 1 回目 = 指している地面の座標を表示 / 2 回目 = 真上から(北が上)、座標も表示 / 3 回目 = 元の視点に戻し、座標を消す
   let aerialView = false, coordMode = 0;
+  let lastCoord = '';   // 開発用: C で指している座標をコピー(座標表示中だけ)
   let syncAerialCoordinateDisplay = () => {};
   if (MAP_VIEW_COURSE) {
     const coordEl = document.createElement('div');
@@ -2382,6 +2391,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           ok = !!ray.ray.intersectPlane(ground, hit);
         }
         coordEl.textContent = ok ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
+        lastCoord = ok ? `${hit.x.toFixed(0)},${hit.z.toFixed(0)}` : '';
       });
     });
   }
