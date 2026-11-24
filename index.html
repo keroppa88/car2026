@@ -613,7 +613,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS, DEMO_MAPS } from './js/game-config.js?v=20261124-L11';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS, DEMO_MAPS } from './js/game-config.js?v=20261124-L12';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -745,7 +745,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261124-L11');
+    import('./js/main.js?v=20261124-L12');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
