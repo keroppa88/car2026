@@ -906,10 +906,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     if (ul > 0.5) { ux /= ul; uz /= ul; } else { ux = -Math.cos(heading); uz = Math.sin(heading); }   // 並ぶ向き(枠が 1 つなら車の横の向き)
     const A = aprons.find((P) => inPoly(P, cx, cz)) || aprons[0];
     const hx = Math.sin(heading), hz = Math.cos(heading);
-    const fits = (x, z) => [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]].every(([f, sdd]) => { const px = x + hx * f + ux * sdd, pz = z + hz * f + uz * sdd, r = roadAt(px, pz); return inPoly(A, px, pz) && r && r.d > EDGE + 1.2; });
+    const fits = (x, z) => [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]].every(([f, sdd]) => { const px = x + hx * f + ux * sdd, pz = z + hz * f + uz * sdd, r = roadAt(px, pz); return inPoly(A, px, pz) && !inAny(meadows, px, pz) && r && r.d > EDGE + 1.2; });   // 緑地にかかる所には停めない
     for (let k = -80; k <= 80; k++) {
       const x = cx + ux * k * 2.7, z = cz + uz * k * 2.7;
-      if (!fits(x, z) || rnd() < 0.22) continue;
+      if (!fits(x, z) || rnd() < 0.61) continue;   // 半分くらいは空ける
       const y = H(x, z) + 0.05;
       const hit = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.6, 4.3), new THREE.MeshBasicMaterial({ visible: false }));
       hit.position.set(x, y + 0.8, z); hit.rotation.y = heading + (rnd() < 0.5 ? 0 : Math.PI); hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
