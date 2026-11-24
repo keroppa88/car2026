@@ -864,9 +864,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let x = P.x0; x <= P.x1; x += 0.9) for (let z = P.z0; z <= P.z1; z += 0.9) { const tx = x + (rnd() - 0.5) * 0.8, tz = z + (rnd() - 0.5) * 0.8; if (inPoly(P, tx, tz)) tryAt(tx, tz); }
     }
     for (const P of noTuft) for (let k = 0; k < P.pts.length; k++) {   // 脇道(塗った所)の両わき 0.5〜3.5m に草の株(脇道の上には生やさない)
-      const [ax, az] = P.pts[k], [bx, bz] = P.pts[(k + 1) % P.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 1) continue;
+      const [ax, az] = P.pts[k], [bx, bz] = P.pts[(k + 1) % P.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 6) continue;   // 短い辺(脇道の入口・奥の端)には生やさない
       let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(P, (ax + bx) / 2 + nx, (az + bz) / 2 + nz)) { nx = -nx; nz = -nz; }
-      for (let t = 0; t < L; t += 0.7) for (let o = 0.5; o < 3.5; o += 0.8) tryAt(ax + (bx - ax) * t / L + nx * (o + rnd() * 0.4), az + (bz - az) * t / L + nz * (o + rnd() * 0.4));
+      for (let t = 0; t < L; t += 0.7) for (let o = 0.5; o < 3.5; o += 0.8) { const x = ax + (bx - ax) * t / L + nx * (o + rnd() * 0.4), z = az + (bz - az) * t / L + nz * (o + rnd() * 0.4), r = roadAt(x, z); if (r && r.d < EDGE + 5) continue; tryAt(x, z); }   // 道から脇道へ入る所(道ぎわ 5m)は空ける
     }
     for (const A of parkAprons) for (let k = 0; k < A.pts.length; k++) {   // 拡張の外まわり
       const [ax, az] = A.pts[k], [bx, bz] = A.pts[(k + 1) % A.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.3) continue;
