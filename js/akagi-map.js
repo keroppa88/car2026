@@ -901,12 +901,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   if (data.parkGuides?.length && aprons.length) {
     let sd = 20261120; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
     const Gd = data.parkGuides, heading = Math.atan2(Gd.reduce((a, g) => a + Math.sin(g[2]), 0), Gd.reduce((a, g) => a + Math.cos(g[2]), 0));
-    const cx = Gd.reduce((a, g) => a + g[0], 0) / Gd.length, cz = Gd.reduce((a, g) => a + g[1], 0) / Gd.length;
+    let cx = Gd.reduce((a, g) => a + g[0], 0) / Gd.length, cz = Gd.reduce((a, g) => a + g[1], 0) / Gd.length;
     let ux = Gd[Gd.length - 1][0] - Gd[0][0], uz = Gd[Gd.length - 1][1] - Gd[0][1]; const ul = Math.hypot(ux, uz);
     if (ul > 0.5) { ux /= ul; uz /= ul; } else { ux = -Math.cos(heading); uz = Math.sin(heading); }   // 並ぶ向き(枠が 1 つなら車の横の向き)
     const A = aprons.find((P) => inPoly(P, cx, cz)) || aprons[0];
     const hx = Math.sin(heading), hz = Math.cos(heading);
-    const fits = (x, z) => [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]].every(([f, sdd]) => { const px = x + hx * f + ux * sdd, pz = z + hz * f + uz * sdd, r = roadAt(px, pz); return inPoly(A, px, pz) && !inAny(meadows, px, pz) && r && r.d > EDGE + 1.2; });   // 緑地にかかる所には停めない
+    if (data.parkRowShift) {   // 車の列を、車の長さの向きに道路の側へずらす(奥の斜面で浮かないように)
+      const rp = route[Math.max(0, nearestRoute(cx, cz, 6).i)], sg = Math.sign((rp.x - cx) * hx + (rp.z - cz) * hz) || 1;
+      cx += hx * sg * data.parkRowShift; cz += hz * sg * data.parkRowShift;
+    }
+    const fits = (x, z) => [[2.3, 1], [2.3, -1], [-2.3, 1], [-2.3, -1]].every(([f, sdd]) => { const px = x + hx * f + ux * sdd, pz = z + hz * f + uz * sdd, r = roadAt(px, pz); return (inPoly(A, px, pz) || aprons.some((P) => inPoly(P, px, pz))) && !inAny(meadows, px, pz) && r && r.d > EDGE + 1.2; });   // 緑地にかかる所には停めない
     for (let k = -80; k <= 80; k++) {
       const x = cx + ux * k * 2.7, z = cz + uz * k * 2.7;
       if (!fits(x, z) || rnd() < 0.61) continue;   // 半分くらいは空ける
