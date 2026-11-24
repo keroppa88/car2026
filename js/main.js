@@ -433,7 +433,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       // Q: 地図。1回目=右上に小さく / 2回目=全画面 / 3回目=消す
       if (k.toLowerCase() === 'q') cycleMiniMap();
       // U: 空撮(真上から、北が上)。もう一度押すと車の後ろへ戻る。ホイールで拡大縮小、右ドラッグで移動
-      if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') toggleAerialView();
+      if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') {   // U: 座標表示 → 真上から(北が上) → 元の視点・座標なし
+        coordMode = (coordMode + 1) % 3;
+        if (coordMode === 1) { bonnetView = 0; syncAerialCoordinateDisplay(); }
+        else toggleAerialView();
+        document.body.dataset.coordMode = String(coordMode);
+      }
       // E: 右の方向指示器 / W: 左の方向指示器(今は街並みだけ)。同じキーでもう一度押すと消える。
       if (NEO_COURSE && k.toLowerCase() === 'e') setTurnSignal(turnSignal === 1 ? 0 : 1);
       if (NEO_COURSE && k.toLowerCase() === 'w') setTurnSignal(turnSignal === -1 ? 0 : -1);
@@ -2332,8 +2337,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     renderer.domElement.setPointerCapture(e.pointerId);
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-  // U: 空撮中だけ、指している地面の座標を表示する。
-  let aerialView = false;
+  // U: 1 回目 = 指している地面の座標を表示 / 2 回目 = 真上から(北が上)、座標も表示 / 3 回目 = 元の視点に戻し、座標を消す
+  let aerialView = false, coordMode = 0;
   let syncAerialCoordinateDisplay = () => {};
   if (MAP_VIEW_COURSE) {
     const coordEl = document.createElement('div');
@@ -2342,7 +2347,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     coordEl.textContent = '';
     document.body.appendChild(coordEl);
     syncAerialCoordinateDisplay = () => {
-      const visible = aerialView && bonnetView === 0;
+      const visible = coordMode > 0 && bonnetView === 0;
       coordEl.style.display = visible ? 'block' : 'none';
       if (!visible) coordEl.textContent = '';
       else if (!coordEl.textContent) coordEl.textContent = 'x -, z -';
@@ -2352,12 +2357,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
     let pending = null;
     window.addEventListener('pointermove', (e) => {   // 画面の上に重なった表示の上でも拾う
-      if (!aerialView || bonnetView !== 0) { coordEl.textContent = ''; return; }
+      if (!coordMode || bonnetView !== 0) { coordEl.textContent = ''; return; }
       if (pending) { pending = e; return; }
       pending = e;
       requestAnimationFrame(() => {
         const ev = pending; pending = null;
-        if (!aerialView || bonnetView !== 0) { coordEl.textContent = ''; return; }
+        if (!coordMode || bonnetView !== 0) { coordEl.textContent = ''; return; }
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
