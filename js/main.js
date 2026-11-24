@@ -2361,8 +2361,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
-        ground.constant = FUJI_COURSE || AKAGI_COURSE ? -player.pos.y : 0;
-        coordEl.textContent = ray.ray.intersectPlane(ground, hit) ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
+        const hAt = gunmaCourse?.groundHeightAt;
+        let ok = false;
+        if ((FUJI_COURSE || AKAGI_COURSE) && hAt) {
+          // 地形に沿って求める: 視線を少しずつ進め、地面の下に入った所を二分法で詰める(見る角度で値が変わらない)
+          const o = ray.ray.origin, d = ray.ray.direction, above = (t) => o.y + d.y * t - hAt(o.x + d.x * t, o.z + d.z * t);
+          let t0 = 0, f0 = above(0);
+          for (let t = 0.5; t < camera.far && f0 > 0; ) {
+            const step = Math.max(0.5, t * 0.004), t1 = t + step, f1 = above(t1);
+            if (f1 <= 0) { let a = t, b = t1; for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } hit.copy(d).multiplyScalar((a + b) / 2).add(o); ok = true; break; }
+            t = t1; t0 = t;
+          }
+        } else {
+          ground.constant = 0;
+          ok = !!ray.ray.intersectPlane(ground, hit);
+        }
+        coordEl.textContent = ok ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
       });
     });
   }
