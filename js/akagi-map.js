@@ -863,6 +863,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       if (!nearApron((P.x0 + P.x1) / 2, (P.z0 + P.z1) / 2)) continue;
       for (let x = P.x0; x <= P.x1; x += 0.9) for (let z = P.z0; z <= P.z1; z += 0.9) { const tx = x + (rnd() - 0.5) * 0.8, tz = z + (rnd() - 0.5) * 0.8; if (inPoly(P, tx, tz)) tryAt(tx, tz); }
     }
+    for (const P of noTuft) for (let k = 0; k < P.pts.length; k++) {   // 脇道(塗った所)の両わき 0.5〜3.5m に草の株(脇道の上には生やさない)
+      const [ax, az] = P.pts[k], [bx, bz] = P.pts[(k + 1) % P.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 1) continue;
+      let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(P, (ax + bx) / 2 + nx, (az + bz) / 2 + nz)) { nx = -nx; nz = -nz; }
+      for (let t = 0; t < L; t += 0.7) for (let o = 0.5; o < 3.5; o += 0.8) tryAt(ax + (bx - ax) * t / L + nx * (o + rnd() * 0.4), az + (bz - az) * t / L + nz * (o + rnd() * 0.4));
+    }
     for (const A of parkAprons) for (let k = 0; k < A.pts.length; k++) {   // 拡張の外まわり
       const [ax, az] = A.pts[k], [bx, bz] = A.pts[(k + 1) % A.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.3) continue;
       let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(A, (ax + bx) / 2 + nx, (az + bz) / 2 + nz)) { nx = -nx; nz = -nz; }
@@ -1457,7 +1462,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const trees = [];
     const terr = (data.terraces || []).map((T) => region(T.pts));
     const noTr = (data.noTrees || []).map(region);   // 塗って決めた「木も草も生やさない所」
-    const noTree = (x, z) => noTr.some((P) => inPoly(P, x, z)) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const noTree = (x, z) => noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
