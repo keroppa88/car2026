@@ -6779,7 +6779,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 全マップ共通: なるべく幅広い車種を出す(車種ごとに 1 台ずつ、色違いはランダム)。バイクは 2 台まで
     const diverseCpuVox = () => {
       const cars = pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 1, 10, 0);
-      const bikes = shuffleArray(discoveredCpuVox.filter(isKabuVoxUrl)).slice(0, 2);   // バイクは 2 台(色違い)。前の方に混ぜて必ず走らせる
+      const bikes = shuffleArray(discoveredCpuVox.filter(isKabuVoxUrl)).slice(0, Math.random() < 0.5 ? 1 : 0);   // バイクは今までの 1/4(2 台 → 平均 0.5 台: 半分の確率で 1 台)
       bikes.forEach((url, k) => cars.splice(1 + k * 3, 0, url));
       return cars.slice(0, 12);
     };
