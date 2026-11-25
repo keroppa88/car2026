@@ -760,6 +760,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
       const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
       strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);
+      if (r.plain) { strip(bands.GunmaRoad, -hw - SH, hw + SH, 0, notOnMain); continue; }   // plain: 白線・オレンジ線・路肩の色違いなし(アスファルト色だけ)
       strip(bands.GunmaShoulder, -hw - SH, -hw, -0.01, away); strip(bands.GunmaShoulder, hw, hw + SH, -0.01, away);
       // 榛名山: 指定された行き止まりの脇道(953,-1354 ～ 854,-1130)は
       // 路面を残し、センターラインと両側の白い外側線だけを描かない。
