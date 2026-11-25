@@ -853,7 +853,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     m.name = nm; scenery.add(m);
   }
   // ---- 草むら(拡張のまわり): 拡張の近くの芝生の帯と、拡張の外まわり(外へ 3m)に、草の株を生やす。株は交差した 3 枚の板 ----
-  if (parkAprons.length) {
+  if (parkAprons.length || data.grassAreas?.length) {
     let sd = 3; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
     const nearApron = (x, z) => parkAprons.some((A) => x > A.x0 - 25 && x < A.x1 + 25 && z > A.z0 - 25 && z < A.z1 + 25 && (inPoly(A, x, z) || edgeDist(A, x, z) < 25));
     const spots = [];
@@ -867,6 +867,14 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const [ax, az] = P.pts[k], [bx, bz] = P.pts[(k + 1) % P.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 6) continue;   // 短い辺(脇道の入口・奥の端)には生やさない
       let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(P, (ax + bx) / 2 + nx, (az + bz) / 2 + nz)) { nx = -nx; nz = -nz; }
       for (let t = 0; t < L; t += 1.4) for (let o = 0.8; o < 5; o += 1.4) { if (rnd() < 0.7) continue; const x = ax + (bx - ax) * t / L + nx * (o + rnd() * 0.4), z = az + (bz - az) * t / L + nz * (o + rnd() * 0.4), r = roadAt(x, z); if (r && r.d < EDGE + 5) continue; tryAt(x, z); }   // 道から脇道へ入る所(道ぎわ 5m)は空ける
+    }
+    for (const G of data.grassAreas || []) {   // 座標で決めた草地: 中はぎっしり、外へ fade m かけて、だんだんまばらに
+      const P = region(G.pts), fade = G.fade ?? 3;
+      for (let x = P.x0 - fade; x <= P.x1 + fade; x += 0.8) for (let z = P.z0 - fade; z <= P.z1 + fade; z += 0.8) {
+        const tx = x + (rnd() - 0.5) * 0.7, tz = z + (rnd() - 0.5) * 0.7;
+        if (inPoly(P, tx, tz)) { tryAt(tx, tz); continue; }
+        const e = edgeDist(P, tx, tz); if (e < fade && rnd() > 0.15 + 0.85 * e / fade) tryAt(tx, tz);
+      }
     }
     for (const A of parkAprons) for (let k = 0; k < A.pts.length; k++) {   // 拡張の外まわり
       const [ax, az] = A.pts[k], [bx, bz] = A.pts[(k + 1) % A.pts.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.3) continue;
@@ -1049,6 +1057,26 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       plate(1.2, 0.8, lam(0x86a7b8), 0, base + 1.5, 1.13); plate(1.2, 0.8, lam(0x86a7b8), 0.92, base + 1.5, 0, Math.PI / 2); plate(0.8, 1.9, lam(0x9a9a94), -0.92, base + 0.95, 0, -Math.PI / 2);
     }
     scenery.add(g); g.updateMatrixWorld(true); if (body) colliders.push(body);
+  }
+  // ---- 座標で決めた木陰(shadeAreas): 道の木もれ日と同じ模様を、地面の上に薄く重ねる(暗い所に光の斑点) ----
+  if (data.shadeAreas?.length) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128; const c2 = cv.getContext('2d');
+    c2.fillStyle = '#ffffff'; c2.fillRect(0, 0, 128, 128);
+    let sd = 20260924; const rr = () => ((sd = (Math.imul(sd, 1664525) + 1013904223) >>> 0) / 4294967296);
+    c2.filter = 'blur(1.2px)';
+    for (let i = 0; i < 120; i++) { const x = rr() * 128, y = rr() * 128, rx = 1.5 + rr() * 7, ry = 1 + rr() * 4, an = rr() * Math.PI; c2.fillStyle = `rgba(0,0,0,${0.55 + rr() * 0.45})`; for (const dx of [-128, 0, 128]) for (const dy of [-128, 0, 128]) { c2.beginPath(); c2.ellipse(x + dx, y + dy, rx, ry, an, 0, Math.PI * 2); c2.fill(); } }
+    const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    const v = [], uv = [];
+    const onEdgeS = (P, x, z) => { let best = Infinity, bx = x, bz = z; const q = P.pts; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < best) { best = dd; bx = px; bz = pz; } } return [bx, bz]; };
+    for (const A of data.shadeAreas.map(region)) for (let x = A.x0; x < A.x1; x += 1) for (let z = A.z0; z < A.z1; z += 1) {
+      const cs = [[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]];
+      const ins = cs.map(([a, b]) => inPoly(A, a, b)); if (!ins.some(Boolean)) continue;
+      const q = cs.map(([a, b], k) => (ins[k] ? [a, b] : onEdgeS(A, a, b)));   // ふちの外の点はふちへ寄せる(ふちはまっすぐ)
+      for (const tri of [[0, 1, 2], [0, 2, 3]]) for (const k of tri) { const [a, b] = q[k]; v.push(a, H(a, b) + 0.12, b); uv.push(a * 0.07, b * 0.07); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: tex, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    m.name = 'haruna-shade-area'; m.renderOrder = 2; scenery.add(m);
   }
   // ---- 塗って決めた駐車(parkCars: [x, z, 向き])。車の見た目は main.js、ここは当たり判定 ----
   for (const [x, z, ang] of data.parkCars || []) {
@@ -1501,6 +1529,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     for (const [x, z, h] of data.trees || []) { const r = roadAt(x, z); if ((r && r.d < RAIL + 1.5) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) continue; trees.push([x, groundHeightAt(x, z) - 0.3, z, h]); }
     // 木もれ日の木・奥の森などで、道の上・脇道(塗った所)の上にかかったものは外す
     for (let k = trees.length - 1; k >= 0; k--) { const [x, , z] = trees[k], r = roadAt(x, z); if ((r && r.d < RAIL + 0.8) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) trees.splice(k, 1); }
+    for (const [x, z, h] of data.treesExact || []) trees.push([x, groundHeightAt(x, z) - 0.3, z, h]);   // 座標で決めた木(その場所にそのまま)
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
   }
 
