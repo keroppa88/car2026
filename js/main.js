@@ -432,21 +432,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if (k.toLowerCase() === 'b') { soundMode = (soundMode + 1) % 3; applySoundMode(); }
       // Q: 地図。1回目=右上に小さく / 2回目=全画面 / 3回目=消す
       if (k.toLowerCase() === 'q') cycleMiniMap();
-      // U: 空撮(真上から、北が上)。もう一度押すと車の後ろへ戻る。ホイールで拡大縮小、右ドラッグで移動
-      // 開発用(操作説明には出さない): C = 座標表示中、指している地面の座標を「x,z」でコピー
-      if (MAP_VIEW_COURSE && k.toLowerCase() === 'c' && coordMode > 0 && lastCoord) {
-        const text = lastCoord, el = document.getElementById('cursor-coord');
-        const done = () => { if (el) { const prev = el.textContent; el.textContent = 'コピーしました ' + text; setTimeout(() => { if (el.textContent.startsWith('コピーしました')) el.textContent = prev; }, 900); } };
-        (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(done).catch(() => {
-          const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (_) {} ta.remove();
-        });
-      }
-      if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') {   // U: 座標表示 → 真上から(北が上) → 元の視点・座標なし
-        coordMode = (coordMode + 1) % 3;
-        if (coordMode === 1) { bonnetView = 0; syncAerialCoordinateDisplay(); }
-        else toggleAerialView();
-        document.body.dataset.coordMode = String(coordMode);
-      }
+      // U: 開発ツール(線・塗りつぶしで座標を書き出す)の表示/非表示。開発用なので操作説明には出さない
+      if (MAP_VIEW_COURSE && k.toLowerCase() === 'u') toggleDevTool();
       // E: 右の方向指示器 / W: 左の方向指示器(今は街並みだけ)。同じキーでもう一度押すと消える。
       if (NEO_COURSE && k.toLowerCase() === 'e') setTurnSignal(turnSignal === 1 ? 0 : 1);
       if (NEO_COURSE && k.toLowerCase() === 'w') setTurnSignal(turnSignal === -1 ? 0 : -1);
@@ -2345,75 +2332,131 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     renderer.domElement.setPointerCapture(e.pointerId);
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-  // U: 1 回目 = 指している地面の座標を表示 / 2 回目 = 真上から(北が上)、座標も表示 / 3 回目 = 元の視点に戻し、座標を消す
-  let aerialView = false, coordMode = 0;
-  let lastCoord = '';   // 開発用: C で指している座標をコピー(座標表示中だけ)
-  let syncAerialCoordinateDisplay = () => {};
+  // ---- 開発ツール(U で表示/非表示。操作説明には出さない) ----
+  //  画面の右に小さなペイント。「線」= なぞった線、「塗る」= なぞって囲んだ所を塗りつぶす。「手」= ふつうのカメラ操作
+  //  線と塗りは地面の上に残り、車で走ってもカメラを動かしてもその場所にある。座標はテキスト欄に書き出す(コピーして渡す)
+  let toggleDevTool = () => {};
   if (MAP_VIEW_COURSE) {
-    const coordEl = document.createElement('div');
-    coordEl.id = 'cursor-coord';
-    coordEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:50;padding:3px 8px;background:rgba(0,0,0,0.6);color:#fff;font:600 14px ui-monospace,monospace;border-radius:4px;pointer-events:none;display:none;';
-    coordEl.textContent = '';
-    document.body.appendChild(coordEl);
-    syncAerialCoordinateDisplay = () => {
-      const visible = coordMode > 0 && bonnetView === 0;
-      coordEl.style.display = visible ? 'block' : 'none';
-      if (!visible) coordEl.textContent = '';
-      else if (!coordEl.textContent) coordEl.textContent = 'x -, z -';
-    };
-    syncAerialCoordinateDisplay();
-    setInterval(syncAerialCoordinateDisplay, 200);
-    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
-    let pending = null;
-    window.addEventListener('pointermove', (e) => {   // 画面の上に重なった表示の上でも拾う
-      if (!coordMode || bonnetView !== 0) { coordEl.textContent = ''; return; }
-      if (pending) { pending = e; return; }
-      pending = e;
-      requestAnimationFrame(() => {
-        const ev = pending; pending = null;
-        if (!coordMode || bonnetView !== 0) { coordEl.textContent = ''; return; }
-        const r = renderer.domElement.getBoundingClientRect();
-        ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-        ray.setFromCamera(ndc, camera);
-        const hAt = gunmaCourse?.groundHeightAt;
-        let ok = false;
-        if ((FUJI_COURSE || AKAGI_COURSE) && hAt) {
-          // 地形に沿って求める: 視線を少しずつ進め、地面の下に入った所を二分法で詰める(見る角度で値が変わらない)
-          const o = ray.ray.origin, d = ray.ray.direction, above = (t) => o.y + d.y * t - hAt(o.x + d.x * t, o.z + d.z * t);
-          let t0 = 0, f0 = above(0);
-          for (let t = 0.5; t < camera.far && f0 > 0; ) {
-            const step = Math.max(0.5, t * 0.004), t1 = t + step, f1 = above(t1);
-            if (f1 <= 0) { let a = t, b = t1; for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } hit.copy(d).multiplyScalar((a + b) / 2).add(o); ok = true; break; }
-            t = t1; t0 = t;
-          }
-        } else {
-          ground.constant = 0;
-          ok = !!ray.ray.intersectPlane(ground, hit);
-        }
-        coordEl.textContent = ok ? `x ${hit.x.toFixed(0)}, z ${hit.z.toFixed(0)}` : 'x -, z -';
-        lastCoord = ok ? `${hit.x.toFixed(0)},${hit.z.toFixed(0)}` : '';
+    const COLORS = [['赤', '#ff2a2a'], ['水色', '#3ad6ff'], ['黄緑', '#9be000'], ['黒', '#111111'], ['白', '#ffffff'], ['ピンク', '#ff7ac8']];
+    const dev = { on: false, tool: 'hand', color: 0, items: [], drawing: null };
+    const panel = document.createElement('div');
+    panel.id = 'dev-tool';
+    panel.style.cssText = 'position:fixed;right:8px;top:60px;z-index:60;width:230px;padding:8px;background:rgba(20,22,26,0.88);color:#fff;font:13px ui-sans-serif,system-ui,sans-serif;border-radius:8px;display:none;user-select:none;';
+    panel.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px">開発ツール</div>
+      <div id="dev-tools" style="display:flex;gap:4px;margin-bottom:6px"></div>
+      <div id="dev-colors" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px"></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button id="dev-undo" style="flex:1">1つ戻す</button><button id="dev-clear" style="flex:1">全部消す</button>
+      </div>
+      <textarea id="dev-out" readonly style="width:100%;height:150px;box-sizing:border-box;font:11px ui-monospace,monospace;background:#0d0f12;color:#e8e8e8;border:1px solid #444;border-radius:4px;resize:vertical"></textarea>
+      <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+        <button id="dev-copy" style="flex:1">コピー</button><span id="dev-cursor" style="flex:1;text-align:right;font:11px ui-monospace,monospace;color:#bbb"></span>
+      </div>`;
+    document.body.appendChild(panel);
+    for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) panel.addEventListener(e, (ev) => ev.stopPropagation());
+    const btnCss = (on) => `flex:1;padding:4px 0;border-radius:4px;border:2px solid ${on ? '#fff' : '#555'};background:${on ? '#3a3f48' : '#22252a'};color:#fff;cursor:pointer`;
+    const toolsEl = panel.querySelector('#dev-tools'), colorsEl = panel.querySelector('#dev-colors'), outEl = panel.querySelector('#dev-out'), curEl = panel.querySelector('#dev-cursor');
+    const renderButtons = () => {
+      toolsEl.innerHTML = ''; colorsEl.innerHTML = '';
+      for (const [key, label] of [['hand', '手(カメラ)'], ['line', '線'], ['fill', '塗る']]) {
+        const b = document.createElement('button'); b.textContent = label; b.style.cssText = btnCss(dev.tool === key);
+        b.onclick = () => { dev.tool = key; renderButtons(); }; toolsEl.appendChild(b);
+      }
+      COLORS.forEach(([name, css], i) => {
+        const b = document.createElement('button'); b.textContent = name;
+        b.style.cssText = `padding:4px 0;border-radius:4px;cursor:pointer;background:${css};color:${i === 3 ? '#fff' : '#000'};border:3px solid ${dev.color === i ? '#fff' : 'transparent'};outline:${dev.color === i ? '1px solid #000' : 'none'}`;
+        b.onclick = () => { dev.color = i; renderButtons(); }; colorsEl.appendChild(b);
       });
+    };
+    renderButtons();
+    // 地面のどこを指しているか(地形に沿って求める。見る角度で値が変わらない)
+    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+    const pickGround = (cx, cy) => {
+      const r = renderer.domElement.getBoundingClientRect();
+      ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      const hAt = gunmaCourse?.groundHeightAt;
+      if ((FUJI_COURSE || AKAGI_COURSE) && hAt) {
+        const o = ray.ray.origin, d = ray.ray.direction, above = (t) => o.y + d.y * t - hAt(o.x + d.x * t, o.z + d.z * t);
+        if (above(0) <= 0) return null;
+        for (let t = 0.5; t < camera.far; ) {
+          const t1 = t + Math.max(0.5, t * 0.004);
+          if (above(t1) <= 0) { let a = t, b = t1; for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } return d.clone().multiplyScalar((a + b) / 2).add(o); }
+          t = t1;
+        }
+        return null;
+      }
+      return ray.ray.intersectPlane(plane, hit) ? hit.clone() : null;
+    };
+    const groundY = (x, z, fallback) => (gunmaCourse?.groundHeightAt ? gunmaCourse.groundHeightAt(x, z) : fallback);
+    // 地面の上の表示(線・塗り)。どこからでも見えるよう、地面に隠れない描き方
+    const group = new THREE.Group(); group.name = 'dev-tool-marks'; scene.add(group);
+    const lineMat = COLORS.map(([, css]) => new THREE.LineBasicMaterial({ color: css, depthTest: false, transparent: true }));
+    const fillMat = COLORS.map(([, css]) => new THREE.MeshBasicMaterial({ color: css, depthTest: false, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    const makeLine = (pts, ci, closed) => {
+      const arr = pts.map(([x, z, y]) => new THREE.Vector3(x, y + 0.3, z)); if (closed && arr.length > 2) arr.push(arr[0].clone());
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arr), lineMat[ci]); l.renderOrder = 999; return l;
+    };
+    const makeFill = (pts, ci) => {
+      const tri = THREE.ShapeUtils.triangulateShape(pts.map(([x, z]) => new THREE.Vector2(x, z)), []), v = [];
+      for (const t of tri) for (const k of t) v.push(pts[k][0], pts[k][2] + 0.3, pts[k][1]);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+      const m = new THREE.Mesh(g, fillMat[ci]); m.renderOrder = 998; return m;
+    };
+    // なぞった点を間引く(形を保ったまま、0.8m より細かい揺れを落とす)
+    const simplify = (pts, tol = 0.8) => {
+      if (pts.length < 3) return pts;
+      const dist = (p, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p[0], a[1] + dz * t - p[1]); };
+      const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+      const st = [[0, pts.length - 1]];
+      while (st.length) { const [i, j] = st.pop(); let bd = 0, bk = -1; for (let k = i + 1; k < j; k++) { const dd = dist(pts[k], pts[i], pts[j]); if (dd > bd) { bd = dd; bk = k; } } if (bd > tol) { keep[bk] = 1; st.push([i, bk], [bk, j]); } }
+      return pts.filter((_, k) => keep[k]);
+    };
+    const writeOut = () => {
+      outEl.value = dev.items.map((it, n) => `${n + 1}. ${COLORS[it.color][0]} ${it.kind === 'fill' ? '塗り' : '線'}: ${it.pts.map(([x, z]) => `${Math.round(x)},${Math.round(z)}`).join(' ')}`).join('\n');
+    };
+    const finish = () => {
+      const D = dev.drawing; dev.drawing = null; if (!D) return;
+      group.remove(D.preview);
+      const pts = simplify(D.raw.map(([x, z]) => [x, z])).map(([x, z]) => [x, z, groundY(x, z, D.raw[0][2])]);
+      if (pts.length < 2 || (D.kind === 'fill' && pts.length < 3)) return;
+      const obj = new THREE.Group();
+      obj.add(makeLine(pts, D.color, D.kind === 'fill')); if (D.kind === 'fill') obj.add(makeFill(pts, D.color));
+      group.add(obj);
+      dev.items.push({ kind: D.kind, color: D.color, pts: pts.map(([x, z]) => [x, z]), obj }); writeOut();
+    };
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (!dev.on || dev.tool === 'hand' || e.button !== 0 || e.shiftKey) return;
+      const p = pickGround(e.clientX, e.clientY); if (!p) return;
+      cam.dragging = false; cam.panning = false;   // 描いている間はカメラを動かさない
+      const preview = makeLine([[p.x, p.z, p.y]], dev.color, false); group.add(preview);
+      dev.drawing = { kind: dev.tool, color: dev.color, raw: [[p.x, p.z, p.y]], preview };
     });
-  }
-  
-  function toggleAerialView() {
-    aerialView = !aerialView;
-    bonnetView = 0;
-    if (aerialView) {
-      cam.pitch = CAM_PITCH_MAX;
-      cam.yaw = -player.heading - Math.PI;   // 北(-z)が画面の上
-      const r = gunmaCourse?.route;
-      if (r?.length) {   // コース全体が入る高さ、中心はコースの真ん中
-        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-        for (const p of r) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
-        cam.panX = (x0 + x1) / 2 - player.pos.x; cam.panZ = (z0 + z1) / 2 - player.pos.z;
-        cam.dist = Math.max(z1 - z0, (x1 - x0) / camera.aspect) * 1.05 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-      } else cam.dist = 1500;
-    } else {
-      cam.yaw = 0; cam.pitch = 0.34; cam.dist = 10; cam.panX = cam.panZ = 0;
-    }
-    document.body.dataset.aerialView = String(aerialView);
-    syncAerialCoordinateDisplay();
+    window.addEventListener('pointermove', (e) => {
+      if (!dev.on) return;
+      const p = pickGround(e.clientX, e.clientY);
+      curEl.textContent = p ? `${Math.round(p.x)},${Math.round(p.z)}` : '';
+      const D = dev.drawing; if (!D || !p) return;
+      cam.dragging = false;
+      const last = D.raw[D.raw.length - 1]; if (Math.hypot(p.x - last[0], p.z - last[1]) < 0.3) return;
+      D.raw.push([p.x, p.z, p.y]);
+      group.remove(D.preview); D.preview.geometry.dispose(); D.preview = makeLine(D.raw, D.color, D.kind === 'fill'); group.add(D.preview);
+    });
+    window.addEventListener('pointerup', finish);
+    panel.querySelector('#dev-undo').onclick = () => { const it = dev.items.pop(); if (it) group.remove(it.obj); writeOut(); };
+    panel.querySelector('#dev-clear').onclick = () => { for (const it of dev.items) group.remove(it.obj); dev.items = []; writeOut(); };
+    panel.querySelector('#dev-copy').onclick = () => {
+      const text = outEl.value; if (!text) return;
+      const done = () => { const b = panel.querySelector('#dev-copy'); b.textContent = 'コピーしました'; setTimeout(() => { b.textContent = 'コピー'; }, 900); };
+      (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(done).catch(() => { outEl.select(); try { document.execCommand('copy'); done(); } catch (_) {} });
+    };
+    toggleDevTool = () => {
+      dev.on = !dev.on; panel.style.display = dev.on ? 'block' : 'none'; group.visible = dev.on;
+      if (!dev.on) { dev.drawing = null; dev.tool = 'hand'; renderButtons(); }
+      document.body.dataset.devTool = String(dev.on);
+    };
+    window.__devTool = dev;
   }
   // ダブルクリックで視点の中心を車に戻す
   renderer.domElement.addEventListener('dblclick', () => { cam.panX = cam.panZ = 0; });
@@ -11608,7 +11651,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
             camera.position.z - gunmaRoadsideForest.userData.farCenter.z);
         }
       }
-      moorFog?.update(dt, camera, gunmaCourse?.mistColor, topView || aerialView);
+      moorFog?.update(dt, camera, gunmaCourse?.mistColor, topView);
       renderer.render(scene, camera);
       renderMirror();
       drawMiniMap();
