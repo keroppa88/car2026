@@ -1058,7 +1058,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     scenery.add(g); g.updateMatrixWorld(true); if (body) colliders.push(body);
   }
-  // ---- 座標で決めた木陰(shadeAreas): 道の木もれ日と同じ模様を、地面の上に薄く重ねる(暗い所に光の斑点) ----
+  // ---- 座標で決めた木陰(shadeAreas: { pts, fade, opacity }): まわりの木陰と同じ色味・模様(暗い所に光の斑点)を地面に重ね、外へだんだん薄く ----
   if (data.shadeAreas?.length) {
     const cv = document.createElement('canvas'); cv.width = cv.height = 128; const c2 = cv.getContext('2d');
     c2.fillStyle = '#ffffff'; c2.fillRect(0, 0, 128, 128);
@@ -1066,16 +1066,19 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     c2.filter = 'blur(1.2px)';
     for (let i = 0; i < 120; i++) { const x = rr() * 128, y = rr() * 128, rx = 1.5 + rr() * 7, ry = 1 + rr() * 4, an = rr() * Math.PI; c2.fillStyle = `rgba(0,0,0,${0.55 + rr() * 0.45})`; for (const dx of [-128, 0, 128]) for (const dy of [-128, 0, 128]) { c2.beginPath(); c2.ellipse(x + dx, y + dy, rx, ry, an, 0, Math.PI * 2); c2.fill(); } }
     const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    const v = [], uv = [];
-    const onEdgeS = (P, x, z) => { let best = Infinity, bx = x, bz = z; const q = P.pts; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < best) { best = dd; bx = px; bz = pz; } } return [bx, bz]; };
-    for (const A of data.shadeAreas.map(region)) for (let x = A.x0; x < A.x1; x += 1) for (let z = A.z0; z < A.z1; z += 1) {
-      const cs = [[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]];
-      const ins = cs.map(([a, b]) => inPoly(A, a, b)); if (!ins.some(Boolean)) continue;
-      const q = cs.map(([a, b], k) => (ins[k] ? [a, b] : onEdgeS(A, a, b)));   // ふちの外の点はふちへ寄せる(ふちはまっすぐ)
-      for (const tri of [[0, 1, 2], [0, 2, 3]]) for (const k of tri) { const [a, b] = q[k]; v.push(a, H(a, b) + 0.12, b); uv.push(a * 0.07, b * 0.07); }
+    const v = [], uv = [], col = [];
+    // 座標の範囲の中はその色、外へ fade m かけて少しずつ薄く(まわりの木陰と同じ色・模様のグラデーション)
+    for (const S of data.shadeAreas) {
+      const A = region(S.pts || S), fade = S.fade ?? 0, op = S.opacity ?? 0.3;
+      const al = (x, z) => (inPoly(A, x, z) ? 1 : fade > 0 ? 1 - THREE.MathUtils.smoothstep(edgeDist(A, x, z), 0, fade) : 0);
+      for (let x = A.x0 - fade; x < A.x1 + fade; x += 1) for (let z = A.z0 - fade; z < A.z1 + fade; z += 1) {
+        const cs = [[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]], aa = cs.map(([a, b]) => al(a, b) * op);
+        if (aa.every((t) => t <= 0.001)) continue;
+        for (const tri of [[0, 1, 2], [0, 2, 3]]) for (const k of tri) { const [a, b] = cs[k], r = roadAt(a, b); v.push(a, H(a, b) + 0.12, b); uv.push(a * 0.07, b * 0.07); col.push(0, 0, 0, r && r.d < EDGE + 0.5 ? 0 : aa[k]); }   // 道の上にはかけない
+      }
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: tex, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, alphaMap: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
     m.name = 'haruna-shade-area'; m.renderOrder = 2; scenery.add(m);
   }
   // ---- 塗って決めた駐車(parkCars: [x, z, 向き])。車の見た目は main.js、ここは当たり判定 ----
