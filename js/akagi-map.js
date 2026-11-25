@@ -421,6 +421,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 横道が本線に合流する所は、その側の外側線(白)を切る(横道の幅 + 前後 3m)
   // 待避所など、足した所(アスファルト・砂)が道にじかに接している所も、その側の外側線を切る(つなぎ目なしで続く)
   const edgeGap = (i, side) => {
+    if ((data.keepEdge || []).some(([a, b]) => i >= a && i <= b)) return false;   // 座標で決めた所は白線・路肩をふつうどおり続ける
     const p = route[i], nn = tangents[i];
     if (sideRoads.some((S) => Math.hypot(p.x - S.a[0], p.z - S.a[1]) <= S.hw + 6 && (S.ux * nn.x + S.uz * nn.z) * side > 0)) return true;
     for (const o of [EDGE + 0.8, EDGE + 2]) if (onOsmRoad(p.x + nn.x * side * o, p.z + nn.z * side * o, 1.5, true)) return true;   // OSM の車の道が合流する所
