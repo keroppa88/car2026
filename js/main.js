@@ -2338,7 +2338,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   let toggleDevTool = () => {};
   if (MAP_VIEW_COURSE) {
     const COLORS = [['赤', '#ff2a2a'], ['水色', '#3ad6ff'], ['黄緑', '#9be000'], ['黒', '#111111'], ['白', '#ffffff'], ['ピンク', '#ff7ac8']];
-    const dev = { on: false, tool: 'hand', color: 0, items: [], drawing: null };
+    const dev = { on: false, tool: 'hand', color: 0, items: [], drawing: null, step: 0.25 };   // step: 座標のきざみ(m)
     const panel = document.createElement('div');
     panel.id = 'dev-tool';
     panel.style.cssText = 'position:fixed;right:8px;top:60px;z-index:60;width:230px;padding:8px;background:rgba(20,22,26,0.88);color:#fff;font:13px ui-sans-serif,system-ui,sans-serif;border-radius:8px;display:none;user-select:none;';
@@ -2346,6 +2346,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       <div style="font-weight:700;margin-bottom:6px">開発ツール</div>
       <div id="dev-tools" style="display:flex;gap:4px;margin-bottom:6px"></div>
       <div id="dev-colors" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px"></div>
+      <div style="margin-bottom:2px;color:#bbb;font-size:11px">座標のきざみ</div>
+      <div id="dev-steps" style="display:flex;gap:4px;margin-bottom:6px"></div>
       <div style="display:flex;gap:4px;margin-bottom:6px">
         <button id="dev-undo" style="flex:1">1つ戻す</button><button id="dev-clear" style="flex:1">全部消す</button>
       </div>
@@ -2356,9 +2358,13 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     document.body.appendChild(panel);
     for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) panel.addEventListener(e, (ev) => ev.stopPropagation());
     const btnCss = (on) => `flex:1;padding:4px 0;border-radius:4px;border:2px solid ${on ? '#fff' : '#555'};background:${on ? '#3a3f48' : '#22252a'};color:#fff;cursor:pointer`;
-    const toolsEl = panel.querySelector('#dev-tools'), colorsEl = panel.querySelector('#dev-colors'), outEl = panel.querySelector('#dev-out'), curEl = panel.querySelector('#dev-cursor');
+    const stepsEl = panel.querySelector('#dev-steps'), toolsEl = panel.querySelector('#dev-tools'), colorsEl = panel.querySelector('#dev-colors'), outEl = panel.querySelector('#dev-out'), curEl = panel.querySelector('#dev-cursor');
     const renderButtons = () => {
-      toolsEl.innerHTML = ''; colorsEl.innerHTML = '';
+      toolsEl.innerHTML = ''; colorsEl.innerHTML = ''; stepsEl.innerHTML = '';
+      for (const [v, label] of [[0.1, '10cm'], [0.25, '25cm'], [0.5, '50cm'], [1, '1m']]) {
+        const b = document.createElement('button'); b.textContent = label; b.style.cssText = btnCss(dev.step === v);
+        b.onclick = () => { dev.step = v; renderButtons(); writeOut(); }; stepsEl.appendChild(b);
+      }
       for (const [key, label] of [['hand', '手(カメラ)'], ['line', '線'], ['fill', '塗る']]) {
         const b = document.createElement('button'); b.textContent = label; b.style.cssText = btnCss(dev.tool === key);
         b.onclick = () => { dev.tool = key; renderButtons(); }; toolsEl.appendChild(b);
@@ -2380,8 +2386,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       if ((FUJI_COURSE || AKAGI_COURSE) && hAt) {
         const o = ray.ray.origin, d = ray.ray.direction, above = (t) => o.y + d.y * t - hAt(o.x + d.x * t, o.z + d.z * t);
         if (above(0) <= 0) return null;
-        for (let t = 0.5; t < camera.far; ) {
-          const t1 = t + Math.max(0.5, t * 0.004);
+        for (let t = 0.5; t < 4000; ) {   // 4km より先(空)は探さない
+          const t1 = t + Math.max(0.5, t * 0.008);
           if (above(t1) <= 0) { let a = t, b = t1; for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } return d.clone().multiplyScalar((a + b) / 2).add(o); }
           t = t1;
         }
@@ -2404,8 +2410,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
       const m = new THREE.Mesh(g, fillMat[ci]); m.renderOrder = 998; return m;
     };
-    // なぞった点を間引く(形を保ったまま、0.15m より細かい揺れだけ落とす)
-    const simplify = (pts, tol = 0.15) => {
+    // なぞった点を間引く(形を保ったまま、8cm より細かい揺れだけ落とす。書き出すときに選んだきざみに丸める)
+    const simplify = (pts, tol = 0.08) => {
       if (pts.length < 3) return pts;
       const dist = (p, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p[0], a[1] + dz * t - p[1]); };
       const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
@@ -2413,7 +2419,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       while (st.length) { const [i, j] = st.pop(); let bd = 0, bk = -1; for (let k = i + 1; k < j; k++) { const dd = dist(pts[k], pts[i], pts[j]); if (dd > bd) { bd = dd; bk = k; } } if (bd > tol) { keep[bk] = 1; st.push([i, bk], [bk, j]); } }
       return pts.filter((_, k) => keep[k]);
     };
-    const q25 = (v) => String(Math.round(v * 4) / 4);   // 座標は 25cm きざみ
+    const q25 = (v) => String(Math.round(v / dev.step) * dev.step).replace(/(\.\d{2})\d+$/, '$1');   // 座標は選んだきざみ(10cm・25cm・50cm・1m)
     const writeOut = () => {
       outEl.value = dev.items.map((it, n) => `${n + 1}. ${COLORS[it.color][0]} ${it.kind === 'fill' ? '塗り' : '線'}: ${it.pts.map(([x, z]) => `${q25(x)},${q25(z)}`).join(' ')}`).join('\n');
     };
@@ -2427,15 +2433,20 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       group.add(obj);
       dev.items.push({ kind: D.kind, color: D.color, pts: pts.map(([x, z]) => [x, z]), obj }); writeOut();
     };
-    renderer.domElement.addEventListener('pointerdown', (e) => {
-      if (!dev.on || dev.tool === 'hand' || e.button !== 0 || e.shiftKey) return;
+    window.addEventListener('pointerdown', (e) => {   // 画面の上に重なった表示の上からでも描ける(ボタンなどは除く)
+      if (!dev.on || dev.tool === 'hand' || e.button !== 0 || e.shiftKey || e.target.closest?.('#dev-tool, button, input, textarea, select, a')) return;
       const p = pickGround(e.clientX, e.clientY); if (!p) return;
       cam.dragging = false; cam.panning = false;   // 描いている間はカメラを動かさない
       const preview = makeLine([[p.x, p.z, p.y]], dev.color, false); group.add(preview);
       dev.drawing = { kind: dev.tool, color: dev.color, raw: [[p.x, p.z, p.y]], preview };
     });
-    window.addEventListener('pointermove', (e) => {
+    let pendingMove = null;
+    window.addEventListener('pointermove', (e) => {   // 1 コマに 1 回だけ地面を調べる(重くしない)
       if (!dev.on) return;
+      const first = !pendingMove; pendingMove = e; if (!first) return;
+      requestAnimationFrame(() => { const ev = pendingMove; pendingMove = null; onMove(ev); });
+    });
+    const onMove = (e) => {
       const p = pickGround(e.clientX, e.clientY);
       curEl.textContent = p ? `${q25(p.x)},${q25(p.z)}` : '';
       const D = dev.drawing; if (!D || !p) return;
@@ -2443,7 +2454,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const last = D.raw[D.raw.length - 1]; if (Math.hypot(p.x - last[0], p.z - last[1]) < 0.1) return;
       D.raw.push([p.x, p.z, p.y]);
       group.remove(D.preview); D.preview.geometry.dispose(); D.preview = makeLine(D.raw, D.color, D.kind === 'fill'); group.add(D.preview);
-    });
+    };
     window.addEventListener('pointerup', finish);
     panel.querySelector('#dev-undo').onclick = () => { const it = dev.items.pop(); if (it) group.remove(it.obj); writeOut(); };
     panel.querySelector('#dev-clear').onclick = () => { for (const it of dev.items) group.remove(it.obj); dev.items = []; writeOut(); };
