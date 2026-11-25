@@ -349,7 +349,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   for (let iz = 0; iz <= lines; iz++) for (let ix = 0; ix <= cols; ix++) {
     const x = minX + ix * G.cell, z = minZ + iz * G.cell, k = iz * (cols + 1) + ix, legs = legsAt(x, z);
     const d = legs.length ? legs[0].d : 1e9;
-    const h = H(x, z) - 6 * (1 - THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1)) - underFlat(x, z);
+    // 2 本の道(つづら折りの上と下)の間は、道わきの細かい地面がとちゅうで止まってすき間ができるので、粗い地面を下げない(地面の下が見えないように)
+    const between = !akagi && legs.length > 1 && legs[1].d < EDGE + STRIP + 4;
+    const h = H(x, z) - 6 * (1 - (between ? THREE.MathUtils.smoothstep(d, EDGE + 6, EDGE + 12) : THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1))) - underFlat(x, z);   // 間の所は道の近く(12m まで)だけ下げる
     verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
     const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
     const area = inAny(meadows, x, z) ? MEADOW : inAny(bushes, x, z) ? BUSHY : null;
