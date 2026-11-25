@@ -2333,7 +2333,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
   });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
   // ---- 開発ツール(U で表示/非表示。操作説明には出さない) ----
-  //  画面の右に小さなペイント。「線」= なぞった線、「塗る」= なぞって囲んだ所を塗りつぶす。「手」= ふつうのカメラ操作
+  //  開発モード中は車は止まる(走るのはふつうのモードで)。画面の右に小さなペイント。「線」= なぞった線、「塗る」= なぞって囲んだ所を塗りつぶす。「手」= ふつうのカメラ操作
   //  線と塗りは地面の上に残り、車で走ってもカメラを動かしてもその場所にある。座標はテキスト欄に書き出す(コピーして渡す)
   let toggleDevTool = () => {};
   if (MAP_VIEW_COURSE) {
@@ -2351,7 +2351,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       </div>
       <textarea id="dev-out" readonly style="width:100%;height:150px;box-sizing:border-box;font:11px ui-monospace,monospace;background:#0d0f12;color:#e8e8e8;border:1px solid #444;border-radius:4px;resize:vertical"></textarea>
       <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
-        <button id="dev-copy" style="flex:1">コピー</button><span id="dev-cursor" style="flex:1;text-align:right;font:11px ui-monospace,monospace;color:#bbb"></span>
+        <button id="dev-copy" style="flex:1">指示内容コピー</button><span id="dev-cursor" style="flex:1;text-align:right;font:11px ui-monospace,monospace;color:#bbb"></span>
       </div>`;
     document.body.appendChild(panel);
     for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) panel.addEventListener(e, (ev) => ev.stopPropagation());
@@ -2404,8 +2404,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
       const m = new THREE.Mesh(g, fillMat[ci]); m.renderOrder = 998; return m;
     };
-    // なぞった点を間引く(形を保ったまま、0.8m より細かい揺れを落とす)
-    const simplify = (pts, tol = 0.8) => {
+    // なぞった点を間引く(形を保ったまま、0.15m より細かい揺れだけ落とす)
+    const simplify = (pts, tol = 0.15) => {
       if (pts.length < 3) return pts;
       const dist = (p, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p[0], a[1] + dz * t - p[1]); };
       const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
@@ -2413,8 +2413,9 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       while (st.length) { const [i, j] = st.pop(); let bd = 0, bk = -1; for (let k = i + 1; k < j; k++) { const dd = dist(pts[k], pts[i], pts[j]); if (dd > bd) { bd = dd; bk = k; } } if (bd > tol) { keep[bk] = 1; st.push([i, bk], [bk, j]); } }
       return pts.filter((_, k) => keep[k]);
     };
+    const q25 = (v) => String(Math.round(v * 4) / 4);   // 座標は 25cm きざみ
     const writeOut = () => {
-      outEl.value = dev.items.map((it, n) => `${n + 1}. ${COLORS[it.color][0]} ${it.kind === 'fill' ? '塗り' : '線'}: ${it.pts.map(([x, z]) => `${Math.round(x)},${Math.round(z)}`).join(' ')}`).join('\n');
+      outEl.value = dev.items.map((it, n) => `${n + 1}. ${COLORS[it.color][0]} ${it.kind === 'fill' ? '塗り' : '線'}: ${it.pts.map(([x, z]) => `${q25(x)},${q25(z)}`).join(' ')}`).join('\n');
     };
     const finish = () => {
       const D = dev.drawing; dev.drawing = null; if (!D) return;
@@ -2436,10 +2437,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     window.addEventListener('pointermove', (e) => {
       if (!dev.on) return;
       const p = pickGround(e.clientX, e.clientY);
-      curEl.textContent = p ? `${Math.round(p.x)},${Math.round(p.z)}` : '';
+      curEl.textContent = p ? `${q25(p.x)},${q25(p.z)}` : '';
       const D = dev.drawing; if (!D || !p) return;
       cam.dragging = false;
-      const last = D.raw[D.raw.length - 1]; if (Math.hypot(p.x - last[0], p.z - last[1]) < 0.3) return;
+      const last = D.raw[D.raw.length - 1]; if (Math.hypot(p.x - last[0], p.z - last[1]) < 0.1) return;
       D.raw.push([p.x, p.z, p.y]);
       group.remove(D.preview); D.preview.geometry.dispose(); D.preview = makeLine(D.raw, D.color, D.kind === 'fill'); group.add(D.preview);
     });
@@ -2448,7 +2449,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     panel.querySelector('#dev-clear').onclick = () => { for (const it of dev.items) group.remove(it.obj); dev.items = []; writeOut(); };
     panel.querySelector('#dev-copy').onclick = () => {
       const text = outEl.value; if (!text) return;
-      const done = () => { const b = panel.querySelector('#dev-copy'); b.textContent = 'コピーしました'; setTimeout(() => { b.textContent = 'コピー'; }, 900); };
+      const done = () => { const b = panel.querySelector('#dev-copy'); b.textContent = 'コピーしました'; setTimeout(() => { b.textContent = '指示内容コピー'; }, 900); };
       (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(done).catch(() => { outEl.select(); try { document.execCommand('copy'); done(); } catch (_) {} });
     };
     toggleDevTool = () => {
@@ -9729,6 +9730,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       handbrake = !!keys[' '] || gamepadState.handbrake; // Space / ガムパッドA = ドリフト
       input = clamp((keys['arrowleft'] ? 1 : 0) - (keys['arrowright'] ? 1 : 0) + gamepadState.steer, -1, 1);
     }
+    if (window.__devTool?.on) { throttle = false; handbrake = false; brake = true; input = 0; }   // 開発モード中は車を止める(キーで動かない)
     // steering (less lock at speed, extra lock while sliding for counter-steer)
     const speedAlong = player.vel.x * Math.sin(player.heading) + player.vel.z * Math.cos(player.heading);
     const lock = 0.55 / (1 + Math.abs(speedAlong) * (player.drifting ? 0.02 : 0.055));
