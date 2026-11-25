@@ -664,13 +664,14 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   }
   // ---- 展望台のウッドデッキと木の柵(decks: 塗った黄緑の線)。線から道と反対の側へ奥行き 4m の板張り。奥のふちに柵(柱・笠木・縦の格子)。
   //      車は入れない(デッキのまわりに見えない壁) ----
-  for (const line of data.decks || []) {
+  for (const D of data.decks || []) {
+    const line = Array.isArray(D) ? D : D.pts, opt = Array.isArray(D) ? {} : D;   // opt: { depth, pillars } pillars = 奥が浮いていて柱で支える
     if (line.length < 2) continue;
     const pts = [];
     for (let k = 0; k + 1 < line.length; k++) { const [ax, az] = line[k], [bx, bz] = line[k + 1], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L / 1)); for (let t = 0; t < m; t++) pts.push([ax + (bx - ax) * t / m, az + (bz - az) * t / m]); }
     pts.push(line[line.length - 1]);
     const mid = pts[pts.length >> 1], r0 = nearestRoute(mid[0], mid[1]), rp = route[Math.max(0, r0.i)];
-    const DEPTH = 4, deckY = Math.max(...pts.map(([x, z]) => H(x, z))) + 0.22;
+    const DEPTH = opt.depth ?? 4, deckY = Math.max(...pts.map(([x, z]) => H(x, z))) + 0.22;
     const side = (k) => { const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; let nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l; if (nx * (pts[k][0] - rp.x) + nz * (pts[k][1] - rp.z) < 0) { nx = -nx; nz = -nz; } return [nx, nz]; };   // 道から離れる向き
     const front = pts.map(([x, z]) => [x, z]), back = pts.map(([x, z], k) => { const [nx, nz] = side(k); return [x + nx * DEPTH, z + nz * DEPTH]; });
     const wood = new THREE.MeshLambertMaterial({ color: 0x7a5a3c }), dark = new THREE.MeshLambertMaterial({ color: 0x3b2a1e });
@@ -680,9 +681,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const f0 = [front[k][0], deckY, front[k][1]], f1 = [front[k + 1][0], deckY, front[k + 1][1]], b0 = [back[k][0], deckY, back[k][1]], b1 = [back[k + 1][0], deckY, back[k + 1][1]];
       quad(f0, f1, b1, b0);
       quad([f0[0], deckY - 0.6, f0[2]], [f1[0], deckY - 0.6, f1[2]], f1, f0);
-      quad([b0[0], deckY - 2, b0[2]], [b1[0], deckY - 2, b1[2]], b1, b0);
+      quad([b0[0], deckY - (opt.pillars ? 0.3 : 2), b0[2]], [b1[0], deckY - (opt.pillars ? 0.3 : 2), b1[2]], b1, b0);
     }
-    for (const k of [0, pts.length - 1]) { const f = [front[k][0], deckY, front[k][1]], b = [back[k][0], deckY, back[k][1]]; quad([f[0], deckY - 1.5, f[2]], [b[0], deckY - 1.5, b[2]], b, f); }
+    for (const k of [0, pts.length - 1]) { const f = [front[k][0], deckY, front[k][1]], b = [back[k][0], deckY, back[k][1]]; quad([f[0], deckY - (opt.pillars ? 0.3 : 1.5), f[2]], [b[0], deckY - (opt.pillars ? 0.3 : 1.5), b[2]], b, f); }
+    if (opt.pillars) {   // 柱: 2m おき・3 列、デッキの下から崖の斜面に食い込むまで(地面の 0.6m 下まで)
+      const pv = [];
+      for (let k = 0; k < pts.length; k += 2) for (const t of [0.15, 0.55, 0.95]) { const x = front[k][0] + (back[k][0] - front[k][0]) * t, z = front[k][1] + (back[k][1] - front[k][1]) * t, g = H(x, z) - 0.6; if (g > deckY - 0.35) continue; pv.push([x, z, g]); }
+      const pg = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 1, 0.22), new THREE.MeshLambertMaterial({ color: 0x5a4030 }), pv.length), Mp = new THREE.Matrix4();
+      pv.forEach(([x, z, g], i) => { const h = deckY - 0.3 - g; Mp.makeScale(1, h, 1).setPosition(x, g + h / 2, z); pg.setMatrixAt(i, Mp); });
+      pg.name = 'akagi-deck-pillars'; scenery.add(pg);
+    }
     const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); dg.computeVertexNormals();
     const deck = new THREE.Mesh(dg, new THREE.MeshLambertMaterial({ color: 0x8c6a48, side: THREE.DoubleSide })); deck.name = 'akagi-deck'; scenery.add(deck);
     // 板の継ぎ目(細い暗い線、奥行きの向き 0.5m おき)
@@ -1501,7 +1509,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const trees = [];
     const terr = (data.terraces || []).map((T) => region(T.pts));
     const noTr = (data.noTrees || []).map(region);   // 塗って決めた「木も草も生やさない所」
-    const noTree = (x, z) => noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => l.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const noTree = (x, z) => noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => (Array.isArray(l) ? l : l.pts).some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
