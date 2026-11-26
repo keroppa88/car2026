@@ -379,6 +379,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const groundNormalAt = (x, z) => new THREE.Vector3(H(x - 1, z) - H(x + 1, z), 2, H(x, z - 1) - H(x, z + 1)).normalize();
   const terrainHeightAt = (x, z) => (x < minX || x > maxX || z < minZ || z > maxZ ? -Infinity : H(x, z));
 
+  const farHazeU = { value: new THREE.Color(0.49, 0.56, 0.62) };   // 遠景の山のモヤの色
   // 地図の外の遠い地面。data.far(80m 升目、tools/haruna/make_far.py)があれば、その本当の高さ。なければ 60m 升目・半径 6km で地形の端のまま。内側と重なる所は下げる
   if (data.far) {
     const F = data.far, fv = [], fi = [], fc = [], C1 = new THREE.Color();
@@ -393,9 +394,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); g.setIndex(fi); g.computeVertexNormals();
     // 遠くほどモヤでかすませて、遠景の 2D の山並み(かすんだ青灰色)に近づける。重なる山並みが見分けられるよう 4 段階(2km・4km・6km・8.5km)
     const farMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    farHazeU.value.setRGB(0.49, 0.56, 0.62);   // 昼のモヤの色(夜は setNight で黒に近い濃いグレー)
     farMat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <project_vertex>', '#include <project_vertex>\nvHazeD = length(mvPosition.xyz);');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <dithering_fragment>', '#include <dithering_fragment>\nfloat hz = 0.22 * smoothstep(1800.0, 2400.0, vHazeD) + 0.22 * smoothstep(3500.0, 4200.0, vHazeD) + 0.22 * smoothstep(5500.0, 6300.0, vHazeD) + 0.2 * smoothstep(8000.0, 9000.0, vHazeD);\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.49, 0.56, 0.62), hz);');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vHazeD;').replace('#include <dithering_fragment>', '#include <dithering_fragment>\nfloat hz = 0.22 * smoothstep(1800.0, 2400.0, vHazeD) + 0.22 * smoothstep(3500.0, 4200.0, vHazeD) + 0.22 * smoothstep(5500.0, 6300.0, vHazeD) + 0.2 * smoothstep(8000.0, 9000.0, vHazeD);\ngl_FragColor.rgb = mix(gl_FragColor.rgb, farHazeColor, hz);').replace('#include <common>', '#include <common>\nuniform vec3 farHazeColor;');
+      sh.uniforms.farHazeColor = farHazeU;
     };
     const far = new THREE.Mesh(g, farMat); far.name = 'AkagiFarGround'; scenery.add(far);
     // 湖(榛名湖など): 平らな水面
@@ -1694,7 +1697,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     return { x, y: best.P.y, z };
   })();
-  const setNight = (on) => { for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
+  const setNight = (on) => { farHazeU.value.setRGB(...(on ? [0.045, 0.05, 0.058] : [0.49, 0.56, 0.62])); for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
