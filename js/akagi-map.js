@@ -948,8 +948,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const a = S.pts[j], b = S.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.ceil(L / 1.5));
       for (let t = 0; t < k; t++) {
         const p0 = [a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k], p1 = [a[0] + (b[0] - a[0]) * (t + 1) / k, a[1] + (b[1] - a[1]) * (t + 1) / k];
-        const r0 = roadAt(p0[0], p0[1]), r1 = roadAt(p1[0], p1[1]); if (r0 && r1 && Math.min(r0.d, r1.d) < EDGE + 0.5) continue;   // 道に面した辺は作らない
-        const sy = (q) => { const k = nearestRoute(q[0], q[1], 4); return route[Math.max(0, k.i)].y - 0.03; }, y0 = sy(p0), y1 = sy(p1), g0 = Math.min(H0(p0[0], p0[1]), y0 - 0.3) - 1, g1 = Math.min(H0(p1[0], p1[1]), y1 - 0.3) - 1;
+        const r0 = roadAt(p0[0], p0[1]), r1 = roadAt(p1[0], p1[1]); if (r0 && r1 && Math.max(r0.d, r1.d) < EDGE + 0.3) continue;   // 道にじかに接している辺だけ作らない
+        const sy = (q) => { const k = nearestRoute(q[0], q[1], 4); return route[Math.max(0, k.i)].y - 0.03; }, y0 = sy(p0), y1 = sy(p1), g0 = Math.min(H0(p0[0], p0[1]), H(p0[0], p0[1]), y0 - 0.3) - 2.5, g1 = Math.min(H0(p1[0], p1[1]), H(p1[0], p1[1]), y1 - 0.3) - 2.5;   // 側面は地面の下まで(土手の横に穴が開かないように)
         v.push(p0[0], g0, p0[1], p1[0], g1, p1[1], p1[0], y1, p1[1], p0[0], g0, p0[1], p1[0], y1, p1[1], p0[0], y0, p0[1]);
       }
     }
