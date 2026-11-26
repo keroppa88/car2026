@@ -956,7 +956,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const nearApron = (x, z) => parkAprons.some((A) => x > A.x0 - 25 && x < A.x1 + 25 && z > A.z0 - 25 && z < A.z1 + 25 && (inPoly(A, x, z) || edgeDist(A, x, z) < 25));
     const spots = [];
     const noTuft = (data.noTrees || []).map(region);   // 脇道(塗った所)には草の株を生やさない
-    const tryAt = (x, z) => { const r = roadAt(x, z); if (!r || r.d < EDGE + 0.3 || aprons.some((A) => inPoly(A, x, z)) || noTuft.some((P) => inPoly(P, x, z))) return; spots.push([x, H(x, z) - 0.02, z]); };
+    const tryAt = (x, z) => { const r = roadAt(x, z); if (!r || r.d < EDGE + 0.3 || aprons.some((A) => inPoly(A, x, z)) || lots.some((L) => inPoly(L, x, z) || edgeDist(L, x, z) < 0.4) || onOsmRoad(x, z, 0.2, true) || noTuft.some((P) => inPoly(P, x, z))) return; spots.push([x, H(x, z) - 0.02, z]); };
     for (const P of meadows) {   // 芝生の帯(拡張の近くのものだけ)
       if (!nearApron((P.x0 + P.x1) / 2, (P.z0 + P.z1) / 2)) continue;
       for (let x = P.x0; x <= P.x1; x += 0.9) for (let z = P.z0; z <= P.z1; z += 0.9) { const tx = x + (rnd() - 0.5) * 0.8, tz = z + (rnd() - 0.5) * 0.8; if (inPoly(P, tx, tz)) tryAt(tx, tz); }
