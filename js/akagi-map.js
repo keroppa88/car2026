@@ -284,7 +284,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
   // アスファルトを足した所(待避所・つなぎ)の下の地面は少し下げて、板とちらつかないようにする(ほかは下げない)
-  const underFlat = (x, z) => (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);   // 板の駐車場の下の地面は 25cm 下げる
+  const underFlat = (x, z) => (onOsmRoad(x, z, 0.6, true) ? 0.12 : 0) || (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);   // 板の駐車場の下の地面は 25cm 下げる
   // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
   const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
   for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
@@ -768,8 +768,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
         list.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]); } };
       const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
       const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
-      strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);
-      if (r.plain) { strip(bands.GunmaRoad, -hw - SH, hw + SH, 0, notOnMain); continue; }   // plain: 白線・オレンジ線・路肩の色違いなし(アスファルト色だけ)
+      if (r.plain) { strip(bands.GunmaRoad, -hw - SH, hw + SH, 0, notOnMain); continue; }   // plain: 1 枚だけ(重ねるとちらつく)
+      strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);   // plain: 白線・オレンジ線・路肩の色違いなし(アスファルト色だけ)
       strip(bands.GunmaShoulder, -hw - SH, -hw, -0.01, away); strip(bands.GunmaShoulder, hw, hw + SH, -0.01, away);
       // 榛名山: 指定された行き止まりの脇道(953,-1354 ～ 854,-1130)は
       // 路面を残し、センターラインと両側の白い外側線だけを描かない。
