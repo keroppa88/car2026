@@ -612,7 +612,7 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module">
-  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS, DEMO_MAPS } from './js/game-config.js?v=20261126-s21';
+  import { CAR_CONFIGS, MAP_CONFIGS, COURSE_ORDER, MENU_GROUPS, DEMO_MAPS } from './js/game-config.js?v=20261126-s22';
 
   const query = new URLSearchParams(location.search);
   const requestedCar = query.get('car');
@@ -744,7 +744,7 @@
   } else if (hasGameSelection) {
     document.getElementById('game-select').remove();
     document.body.classList.add('game-running');
-    import('./js/main.js?v=20261126-s23');
+    import('./js/main.js?v=20261126-s24');
   } else {
     document.body.classList.add('title');
     const carKeys = Object.keys(CAR_CONFIGS);
@@ -927,12 +927,12 @@
       document.getElementById('car-grid').append(button);
       return button;
     });
-    // 分野のカード: 中の 4 コースの絵を 2×2 に並べる
+    // 分野のカード: 中のコースの絵を 4 つまで 2×2 に並べる(5 つ以上あっても最初の 4 つ)
     const groupButtons = MENU_GROUPS.map((g, gi) => {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'select-card group-card'; button.dataset.key = g.key;
       const mosaic = document.createElement('div'); mosaic.className = 'group-mosaic';
-      for (const [k] of g.courses) mosaic.append(Object.assign(document.createElement('img'), { src: MAP_CONFIGS[k].preview, alt: '' }));
+      for (const [k] of g.courses.slice(0, 4)) mosaic.append(Object.assign(document.createElement('img'), { src: MAP_CONFIGS[k].preview, alt: '' }));
       button.append(mosaic, Object.assign(document.createElement('strong'), { textContent: g.label }));
       button.addEventListener('click', () => { if (IS_MOBILE) return; groupIndex = gi; paint(); });
       button.addEventListener('dblclick', () => { if (!IS_MOBILE) { groupIndex = gi; showCourses(); } });
