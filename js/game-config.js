@@ -501,7 +501,7 @@ export const MAP_CONFIGS = {
     label: '榛名山',
     file: 'procedural:haruna',
     preview: 'picture/akagi.png?v=20261117',   // 仮(あとで榛名山の絵に)
-    courseData: 'map/haruna-course.json?v=20261126-22',
+    courseData: 'map/haruna-course.json?v=20261126-23',
     scale: 1,
     roadMaterial: 'GunmaRoad',
     roadMaterialAliases: [],
