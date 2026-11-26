@@ -353,7 +353,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     // 2 本の道(つづら折りの上と下)の間は、道わきの細かい地面がとちゅうで止まってすき間ができるので、粗い地面を下げない(地面の下が見えないように)
     const between = !akagi && legs.length > 1 && legs[1].d < EDGE + STRIP + 4;
     const h = H(x, z) - 6 * (1 - (between ? THREE.MathUtils.smoothstep(d, EDGE + 6, EDGE + 12) : THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1))) - underFlat(x, z);   // 間の所は道の近く(12m まで)だけ下げる
-    verts[k * 3] = x; verts[k * 3 + 1] = h; verts[k * 3 + 2] = z;
+    // 白線なし(plain)の脇道の近く(升目 1.5 個分)は、路面より下げる(6m 升目の地面が路面の上に四角く出ない)
+    const on = osmNearest(x, z, 12); let hh = h;
+    if (on && on.r.plain) hh = Math.min(h, H(on.r.pts[on.k][0], on.r.pts[on.k][1]) - 0.25);
+    verts[k * 3] = x; verts[k * 3 + 1] = hh; verts[k * 3 + 2] = z;
     const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
     const area = inAny(meadows, x, z) ? MEADOW : inAny(bushes, x, z) ? BUSHY : null;
     for (let c = 0; c < 3; c++) colors[k * 3 + c] = area ? area[c] * (0.92 + 0.16 * mix) : forest[c] + (bush[c] - forest[c]) * mix * (akagi ? 0.7 : 0.2);
@@ -761,7 +764,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const rows = P.map(([x, z], k) => {
         const a = P[Math.max(0, k - 2)], b = P[Math.min(P.length - 1, k + 2)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l;
         const rd = roadAt(x, z);
-        return { x, z, nx, nz, y: rd && rd.d < EDGE ? rd.y - 0.06 : ys[k] + 0.02, main: rd ? rd.d : 1e9 };
+        return { x, z, nx, nz, y: rd && rd.d < EDGE ? rd.y - 0.06 : ys[k] + (r.plain ? 0.1 : 0.02), main: rd ? rd.d : 1e9 };   // plain の脇道は少し高く(まわりの地面に負けない)
       });
       const strip = (list, from, to, dy, ok) => { for (let k = 0; k + 1 < rows.length; k++) { const A = rows[k], B = rows[k + 1]; if (!ok(A, B)) continue;
         const q = [[A.x + A.nx * from, A.y + dy, A.z + A.nz * from], [A.x + A.nx * to, A.y + dy, A.z + A.nz * to], [B.x + B.nx * to, B.y + dy, B.z + B.nz * to], [B.x + B.nx * from, B.y + dy, B.z + B.nz * from]];
