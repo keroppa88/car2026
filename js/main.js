@@ -4557,7 +4557,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         const initialDistance = clamp(distance, 0, endDistance);
         const at = sampleGunmaTrafficPath(path, initialDistance);
         const ahead = sampleGunmaTrafficPath(path, Math.min(initialDistance + 4, endDistance));
-        const vehicle = vehicles[created % vehicles.length];
+        const vehicle = pickCpuVehicle(vehicles, created);
         const bike = isKabuVoxUrl(vehicle.url);
         const car = makeCarGroup(vehicle.mesh.clone(), false, bike, 'gunmaCpuBoost');
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
@@ -5172,6 +5172,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     return names.map((name) => 'vox/' + encodeURIComponent(name));
   }
 
+  // CPU車1台ぶんの車種を選ぶ。バイク(kabu)は 25 台に 1 台(夜は 50 台に 1 台)。それ以外は車を順番に
+  function pickCpuVehicle(vehicles, seq) {
+    const cars = vehicles.filter((v) => !isKabuVoxUrl(v.url)), bikes = vehicles.filter((v) => isKabuVoxUrl(v.url));
+    if (bikes.length && (!cars.length || Math.random() < (nightMode ? 1 / 50 : 1 / 25))) return bikes[Math.floor(Math.random() * bikes.length)];
+    return cars[seq % cars.length];
+  }
   function isKabuVoxUrl(url) {
     const file = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '');
     return /^kabu\d*\.vox$/i.test(file);
@@ -6862,8 +6868,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       TOUGE_COURSE ? null : VOX.load('vox/object/tree02.vox', { scale: TREE_SCALE }),
     ]);
     // 森林地帯はCPU車なし。群馬は少数の車種だけを読み込んで複製する。
-    // バイク(kabu*.vox)を出すのは 湘南・赤城山・榛名山・TOKYO・街並み・筑波山 だけ。ほかのマップでは外す
-    const BIKE_COURSES = new Set(['shonan', 'akagi', 'haruna', 'nihonbashi', 'neo', 'tsukuba']);
+    // バイク(kabu*.vox)を出すのは 街並み・湘南・榛名山・赤城山 だけ。ほかのマップでは外す(出る割合は pickCpuVehicle)
+    const BIKE_COURSES = new Set(['shonan', 'akagi', 'haruna', 'neo']);
     const discoveredCpuVox = COURSE_KEY === 'forest'
       ? []
       : (await discoverCpuCarVox()).filter((url) => BIKE_COURSES.has(COURSE_KEY) || !isKabuVoxUrl(url));
@@ -6875,7 +6881,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     // 全マップ共通: なるべく幅広い車種を出す(車種ごとに 1 台ずつ、色違いはランダム)。バイクは 2 台まで
     const diverseCpuVox = () => {
       const cars = pickDiverseCpuVox(discoveredCpuVox.filter((url) => !isKabuVoxUrl(url)), 1, 10, 0);
-      const bikes = shuffleArray(discoveredCpuVox.filter(isKabuVoxUrl)).slice(0, Math.random() < 0.5 ? 1 : 0);   // バイクは今までの 1/4(2 台 → 平均 0.5 台: 半分の確率で 1 台)
+      const bikes = shuffleArray(discoveredCpuVox.filter(isKabuVoxUrl)).slice(0, 2);   // バイクは車種として 2 台ぶん読み込む(実際に出る割合は pickCpuVehicle: 25 台に 1 台、夜は 50 台に 1 台)
       bikes.forEach((url, k) => cars.splice(1 + k * 3, 0, url));
       return cars.slice(0, 12);
     };
@@ -9262,7 +9268,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     const cars = [];
     lanes.forEach((lane, li) => {
       for (let i = 0; i < TRAFFIC_PER_LANE; i++) {
-        const v = shonanTrafficVehicles[(li * TRAFFIC_PER_LANE + i) % shonanTrafficVehicles.length];
+        const v = pickCpuVehicle(shonanTrafficVehicles, li * TRAFFIC_PER_LANE + i);
         const g = makeCarGroup(v.mesh.clone(), false, isKabuVoxUrl(v.url));
         cars.push({ group: g.group, lane, s: -1, v: 0, cruise: (60 + Math.random() * 20) / 3.6, idx: 0 });
       }
