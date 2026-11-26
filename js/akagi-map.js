@@ -127,8 +127,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const inCut = (x, z) => cuts.some((C) => x > C.x0 && x < C.x1 && z > C.z0 && z < C.z1 && inPoly(C, x, z));   // 砂の待避所・横道(tools/haruna/apply_quarter_paint.py)
   const slabs = (data.slabs || []).map(region);
   // 駐車場の広場(lots): 道路ではない平らなアスファルト(白線なし)。高さは背骨(spine: もとの脇道の点と高さ)のいちばん近い点。まわり 4m で元の地面へ
-  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [] }));
-  const lotY = (L, x, z) => { let bd = Infinity, y = 0; for (const [sx, sz, sy] of L.spine) { const dd = (sx - x) ** 2 + (sz - z) ** 2; if (dd < bd) { bd = dd; y = sy; } } return y; };   // 板の駐車場: 中は道と同じ高さで平ら(崖の上へ張り出してよい)。ふちはコンクリートの側面
+  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane }));
+  const lotY = (L, x, z) => { if (L.plane) return L.plane[0] * x + L.plane[1] * z + L.plane[2];   // plane: [a, b, c] = 傾いた平らな面 y = a x + b z + c
+ let bd = Infinity, y = 0; for (const [sx, sz, sy] of L.spine) { const dd = (sx - x) ** 2 + (sz - z) ** 2; if (dd < bd) { bd = dd; y = sy; } } return y; };   // 板の駐車場: 中は道と同じ高さで平ら(崖の上へ張り出してよい)。ふちはコンクリートの側面
   const flats = aprons.concat(sands);               // 道の高さにそろえる所(道から 18m より先は元の地面へ寄せる: 長い横道が浮かないように)
   // 一車線の横道(sideRoads: 中心線と幅)。本線の路面の中から始めて、奥へ。形は帯の多角形にして flats に入れる(高さの決め方は同じ)
   const sideRoads = (data.sideRoads || []).map((S) => {
@@ -355,6 +356,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const h = H(x, z) - 6 * (1 - (between ? THREE.MathUtils.smoothstep(d, EDGE + 6, EDGE + 12) : THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1))) - Math.max(underFlat(x, z), aprons.some((A) => x >= A.x0 - 7 && x <= A.x1 + 7 && z >= A.z0 - 7 && z <= A.z1 + 7 && edgeDist(A, x, z) < 6.5) ? 0.2 : 0);   // 間の所は道の近く(12m まで)だけ下げる。アスファルトを足した所のふち(升目 1 つ分)も下げる(粗い地面がふちからのぞかない)
     // 白線なし(plain)の脇道の近く(升目 1.5 個分)は、路面より下げる(6m 升目の地面が路面の上に四角く出ない)
     const on = osmNearest(x, z, 12); let hh = h;
+    // 傾いた平らな駐車場(plane)のまわり(升目 1 つ分)は、駐車場の面より下げる(6m 升目の地面が駐車場の上に四角く出ない)
+    for (const L of lots) if (L.plane && x > L.x0 - 7 && x < L.x1 + 7 && z > L.z0 - 7 && z < L.z1 + 7 && (inPoly(L, x, z) || edgeDist(L, x, z) < 6.5)) hh = Math.min(hh, lotY(L, x, z) - 0.35);
     if (on && on.r.plain) hh = Math.min(h, H(on.r.pts[on.k][0], on.r.pts[on.k][1]) - 0.25);
     verts[k * 3] = x; verts[k * 3 + 1] = hh; verts[k * 3 + 2] = z;
     const mix = 0.5 + 0.5 * Math.sin(x * 0.021 + Math.sin(z * 0.017) * 2.3) * Math.sin(z * 0.013 - x * 0.007);
@@ -806,8 +809,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const strip = (list, from, to, dy, ok) => { for (let k = 0; k + 1 < rows.length; k++) { const A = rows[k], B = rows[k + 1]; if (!ok(A, B)) continue;
         const q = [[A.x + A.nx * from, A.y + dy, A.z + A.nz * from], [A.x + A.nx * to, A.y + dy, A.z + A.nz * to], [B.x + B.nx * to, B.y + dy, B.z + B.nz * to], [B.x + B.nx * from, B.y + dy, B.z + B.nz * from]];
         list.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]); } };
-      const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
-      const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2);
+      const inLot = (A, B) => lots.some((L) => L.plane && inPoly(L, (A.x + B.x) / 2, (A.z + B.z) / 2));   // 傾いた平らな駐車場(plane)の中は駐車場の舗装だけ(脇道の帯は描かない)
+      const notOnMain = (A, B) => A.main > R * 0.5 && B.main > R * 0.5 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2) && !inLot(A, B);
+      const away = (A, B) => A.main > EDGE + 4 && B.main > EDGE + 4 && !inCut((A.x + B.x) / 2, (A.z + B.z) / 2) && !inLot(A, B);
       if (r.plain) { strip(bands.GunmaRoad, -hw - SH, hw + SH, 0, notOnMain); continue; }   // plain: 1 枚だけ(重ねるとちらつく)
       strip(bands.GunmaRoad, -hw, hw, 0, notOnMain);   // plain: 白線・オレンジ線・路肩の色違いなし(アスファルト色だけ)
       strip(bands.GunmaShoulder, -hw - SH, -hw, -0.01, away); strip(bands.GunmaShoulder, hw, hw + SH, -0.01, away);
@@ -1031,7 +1035,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   if (lots.length) {
     const v = [];
     const onEdge = (P, x, z) => { let best = Infinity, bx = x, bz = z; const q = P.pts; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < best) { best = dd; bx = px; bz = pz; } } return [bx, bz]; };
-    for (const P of lots) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
+    // 傾いた平らな駐車場(plane): 塗った形を 1m 升目で切り分けて三角に割る(ふちが塗った形のまま、ギザギザにならない)
+    const clipP = (P, axis, val, keepLess) => { const out = [], inside = (q) => (keepLess ? q[axis] <= val : q[axis] >= val); for (let k = 0; k < P.length; k++) { const a = P[k], b = P[(k + 1) % P.length], ia = inside(a), ib = inside(b); if (ia) out.push(a); if (ia !== ib) { const t = (val - a[axis]) / (b[axis] - a[axis]); out.push(axis === 0 ? [val, a[1] + (b[1] - a[1]) * t] : [a[0] + (b[0] - a[0]) * t, val]); } } return out; };
+    for (const P of lots.filter((L) => L.plane)) for (let gx = Math.floor(P.x0); gx < P.x1; gx++) {
+      const colP = clipP(clipP(P.pts, 0, gx, false), 0, gx + 1, true); if (colP.length < 3) continue;
+      for (let gz = Math.floor(P.z0); gz < P.z1; gz++) {
+        const piece = clipP(clipP(colP, 1, gz, false), 1, gz + 1, true); if (piece.length < 3) continue;
+        for (const t of THREE.ShapeUtils.triangulateShape(piece.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of t) { const [a, b] = piece[k]; v.push(a, lotY(P, a, b) + 0.04, b); }
+      }
+    }
+    for (const P of lots.filter((L) => !L.plane)) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
       const cs = [[x, z], [x + 1.5, z], [x + 1.5, z + 1.5], [x, z + 1.5]], ins = cs.map(([a, b]) => inPoly(P, a, b));
       if (!ins.some(Boolean)) continue;
       const q = cs.map(([a, b], k) => (ins[k] ? [a, b] : onEdge(P, a, b)));
