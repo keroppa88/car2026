@@ -569,6 +569,33 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     const mesh = new THREE.Mesh(flat, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));   // 上に重ねる板(アスファルトの拡張など)より奥に
     mesh.name = 'akagi-roadside'; scenery.add(mesh);
+    // 座標で決めた所(fillAreas): 高低差のきつい斜面で、道わきの地面どうしのすき間から裏の空洞が見えないよう、
+    // 地形の高さ(H)どおりの地面を 1m 升目で少し下(0.25m)に敷く。上の地面がある所はそちらが手前に見える
+    if (data.fillAreas?.length) {
+      const fv = [], fc = [];
+      const clip = (P, axis, val, keepLess) => {
+        const out = [], inside = (q) => (keepLess ? q[axis] <= val : q[axis] >= val);
+        for (let k = 0; k < P.length; k++) {
+          const a = P[k], b = P[(k + 1) % P.length], ia = inside(a), ib = inside(b);
+          if (ia) out.push(a);
+          if (ia !== ib) { const t = (val - a[axis]) / (b[axis] - a[axis]); out.push(axis === 0 ? [val, a[1] + (b[1] - a[1]) * t] : [a[0] + (b[0] - a[0]) * t, val]); }
+        }
+        return out;
+      };
+      const colAt = (x, z) => { const r = roadAt(x, z), far = THREE.MathUtils.smoothstep(r ? r.d - EDGE : 99, 2.5, 7); return inAny(meadows, x, z) ? MEADOW : grass.map((g, j) => g + (forest[j] - g) * far); };
+      for (const A of data.fillAreas.map(region)) {
+        for (let gx = Math.floor(A.x0); gx < A.x1; gx++) {
+          const colP = clip(clip(A.pts, 0, gx, false), 0, gx + 1, true); if (colP.length < 3) continue;
+          for (let gz = Math.floor(A.z0); gz < A.z1; gz++) {
+            const piece = clip(clip(colP, 1, gz, false), 1, gz + 1, true); if (piece.length < 3) continue;
+            for (const t of THREE.ShapeUtils.triangulateShape(piece.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of t) { const [x, z] = piece[k]; fv.push(x, H(x, z) - 0.25, z); fc.push(...colAt(x, z)); }
+          }
+        }
+      }
+      const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(fv, 3)); fg.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3)); fg.computeVertexNormals();
+      const fm = new THREE.Mesh(fg, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 3, polygonOffsetUnits: 3 }));
+      fm.name = 'akagi-roadside'; scenery.add(fm);
+    }
   }
 
   // スタート・ゴール位置を示す横断白線は描画しない。
@@ -610,6 +637,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const f = painted(i, side); if (f >= 0) return f === 1;
     return !skip(i, side) && !nearParking(p.x + nn.x * side * RAIL, p.z + nn.z * side * RAIL);
   };
+  const extraEnds = (data.extraRails || []).flatMap((L) => [L[0], L[L.length - 1]]), routeRailEnds = [];   // 足したガードレールの両はし / それにつながる道のガードレールの端
   for (const side of [-1, 1]) {
     const wall = [], panel = [], has = route.map((_, i) => railAt(i, side));
     const railPt = (i, along = 0) => { const p = route[i], nn = tangents[i], fx = -nn.z, fz = nn.x; return [p.x + nn.x * side * RAIL + fx * along, p.y, p.z + nn.z * side * RAIL + fz * along]; };
@@ -619,9 +647,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const A = railPt(i), Bq = railPt(i + 1);
       quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1);
     }
-    // 途切れる所は支柱の所。レールは端の支柱から 0.4m だけ先へ出す(写真のように)
+    // 途切れる所は支柱の所。レールは端の支柱から 0.4m だけ先へ出す(写真のように)。足したガードレール(extraRails)につながる端は出さない
+    const joined = (i) => { const [x, , z] = railPt(i); return extraEnds.some(([ex, ez]) => Math.hypot(ex - x, ez - z) < 0.6); };
     for (let i = 0; i < n; i++) {
       if (!has[i]) continue;
+      if ((i === 0 || !has[i - 1] || i === n - 1 || !has[i + 1]) && joined(i)) { const [x, , z] = railPt(i); routeRailEnds.push([x, z]); continue; }
       if (i === 0 || !has[i - 1]) { const A = railPt(i, -0.4), Bq = railPt(i); quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1); }
       if (i === n - 1 || !has[i + 1]) { const A = railPt(i), Bq = railPt(i, 0.4); quad(panel, A, Bq, 0.45, 0.8); quad(wall, A, Bq, -0.1, 1.1); }
     }
@@ -655,8 +685,15 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       pts.push(line[line.length - 1]);
       const P3 = pts.map(([x, z]) => [x, H(x, z), z]);
       for (let k = 0; k + 1 < P3.length; k++) { quad(panel, P3[k], P3[k + 1], 0.45, 0.8); quad(wall, P3[k], P3[k + 1], -0.1, 1.1); }
-      let acc = 0; postPts.push(P3[0]);
-      for (let k = 1; k < P3.length; k++) { acc += Math.hypot(P3[k][0] - P3[k - 1][0], P3[k][2] - P3[k - 1][2]); if (acc >= 4 || k === P3.length - 1) { postPts.push(P3[k]); acc = 0; } }
+      // 支柱は線の長さを等分して、4m 前後の同じ間かくで立てる(端の近くで詰まらない)。つながる所の支柱は 1 本だけ
+      const cum = [0]; for (let k = 1; k < P3.length; k++) cum.push(cum[k - 1] + Math.hypot(P3[k][0] - P3[k - 1][0], P3[k][2] - P3[k - 1][2]));
+      const total = cum[cum.length - 1], cnt = Math.max(1, Math.round(total / 4));
+      for (let j = 0, k = 0; j <= cnt; j++) {
+        const s = total * j / cnt; while (k + 2 < cum.length && cum[k + 1] < s) k++;
+        const t = cum[k + 1] > cum[k] ? Math.min(1, Math.max(0, (s - cum[k]) / (cum[k + 1] - cum[k]))) : 0, x = P3[k][0] + (P3[k + 1][0] - P3[k][0]) * t, z = P3[k][2] + (P3[k + 1][2] - P3[k][2]) * t;
+        if (routeRailEnds.some(([ex, ez]) => Math.hypot(ex - x, ez - z) < 0.6) || postPts.some(([px, , pz]) => Math.hypot(px - x, pz - z) < 0.6)) continue;
+        postPts.push([x, H(x, z), z]);
+      }
     }
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(panel, 3)); pg.computeVertexNormals();
     const pm = new THREE.Mesh(pg, mat); pm.name = 'GunmaGuardrail'; scenery.add(pm);
