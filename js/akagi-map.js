@@ -283,7 +283,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   };
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
-  const underFlat = () => 0;   // 脇道も地面そのものを道の高さにするので、下げない
+  // アスファルトを足した所(待避所・つなぎ)の下の地面は少し下げて、板とちらつかないようにする(ほかは下げない)
+  const underFlat = (x, z) => (aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);
   // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
   const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
   for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
