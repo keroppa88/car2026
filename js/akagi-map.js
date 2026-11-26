@@ -1703,7 +1703,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
   // くだりの暗転を始める所(fadeAt の近くの道の点。榛名山: 駐車場B)
   const fadeIndex = data.fadeAt ? nearestRoute(data.fadeAt[0], data.fadeAt[1], 4).i : null;
-  return { fadeIndex, parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  const loopTopIndex = data.loopTopAt ? nearestRoute(data.loopTopAt[0], data.loopTopAt[1], 4).i : null;   // くだりで端まで来たら、ここへ戻る
+  return { fadeIndex, loopTopIndex, parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }
