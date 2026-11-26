@@ -1545,7 +1545,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     for (const [x, z, h] of data.trees || []) { const r = roadAt(x, z); if ((r && r.d < RAIL + 1.5) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) continue; trees.push([x, groundHeightAt(x, z) - 0.3, z, h]); }
     // 木もれ日の木・奥の森などで、道の上・脇道(塗った所)の上にかかったものは外す
     const noSpot = data.noTreeSpots || [];   // 座標で「木を排除」と決めた所
-    for (let k = trees.length - 1; k >= 0; k--) { const [x, , z] = trees[k], r = roadAt(x, z); if (noSpot.some(([sx, sz, sr]) => Math.hypot(sx - x, sz - z) < sr) || (r && r.d < RAIL + 0.8) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) trees.splice(k, 1); }
+    const noTreeA = (data.noTreeAreas || []).map(region);   // 座標で「この中の木を消す」と決めた範囲
+    for (let k = trees.length - 1; k >= 0; k--) { const [x, , z] = trees[k], r = roadAt(x, z); if (noSpot.some(([sx, sz, sr]) => Math.hypot(sx - x, sz - z) < sr) || noTreeA.some((P) => inPoly(P, x, z)) || (r && r.d < RAIL + 0.8) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5)) trees.splice(k, 1); }
     for (const [x, z, h] of data.treesExact || []) trees.push([x, groundHeightAt(x, z) - 0.3, z, h]);   // 座標で決めた木(その場所にそのまま)
     for (const m of treeBillboards(trees, 'akagi-trees')) scenery.add(m);
   }
