@@ -466,7 +466,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
           // ここから先へ進めない所(いちばん近い道の点がこの点ではない = カーブの内側の折り返しや、ほかの道の方が近い所・ほかの道の路面の近く)で止める。
           // 止めたら、その先は前の点に重ねる(地面が道の上へはみ出ない)
           if (k > 0 && !stop && !(legs.length && Math.abs(legs[0].i - i) <= 4 && legs.every((l) => l === legs[0] || l.d > EDGE + 1.5))) stop = true;
-          if (k === 0 || !stop) { px = x; pz = z; py = k === 0 ? p.y - 0.05 : H(x, z) - underFlat(x, z); }
+          if (k === 0 || !stop) { px = x; pz = z; py = (k === 0 ? p.y - 0.05 : H(x, z)) - underFlat(x, z); }   // 道のふちの列も、アスファルトを足した所では下げる(緑がのぞかないように)
           v.push(px, py, pz); cutV.push(T(px, pz) - py);
           const far = THREE.MathUtils.smoothstep(OFF[k], 2.5, 7);
           let col = grass.map((g, j) => g + (forest[j] - g) * far);
