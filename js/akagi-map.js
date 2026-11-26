@@ -1107,6 +1107,16 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (const sx of [-1, 1]) rv.push(sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0);
       const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals(); g.add(new THREE.Mesh(rg, lam(0x5d6166)));
       box(W, 0.12, 1.2, lam(0xeeeeea), 0, base + 2.8, D / 2 + 0.6);
+    } else if (Hs.type === 'whiteHouse') {   // 白壁の 2 階建て、ピンクの切妻屋根(写真の家)
+      const W = len * 0.92, D = wid * 0.92, roofC = lam(0xc9727a);
+      body = box(W, 6, D, lam(0xf2f0ea), 0, base, 0); windows(W, D, 0.2, 2, Math.max(2, Math.round(W / 4)), dark, 1.1, 1.0);
+      const RISE = Math.min(2.4, D * 0.35), hw = D / 2 + 0.6, hl = W / 2 + 0.5, rv = [];
+      for (const sd of [-1, 1]) rv.push(-hl, base + 6, sd * hw, hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6 + RISE, 0);
+      const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals();
+      const roof = new THREE.Mesh(rg, roofC); g.add(roof);
+      for (const sx of [-1, 1]) { const gv = [sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0], gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, lam(0xf2f0ea))); }   // 妻壁は白
+      box(Math.min(3, W * 0.4), 0.12, 1.3, roofC, 0, base + 2.7, D / 2 + 0.65);   // 玄関の庇(ピンク)
+      plate(1.2, 2.2, lam(0x6d5a48), 0, base + 1.1, D / 2 + 0.03);
     } else if (Hs.type === 'toilet') {   // E: 公衆トイレ。上は白壁、下は濃い灰色、黒い瓦の切妻屋根
       const W = len * 0.9, D = wid * 0.85;
       body = box(W, 1.2, D, lam(0x3a3d41), 0, base, 0); box(W, 1.8, D, lam(0xf0efe9), 0, base + 1.2, 0);
