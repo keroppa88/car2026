@@ -939,10 +939,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let t = 0; t < L; t += 1.4) for (let o = 0.8; o < 5; o += 1.4) { if (rnd() < 0.7) continue; const x = ax + (bx - ax) * t / L + nx * (o + rnd() * 0.4), z = az + (bz - az) * t / L + nz * (o + rnd() * 0.4), r = roadAt(x, z); if (r && r.d < EDGE + 5) continue; tryAt(x, z); }   // 道から脇道へ入る所(道ぎわ 5m)は空ける
     }
     for (const G of data.grassAreas || []) {   // 座標で決めた草地: 中はぎっしり、外へ fade m かけて、だんだんまばらに
-      const P = region(G.pts), fade = G.fade ?? 3;
+      const P = region(G.pts), fade = G.fade ?? 3, inner = G.inner ?? 0;   // inner: 中でも、ふちから inner m の間はふちへ行くほどまばら
       for (let x = P.x0 - fade; x <= P.x1 + fade; x += 0.8) for (let z = P.z0 - fade; z <= P.z1 + fade; z += 0.8) {
         const tx = x + (rnd() - 0.5) * 0.7, tz = z + (rnd() - 0.5) * 0.7;
-        if (inPoly(P, tx, tz)) { tryAt(tx, tz); continue; }
+        if (inPoly(P, tx, tz)) { if (!inner || rnd() < 0.25 + 0.75 * Math.min(1, edgeDist(P, tx, tz) / inner)) tryAt(tx, tz); continue; }
         const e = edgeDist(P, tx, tz); if (e < fade && rnd() > 0.15 + 0.85 * e / fade) tryAt(tx, tz);
       }
     }
