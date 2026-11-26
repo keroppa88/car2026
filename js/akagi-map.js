@@ -284,7 +284,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
   // アスファルトを足した所(待避所・つなぎ)の下の地面は少し下げて、板とちらつかないようにする(ほかは下げない)
-  const underFlat = (x, z) => (onOsmRoad(x, z, 0.6, true) ? 0.12 : 0) || (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);   // 板の駐車場の下の地面は 25cm 下げる
+  const underFlat = (x, z) => (onOsmRoad(x, z, 0.6, true) ? 0.12 : 0) || (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.2 : 0);   // 板の駐車場の下の地面は 25cm 下げる
   // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
   const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
   for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
@@ -567,7 +567,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
         col.setXYZ(t + j, C.r, C.g, C.b);
       }
     }
-    const mesh = new THREE.Mesh(flat, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide }));
+    const mesh = new THREE.Mesh(flat, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));   // 上に重ねる板(アスファルトの拡張など)より奥に
     mesh.name = 'akagi-roadside'; scenery.add(mesh);
   }
 
@@ -854,16 +854,33 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   }
   for (const [list, color, nm, mname] of [[aprons, ROAD_COLOR, 'akagi-apron', 'GunmaRoad'], [sands, new THREE.Color(forest[0] * 0.9 + 0.45 * 0.1, forest[1] * 0.9 + 0.32 * 0.1, forest[2] * 0.9 + 0.1 * 0.1), 'akagi-sand', 'GunmaGrass']]) {   // 砂の所: 草地の暗い方の色 9 割 + 黄土色 1 割
     if (!list.length) continue;
-    const v = [], MAXE = 2;
+    // 塗った形を 1m 升目で切り分けて三角に割る(となりの三角と頂点が必ずそろう = さかいめに割れ目ができない)
+    const v = [], CELL = 1;
     const put = (a, b, c) => {
-      const L = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
-      if (L > MAXE) { const ab = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], bc = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2], ca = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; put(a, ab, ca); put(ab, b, bc); put(ca, bc, c); put(ab, bc, ca); return; }
       const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3, r = roadAt(cx, cz);
       // 道の路面の下までのばして描く(道の帯が上にかぶさるので、道とのさかいめがギザギザにならない)。芝生の帯(緑地)には描かない
       if (!r || r.d < R - 0.3 || inAny(meadows, cx, cz) || inCut(cx, cz)) return;
-      for (const q of [a, b, c]) { const rq = roadAt(q[0], q[1]); v.push(q[0], rq && rq.d < EDGE ? rq.y - 0.06 : H(q[0], q[1]) + 0.03, q[1]); }   // 路肩の下は路肩より低く(路肩の帯が上にかぶさる)
+      for (const q of [a, b, c]) { const rq = roadAt(q[0], q[1]); v.push(q[0], rq && rq.d < EDGE ? rq.y - 0.06 : THREE.MathUtils.lerp(rq ? rq.y - 0.06 : H(q[0], q[1]), H(q[0], q[1]) + 0.03, rq ? THREE.MathUtils.smoothstep(rq.d, EDGE + 0.3, EDGE + 2) : 1), q[1]); }   // 路肩の下は路肩より低く(路肩の帯が上にかぶさる)。路肩の外 2m で地面の高さへ
     };
-    for (const A of list) for (const t of THREE.ShapeUtils.triangulateShape(A.pts.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => A.pts[k]));
+    // 多角形を縦横の線で切る(Sutherland-Hodgman)。axis 0: x, 1: z。keepLess: その線より小さい側を残す
+    const clip = (P, axis, val, keepLess) => {
+      const out = [], inside = (q) => (keepLess ? q[axis] <= val : q[axis] >= val);
+      for (let k = 0; k < P.length; k++) {
+        const a = P[k], b = P[(k + 1) % P.length], ia = inside(a), ib = inside(b);
+        if (ia) out.push(a);
+        if (ia !== ib) { const t = (val - a[axis]) / (b[axis] - a[axis]); out.push(axis === 0 ? [val, a[1] + (b[1] - a[1]) * t] : [a[0] + (b[0] - a[0]) * t, val]); }
+      }
+      return out;
+    };
+    for (const A of list) {
+      for (let gx = Math.floor(A.x0 / CELL) * CELL; gx < A.x1; gx += CELL) {
+        const col = clip(clip(A.pts, 0, gx, false), 0, gx + CELL, true); if (col.length < 3) continue;
+        for (let gz = Math.floor(A.z0 / CELL) * CELL; gz < A.z1; gz += CELL) {
+          const piece = clip(clip(col, 1, gz, false), 1, gz + CELL, true); if (piece.length < 3) continue;
+          for (const t of THREE.ShapeUtils.triangulateShape(piece.map(([x, z]) => new THREE.Vector2(x, z)), [])) put(...t.map((k) => piece[k]));
+        }
+      }
+    }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ name: mname, color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     m.name = nm; scenery.add(m);
