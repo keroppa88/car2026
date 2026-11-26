@@ -284,7 +284,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
   // アスファルトを足した所(待避所・つなぎ)の下の地面は少し下げて、板とちらつかないようにする(ほかは下げない)
-  const underFlat = (x, z) => (aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);
+  const underFlat = (x, z) => (slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.12 : 0);   // 板の駐車場の下の地面は 25cm 下げる
   // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
   const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
   for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
@@ -304,7 +304,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
     }
     for (const L of lots) { if (x < L.x0 - 4 || x > L.x1 + 4 || z < L.z0 - 4 || z > L.z1 + 4) continue; const y = lotY(L, x, z) - 0.05; if (inPoly(L, x, z)) return y; const e = edgeDist(L, x, z); if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
-    for (const S of slabs) if (x >= S.x0 && x <= S.x1 && z >= S.z0 && z <= S.z1 && inPoly(S, x, z)) { const k = nearestRoute(x, z, 4); if (k.i >= 0) return route[k.i].y - 0.05; }   // 板の駐車場(切った所より先に見る)
+    for (const S of slabs) if (x >= S.x0 && x <= S.x1 && z >= S.z0 && z <= S.z1 && inPoly(S, x, z)) { const k = nearestRoute(x, z, 4); if (k.i >= 0) return route[k.i].y + 0.06; }   // 板の駐車場(切った所より先に見る)。高さは板の上面(車が埋まらないように)
     if (inCut(x, z)) return h;
     { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
       const o = osmNearest(x, z, 12);
