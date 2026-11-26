@@ -1143,7 +1143,6 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (const sd of [-1, 1]) rv.push(-hl, base + 6, sd * hw, hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6 + RISE, 0);
       for (const sx of [-1, 1]) rv.push(sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0);
       const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals(); g.add(new THREE.Mesh(rg, lam(0x5d6166)));
-      box(W, 0.12, 1.2, lam(0xeeeeea), 0, base + 2.8, D / 2 + 0.6);
     } else if (Hs.type === 'whiteHouse') {   // 白壁の 2 階建て、ピンクの切妻屋根(写真の家)
       const W = len * 0.92, D = wid * 0.92, roofC = lam(0xc9727a);
       body = box(W, 6, D, lam(0xf2f0ea), 0, base, 0);
