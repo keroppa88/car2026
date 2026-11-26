@@ -352,7 +352,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const d = legs.length ? legs[0].d : 1e9;
     // 2 本の道(つづら折りの上と下)の間は、道わきの細かい地面がとちゅうで止まってすき間ができるので、粗い地面を下げない(地面の下が見えないように)
     const between = !akagi && legs.length > 1 && legs[1].d < EDGE + STRIP + 4;
-    const h = H(x, z) - 6 * (1 - (between ? THREE.MathUtils.smoothstep(d, EDGE + 6, EDGE + 12) : THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1))) - underFlat(x, z);   // 間の所は道の近く(12m まで)だけ下げる
+    const h = H(x, z) - 6 * (1 - (between ? THREE.MathUtils.smoothstep(d, EDGE + 6, EDGE + 12) : THREE.MathUtils.smoothstep(d, EDGE + STRIP - 8, EDGE + STRIP - 1))) - Math.max(underFlat(x, z), aprons.some((A) => x >= A.x0 - 7 && x <= A.x1 + 7 && z >= A.z0 - 7 && z <= A.z1 + 7 && edgeDist(A, x, z) < 6.5) ? 0.2 : 0);   // 間の所は道の近く(12m まで)だけ下げる。アスファルトを足した所のふち(升目 1 つ分)も下げる(粗い地面がふちからのぞかない)
     // 白線なし(plain)の脇道の近く(升目 1.5 個分)は、路面より下げる(6m 升目の地面が路面の上に四角く出ない)
     const on = osmNearest(x, z, 12); let hh = h;
     if (on && on.r.plain) hh = Math.min(h, H(on.r.pts[on.k][0], on.r.pts[on.k][1]) - 0.25);
@@ -1109,14 +1109,19 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       box(W, 0.12, 1.2, lam(0xeeeeea), 0, base + 2.8, D / 2 + 0.6);
     } else if (Hs.type === 'whiteHouse') {   // 白壁の 2 階建て、ピンクの切妻屋根(写真の家)
       const W = len * 0.92, D = wid * 0.92, roofC = lam(0xc9727a);
-      body = box(W, 6, D, lam(0xf2f0ea), 0, base, 0); windows(W, D, 0.2, 2, Math.max(2, Math.round(W / 4)), dark, 1.1, 1.0);
+      body = box(W, 6, D, lam(0xf2f0ea), 0, base, 0);
+      // 道路側の面(Hs.front の点、なければいちばん近い道の点を向く面): 1 階は入口と、その横に窓 1 つ。2 階は窓 2 つ
+      const [tx, tz] = Hs.front || [rp.x, rp.z], wx = tx - cx, wz = tz - cz, lx = wx * Math.cos(ang) - wz * Math.sin(ang), lz = wx * Math.sin(ang) + wz * Math.cos(ang);
+      const onX = Math.abs(lx) > Math.abs(lz), sgn = Math.sign(onX ? lx : lz) || 1, FW = onX ? D : W;   // 正面の幅
+      const front = (w, h, mat, a, y) => (onX ? plate(w, h, mat, sgn * (W / 2 + 0.03), y, -sgn * a, sgn * Math.PI / 2) : plate(w, h, mat, sgn * a, y, sgn * (D / 2 + 0.03), sgn > 0 ? 0 : Math.PI));
+      front(1.2, 2.2, lam(0x6d5a48), -FW * 0.2, base + 1.1); front(1.3, 1.1, dark, FW * 0.2, base + 1.7);
+      for (const sx of [-1, 1]) front(1.3, 1.1, dark, sx * FW * 0.22, base + 4.4);
+      { const eb = box(onX ? 1.3 : Math.min(3, FW * 0.4), 0.12, onX ? Math.min(3, FW * 0.4) : 1.3, roofC, 0, base + 2.7, 0); if (onX) eb.position.set(sgn * (W / 2 + 0.65), base + 2.7, sgn * FW * 0.2); else eb.position.set(-sgn * FW * 0.2, base + 2.7, sgn * (D / 2 + 0.65)); }   // 玄関の庇(ピンク)
       const RISE = Math.min(2.4, D * 0.35), hw = D / 2 + 0.6, hl = W / 2 + 0.5, rv = [];
       for (const sd of [-1, 1]) rv.push(-hl, base + 6, sd * hw, hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6, sd * hw, hl, base + 6 + RISE, 0, -hl, base + 6 + RISE, 0);
       const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals();
       const roof = new THREE.Mesh(rg, roofC); g.add(roof);
       for (const sx of [-1, 1]) { const gv = [sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0], gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, lam(0xf2f0ea))); }   // 妻壁は白
-      box(Math.min(3, W * 0.4), 0.12, 1.3, roofC, 0, base + 2.7, D / 2 + 0.65);   // 玄関の庇(ピンク)
-      plate(1.2, 2.2, lam(0x6d5a48), 0, base + 1.1, D / 2 + 0.03);
     } else if (Hs.type === 'toilet') {   // E: 公衆トイレ。上は白壁、下は濃い灰色、黒い瓦の切妻屋根
       const W = len * 0.9, D = wid * 0.85;
       body = box(W, 1.2, D, lam(0x3a3d41), 0, base, 0); box(W, 1.8, D, lam(0xf0efe9), 0, base + 1.2, 0);
