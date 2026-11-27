@@ -9,3 +9,4 @@ d = json.loads(FILE.read_text())
 d['grassAreas'].append({'pts': [list(p) for p in GRASS], 'fade': 1.0, 'inner': 1})
 c = RED.centroid; d.setdefault('signBoards', []).append({'x': round(c.x, 2), 'z': round(c.y, 2), 'text': '赤城ふれあいの森'})
 FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
+# 22:31 の指示: 看板を 90 度回す → signBoards に turn: 90

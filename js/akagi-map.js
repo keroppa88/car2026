@@ -1296,7 +1296,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   }
   // ---- 入口の看板(signBoards: { x, z, text }、写真の「赤城ふれあいの森」): こげ茶の木の枠(鳥居のような上の横木)に白い縦長の板、文字は縦書き。板は道の方を向く ----
   for (const B of data.signBoards || []) {
-    const r = nearestRoute(B.x, B.z), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - B.x, q.z - B.z), y = H(B.x, B.z) - 0.1;
+    const r = nearestRoute(B.x, B.z), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - B.x, q.z - B.z) + (B.turn || 0) * Math.PI / 180, y = H(B.x, B.z) - 0.1;   // turn: 道に向けた向きから回す角度(度)
     const g = new THREE.Group(); g.position.set(B.x, y, B.z); g.rotation.y = face; g.name = 'akagi-sign-board';
     const wood = new THREE.MeshLambertMaterial({ color: 0x3b2a1f }), bx = (w, h, d, px, py, pz) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wood); m.position.set(px, py, pz); g.add(m); return m; };
     const PW = 1.5, PH = 4.2, BW = 1.1, BH = 2.7, B0 = 0.9;   // 柱の間、柱の高さ、板の幅・高さ、板の下端
