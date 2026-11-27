@@ -37,7 +37,9 @@ export function createCanopyShade(seam, opts = {}) {
     material(source) {
       if (materials.has(source)) return materials.get(source);
       const material = source.clone();
-      material.onBeforeCompile = (shader) => {
+      const before = source.onBeforeCompile, beforeKey = source.customProgramCacheKey.call(source);   // 元の材質の書きかえ(地面に塗った色など)を先に
+      material.onBeforeCompile = (shader, renderer) => {
+        before.call(source, shader, renderer);
         shader.uniforms.canopyMap = { value: texture };
         shader.uniforms.canopyTime = time;
         shader.uniforms.canopyStrength = strength;
@@ -61,7 +63,7 @@ export function createCanopyShade(seam, opts = {}) {
           diffuseColor.rgb *= 1.0 - (1.0-shade)*${opts.depth ?? 0.72}*grove*canopyStrength*vCanopyMask;
         `);
       };
-      material.customProgramCacheKey = () => `gunma-canopy-v3-${opts.depth ?? 0.72}-${opts.scale ?? 0.055}-${!!opts.masked}`;
+      material.customProgramCacheKey = () => `gunma-canopy-v3-${opts.depth ?? 0.72}-${opts.scale ?? 0.055}-${!!opts.masked}-${beforeKey}`;
       materials.set(source, material);
       return material;
     },

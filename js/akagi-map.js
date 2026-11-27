@@ -128,6 +128,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const slabs = (data.slabs || []).map(region);
   // 駐車場の広場(lots): 道路ではない平らなアスファルト(白線なし)。高さは背骨(spine: もとの脇道の点と高さ)のいちばん近い点。まわり 4m で元の地面へ
   // cliff: ふちを崖のように切り立たせる(まわりの地面へなめらかにつながない)。line: 中心線 [[x, z, y], ...] にそって高さを補間(横は水平)。surface: 'grass' なら草の色
+  // 地面に直接塗る所(paintAreas: { pts, color }): 板を重ねず、地面そのものの色を塗った形の中だけ変える(浮き・すき間・段差が出ない)
+  const paints = (data.paintAreas || []).map((A) => Object.assign(region(A.pts), { color: A.color ?? 0x4a4c4e }));
+  const inPaint = (x, z) => paints.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z));
   const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane, line: L.line, road: !!L.road, cliff: !!L.cliff, surface: L.surface }));
   const lotY = (L, x, z) => { if (L.road) { const r = roadAt(x, z); return r ? r.y - 0.04 : 0; }   // road: いちばん近い道の高さ(道と同じ高さで、横は水平)
     if (L.plane) return L.plane[0] * x + L.plane[1] * z + L.plane[2];   // plane: [a, b, c] = 傾いた平らな面 y = a x + b z + c
@@ -967,7 +970,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const nearApron = (x, z) => parkAprons.some((A) => x > A.x0 - 25 && x < A.x1 + 25 && z > A.z0 - 25 && z < A.z1 + 25 && (inPoly(A, x, z) || edgeDist(A, x, z) < 25));
     const spots = [];
     const noTuft = (data.noTrees || []).map(region);   // 脇道(塗った所)には草の株を生やさない
-    const tryAt = (x, z) => { const r = roadAt(x, z); if (!r || r.d < EDGE + 0.3 || aprons.some((A) => inPoly(A, x, z)) || lots.some((L) => inPoly(L, x, z) || edgeDist(L, x, z) < 0.4) || onOsmRoad(x, z, 0.2, true) || noTuft.some((P) => inPoly(P, x, z))) return; spots.push([x, H(x, z) - 0.02, z]); };
+    const tryAt = (x, z) => { const r = roadAt(x, z); if (!r || r.d < EDGE + 0.3 || inPaint(x, z) || aprons.some((A) => inPoly(A, x, z)) || lots.some((L) => inPoly(L, x, z) || edgeDist(L, x, z) < 0.4) || onOsmRoad(x, z, 0.2, true) || noTuft.some((P) => inPoly(P, x, z))) return; spots.push([x, H(x, z) - 0.02, z]); };
     for (const P of meadows) {   // 芝生の帯(拡張の近くのものだけ)
       if (!nearApron((P.x0 + P.x1) / 2, (P.z0 + P.z1) / 2)) continue;
       for (let x = P.x0; x <= P.x1; x += 0.9) for (let z = P.z0; z <= P.z1; z += 0.9) { const tx = x + (rnd() - 0.5) * 0.8, tz = z + (rnd() - 0.5) * 0.8; if (inPoly(P, tx, tz)) tryAt(tx, tz); }
@@ -1689,7 +1692,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const trees = [];
     const terr = (data.terraces || []).map((T) => region(T.pts));
     const noTr = (data.noTrees || []).map(region);   // 塗って決めた「木も草も生やさない所」
-    const noTree = (x, z) => noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => (Array.isArray(l) ? l : l.pts).some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
+    const noTree = (x, z) => inPaint(x, z) || noTr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3.5) || terr.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 3) || lots.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.houses || []).some((Hs) => { const c = Hs.r.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[1] / 4], [0, 0]); return Math.hypot(c[0] - x, c[1] - z) < 14; }) || inAny(meadows, x, z) || inAny(bushes, x, z) || parkings.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 4) || flats.some((P) => inPoly(P, x, z) || edgeDist(P, x, z) < 2) || (data.decks || []).some((l) => (Array.isArray(l) ? l : l.pts).some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 8)) || !!onOsmRoad(x, z, 1.2) || (data.sidewalks || []).some((l) => l.some(([sx, sz]) => Math.abs(sx - x) < 6 && Math.abs(sz - z) < 6));   // 草原・草むら・駐車場・アスファルト・砂には木を立てない
     const tooSteep = (x, z) => Math.hypot(H(x + 1.5, z) - H(x - 1.5, z), H(x, z + 1.5) - H(x, z - 1.5)) / 3 > Math.tan(70 * Math.PI / 180);   // 70度より急な斜面には木が生えない
     // 道ぞいの木(3m ごとに両側を見る)
     for (let i = 0; i < n; i++) for (const side of [-1, 1]) {
@@ -1738,7 +1741,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(flats, x, z) || lots.some((L) => (L.plane || L.line || L.road) && inPoly(L, x, z)) ? 0 : 1; }
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
-  const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z)) || aprons.some((P) => inPoly(P, x, z)) || sideRoads.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
+  const softGroundAt = (x, z) => { if (inPaint(x, z) || parkings.some((P) => inPoly(P, x, z)) || aprons.some((P) => inPoly(P, x, z)) || sideRoads.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
   const start = data.start ?? 0, goal = data.goal ?? n - 1;
   // 姫百合駐車場側の発進位置: ゴール地点に最も近い駐車場の道路側の縁から、場内へ約3m入った位置。
   const parkingStart = (() => {
@@ -1765,6 +1768,34 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     }
     return { x, y: best.P.y, z };
   })();
+  // 地面の材質に「塗った形の中はその色」を足す(フラグメントごとに多角形の内外を判定)。木陰の模様より後に塗る(gunma-atmosphere はこの onBeforeCompile を先に呼ぶ)
+  if (paints.length) {
+    const flat = [], ends = [], cols = [];
+    for (const A of paints) { for (const [x, z] of A.pts) flat.push(new THREE.Vector2(x, z)); ends.push(flat.length); cols.push(new THREE.Color(A.color)); }
+    const NP = flat.length, NA = paints.length;
+    const box = new THREE.Vector4(Math.min(...paints.map((A) => A.x0)), Math.min(...paints.map((A) => A.z0)), Math.max(...paints.map((A) => A.x1)), Math.max(...paints.map((A) => A.z1)));
+    const paintMat = (m) => {
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.paintP = { value: flat }; sh.uniforms.paintEnd = { value: ends.map(Number) }; sh.uniforms.paintCol = { value: cols }; sh.uniforms.paintBox = { value: box };
+        sh.vertexShader = 'varying vec3 paintW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\npaintW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = `uniform vec2 paintP[${NP}];\nuniform float paintEnd[${NA}];\nuniform vec3 paintCol[${NA}];\nuniform vec4 paintBox;\nvarying vec3 paintW;\n` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+          if (paintW.x >= paintBox.x && paintW.x <= paintBox.z && paintW.z >= paintBox.y && paintW.z <= paintBox.w) {
+            int s0 = 0;
+            for (int a = 0; a < ${NA}; a++) {
+              int e0 = int(paintEnd[a]); bool c = false;
+              for (int i = 0; i < ${NP}; i++) { int ii = s0 + i; if (ii >= e0) break; int jj = ii == s0 ? e0 - 1 : ii - 1; vec2 pi = paintP[ii], pj = paintP[jj];
+                if (((pi.y > paintW.z) != (pj.y > paintW.z)) && (paintW.x < (pj.x - pi.x) * (paintW.z - pi.y) / (pj.y - pi.y) + pi.x)) c = !c; }
+              if (c) { diffuseColor.rgb = paintCol[a]; break; }
+              s0 = e0;
+            }
+          }`);
+      };
+      m.customProgramCacheKey = () => 'akagi-paint-' + NP + '-' + NA;
+      m.needsUpdate = true;
+    };
+    paintMat(ground.material);
+    scenery.traverse((o) => { if (o.isMesh && o.name === 'akagi-roadside') paintMat(o.material); });
+  }
   const setNight = (on) => { farHazeU.value.setRGB(...(on ? [0.045, 0.05, 0.058] : [0.49, 0.56, 0.62])); for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
