@@ -6051,8 +6051,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           const isHimeyuri = selected.key === 'himeyuri';
           const isUphill = !!selected.reverse;   // のぼりのスタート(道を逆向きに走る)
           // 姫百合側は駐車場ポリゴンを基準にしない。指定された道路センターライン座標を基準にする。
-          // 指定点(-1447, 1776)に最も近いコース中心線の点を求め、その地点の接線で進行方向を決める。
-          const anchor = isHimeyuri ? { x: -1447, z: 1776 } : null;
+          // 指定点(-1515.9, 1735.17)に最も近いコース中心線の点を求め、その地点の接線で進行方向を決める。
+          const anchor = isHimeyuri ? { x: -1515.9, z: 1735.17 } : null;   // 指示で塗った所(赤、2026-11-27)
           let index = selected.routeEnd === 'goal' ? gunmaCourse.goal : gunmaCourse.start;
           if (anchor) {
             let bestDistance = Infinity;
