@@ -128,8 +128,9 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const slabs = (data.slabs || []).map(region);
   // 駐車場の広場(lots): 道路ではない平らなアスファルト(白線なし)。高さは背骨(spine: もとの脇道の点と高さ)のいちばん近い点。まわり 4m で元の地面へ
   // cliff: ふちを崖のように切り立たせる(まわりの地面へなめらかにつながない)。line: 中心線 [[x, z, y], ...] にそって高さを補間(横は水平)。surface: 'grass' なら草の色
-  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane, line: L.line, cliff: !!L.cliff, surface: L.surface }));
-  const lotY = (L, x, z) => { if (L.plane) return L.plane[0] * x + L.plane[1] * z + L.plane[2];   // plane: [a, b, c] = 傾いた平らな面 y = a x + b z + c
+  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane, line: L.line, road: !!L.road, cliff: !!L.cliff, surface: L.surface }));
+  const lotY = (L, x, z) => { if (L.road) { const r = roadAt(x, z); return r ? r.y - 0.04 : 0; }   // road: いちばん近い道の高さ(道と同じ高さで、横は水平)
+    if (L.plane) return L.plane[0] * x + L.plane[1] * z + L.plane[2];   // plane: [a, b, c] = 傾いた平らな面 y = a x + b z + c
     if (L.line) { let bd = Infinity, y = 0; const q = L.line; for (let i = 0; i + 1 < q.length; i++) { const dx = q[i + 1][0] - q[i][0], dz = q[i + 1][1] - q[i][1], t = Math.max(0, Math.min(1, ((x - q[i][0]) * dx + (z - q[i][1]) * dz) / (dx * dx + dz * dz || 1))), px = q[i][0] + dx * t, pz = q[i][1] + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < bd) { bd = dd; y = q[i][2] + (q[i + 1][2] - q[i][2]) * t; } } return y; }
  let bd = Infinity, y = 0; for (const [sx, sz, sy] of L.spine) { const dd = (sx - x) ** 2 + (sz - z) ** 2; if (dd < bd) { bd = dd; y = sy; } } return y; };   // 板の駐車場: 中は道と同じ高さで平ら(崖の上へ張り出してよい)。ふちはコンクリートの側面
   const flats = aprons.concat(sands);               // 道の高さにそろえる所(道から 18m より先は元の地面へ寄せる: 長い横道が浮かないように)
@@ -1072,7 +1073,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     // 傾いた平らな駐車場(plane): 塗った形を 1m 升目で切り分けて三角に割る(ふちが塗った形のまま、ギザギザにならない)
     const clipP = (P, axis, val, keepLess) => { const out = [], inside = (q) => (keepLess ? q[axis] <= val : q[axis] >= val); for (let k = 0; k < P.length; k++) { const a = P[k], b = P[(k + 1) % P.length], ia = inside(a), ib = inside(b); if (ia) out.push(a); if (ia !== ib) { const t = (val - a[axis]) / (b[axis] - a[axis]); out.push(axis === 0 ? [val, a[1] + (b[1] - a[1]) * t] : [a[0] + (b[0] - a[0]) * t, val]); } } return out; };
     const vg = [];
-    for (const P of lots.filter((L) => L.plane || L.line)) for (let gx = Math.floor(P.x0); gx < P.x1; gx++) {
+    for (const P of lots.filter((L) => L.plane || L.line || L.road)) for (let gx = Math.floor(P.x0); gx < P.x1; gx++) {
       const colP = clipP(clipP(P.pts, 0, gx, false), 0, gx + 1, true); if (colP.length < 3) continue;
       for (let gz = Math.floor(P.z0); gz < P.z1; gz++) {
         const piece = clipP(clipP(colP, 1, gz, false), 1, gz + 1, true); if (piece.length < 3) continue;
@@ -1116,7 +1117,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const tg2 = new THREE.BufferGeometry(); tg2.setAttribute('position', new THREE.Float32BufferAttribute(tv2, 3)); tg2.setAttribute('color', new THREE.Float32BufferAttribute(tc2, 3)); tg2.computeVertexNormals();
       const tm2 = new THREE.Mesh(tg2, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); tm2.name = 'akagi-roadside'; scenery.add(tm2);
     }
-    for (const P of lots.filter((L) => !L.plane && !L.line)) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
+    for (const P of lots.filter((L) => !L.plane && !L.line && !L.road)) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
       const cs = [[x, z], [x + 1.5, z], [x + 1.5, z + 1.5], [x, z + 1.5]], ins = cs.map(([a, b]) => inPoly(P, a, b));
       if (!ins.some(Boolean)) continue;
       const q = cs.map(([a, b], k) => (ins[k] ? [a, b] : onEdge(P, a, b)));
@@ -1729,7 +1730,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const shadeMeshes = [ground]; group.traverse((o) => { if (o.isMesh) shadeMeshes.push(o); }); scenery.traverse((o) => { if (o.name === 'akagi-roadside') shadeMeshes.push(o); });
   for (const mesh of shadeMeshes) {
     const pos = mesh.geometry.getAttribute('position'), mask = new Float32Array(pos.count);
-    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(flats, x, z) || lots.some((L) => (L.plane || L.line) && inPoly(L, x, z)) ? 0 : 1; }
+    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(flats, x, z) || lots.some((L) => (L.plane || L.line || L.road) && inPoly(L, x, z)) ? 0 : 1; }
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z)) || aprons.some((P) => inPoly(P, x, z)) || sideRoads.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
