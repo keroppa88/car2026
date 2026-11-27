@@ -1294,6 +1294,25 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     hit.position.set(x, y + 0.8, z); hit.rotation.y = ang; hit.name = 'akagi-parked-car-hit'; scenery.add(hit); hit.updateMatrixWorld(); colliders.push(hit);
     parkedCars.push({ x, z, y, heading: ang });
   }
+  // ---- 入口の看板(signBoards: { x, z, text }、写真の「赤城ふれあいの森」): こげ茶の木の枠(鳥居のような上の横木)に白い縦長の板、文字は縦書き。板は道の方を向く ----
+  for (const B of data.signBoards || []) {
+    const r = nearestRoute(B.x, B.z), q = route[Math.max(0, r.i)], face = Math.atan2(q.x - B.x, q.z - B.z), y = H(B.x, B.z) - 0.1;
+    const g = new THREE.Group(); g.position.set(B.x, y, B.z); g.rotation.y = face; g.name = 'akagi-sign-board';
+    const wood = new THREE.MeshLambertMaterial({ color: 0x3b2a1f }), bx = (w, h, d, px, py, pz) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wood); m.position.set(px, py, pz); g.add(m); return m; };
+    const PW = 1.5, PH = 4.2, BW = 1.1, BH = 2.7, B0 = 0.9;   // 柱の間、柱の高さ、板の幅・高さ、板の下端
+    for (const sx of [-1, 1]) bx(0.2, PH, 0.2, sx * PW / 2, PH / 2, 0);
+    bx(PW + 1.0, 0.22, 0.3, 0, PH + 0.08, 0);   // 上の横木(両端が張り出す)
+    bx(PW + 0.2, 0.14, 0.2, 0, PH - 0.45, 0);   // その下の横木
+    bx(BW + 0.16, BH + 0.16, 0.12, 0, B0 + BH / 2, 0);   // 板のこげ茶の縁
+    const cv = document.createElement('canvas'); cv.width = 160; cv.height = 400; const c2 = cv.getContext('2d');
+    c2.fillStyle = '#f4f3ee'; c2.fillRect(0, 0, 160, 400); c2.fillStyle = '#1d2a4a';
+    const ch = [...(B.text || '')], fs = Math.min(120, 380 / (ch.length + 0.4)); c2.font = `bold ${fs}px serif`; c2.textAlign = 'center'; c2.textBaseline = 'middle';
+    ch.forEach((t, i) => c2.fillText(t, 80, (i + 0.7) * 400 / (ch.length + 0.4)));
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const tm = new THREE.MeshLambertMaterial({ map: tex });
+    for (const sd of [1, -1]) { const pl = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), tm); pl.position.set(0, B0 + BH / 2, sd * 0.065); if (sd < 0) pl.rotation.y = Math.PI; g.add(pl); }   // 両面に同じ文字
+    scenery.add(g);
+  }
   // ---- 案内看板(signs、伊香保温泉): 木の柱 2 本に白い板、青い屋根 ----
   for (const [sx, sz] of data.signs || []) {
     // 板の両面に「伊香保温泉」。板は道に沿う向き(両方向から来る車に面が見える)。大きさは 1.5 倍
