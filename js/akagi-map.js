@@ -1796,6 +1796,23 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     paintMat(ground.material);
     scenery.traverse((o) => { if (o.isMesh && o.name === 'akagi-roadside') paintMat(o.material); });
   }
+  // 駐車した車: 見えている地面(粗い升目・道わきの地面・舗装)の高さを 4 つのタイヤの所で測り、高さと傾きを合わせる(地面にめり込まないように)
+  if (parkedCars.length) {
+    const surf = []; ground.updateMatrixWorld(true); group.updateMatrixWorld(true); scenery.updateMatrixWorld(true);
+    const skip = /tree|car|rail|house|sign|toilet|vend|lamp|net|fence|hit|post|cliff|bush|tuft|light/i;
+    for (const root of [ground, group, scenery]) root.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && o.visible !== false && o.material?.visible !== false && !skip.test(o.name || '') && !skip.test(o.parent?.name || '')) surf.push(o); });
+    const rc = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
+    const topAt = (x, z) => { const y0 = H(x, z); rc.set(new THREE.Vector3(x, y0 + 1.5, z), down); rc.far = 6; const h = rc.intersectObjects(surf, false)[0]; return h ? h.point.y : y0; };
+    const hits = []; scenery.traverse((o) => { if (o.name === 'akagi-parked-car-hit') hits.push(o); });
+    parkedCars.forEach((p, k) => {
+      const fx = Math.sin(p.heading), fz = Math.cos(p.heading), sx = Math.cos(p.heading), sz = -Math.sin(p.heading), HL = 1.4, HW = 0.75;
+      const at = (a, b) => topAt(p.x + fx * a + sx * b, p.z + fz * a + sz * b);
+      const fl = at(HL, -HW), fr = at(HL, HW), rl = at(-HL, -HW), rr = at(-HL, HW);
+      p.pitch = -Math.atan2((fl + fr) / 2 - (rl + rr) / 2, 2 * HL); p.roll = Math.atan2((fr + rr) / 2 - (fl + rl) / 2, 2 * HW);
+      p.y = Math.max((fl + fr + rl + rr) / 4, topAt(p.x, p.z)) + 0.02;
+      const hb = hits[k]; if (hb) { hb.position.y = p.y + 0.8; hb.updateMatrixWorld(); }
+    });
+  }
   const setNight = (on) => { farHazeU.value.setRGB(...(on ? [0.045, 0.05, 0.058] : [0.49, 0.56, 0.62])); for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)

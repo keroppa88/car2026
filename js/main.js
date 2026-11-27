@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261127-s20';
+import { buildAkagiMap } from './akagi-map.js?v=20261127-s21';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -4509,7 +4509,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
       group.add(mesh);
       group.add(makeBlobShadow({ w: CAR_SHADOW.w * bodyWidthRatio(mesh), h: CAR_SHADOW.h * bodyLengthRatio(mesh) }));
       group.position.set(p.x, p.y, p.z);
-      group.rotation.y = p.heading;
+      group.rotation.order = 'YXZ'; group.rotation.set(p.pitch || 0, p.heading, p.roll || 0);   // 地面の傾きに合わせる
       group.name = 'akagi-parked-car';
       scene.add(group);
     });
