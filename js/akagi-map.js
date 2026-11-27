@@ -139,6 +139,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // cliff: ふちを崖のように切り立たせる(まわりの地面へなめらかにつながない)。line: 中心線 [[x, z, y], ...] にそって高さを補間(横は水平)。surface: 'grass' なら草の色
   // 地面に直接塗る所(paintAreas: { pts, color }): 板を重ねず、地面そのものの色を塗った形の中だけ変える(浮き・すき間・段差が出ない)
   const paints = (data.paintAreas || []).map((A) => Object.assign(region(A.pts), { color: A.color ?? 0x4a4c4e }));
+  const tuftMats = [];   // 草の株の材質(夜に暗くする)
   const inPaint = (x, z) => paints.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z));
   const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane, line: L.line, road: !!L.road, cliff: !!L.cliff, surface: L.surface }));
   const lotY = (L, x, z) => { if (L.road) { const r = roadAt(x, z); return r ? r.y - 0.04 : 0; }   // road: いちばん近い道の高さ(道と同じ高さで、横は水平)
@@ -1026,6 +1027,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
       spots.forEach(([x, y, z], i) => { const w = 0.7 + rnd() * 0.7; Q.setFromAxisAngle(Y, rnd() * Math.PI); im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(w, 0.35 + rnd() * 0.45, w))); im.setColorAt(i, C.setHSL(0, 0, 0.95 + rnd() * 0.05)); });   // 色は絵のまま、明るさだけ少しばらつかせる
       im.name = 'akagi-grass-tufts'; im.frustumCulled = false; scenery.add(im);
+      tuftMats.push(im.material);
     }
   }
   const parkedCars = [];   // 駐車場に停まっている車の位置と向き(main.js が CPU 車の模型を置く)
@@ -1844,7 +1846,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const hb = hits[k]; if (hb) { hb.position.y = p.y + 0.8; hb.updateMatrixWorld(); }
     });
   }
-  const setNight = (on) => { farHazeU.value.setRGB(...(on ? [0.045, 0.05, 0.058] : [0.49, 0.56, 0.62])); for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
+  const setNight = (on) => { for (const m of tuftMats) m.color.setScalar(on ? 0.14 : 1);   // 草の株は光の影響を受けない材質なので、夜は色そのものを暗く(まわりの夜の地面と同じくらい)
+ farHazeU.value.setRGB(...(on ? [0.045, 0.05, 0.058] : [0.49, 0.56, 0.62])); for (const { diffuserMat, haloMat, light } of akagiNightLights) { diffuserMat.color.setHex(on ? 0xffe7a6 : 0x665b42); haloMat.opacity = on ? 1 : 0; light.visible = on; } };
   setNight(false);
   let meadowFrom = null; for (let i = 0; i < n && meadowFrom == null; i++) if (inAny(meadows, route[i].x, route[i].z)) meadowFrom = i;   // 道が草原に入る最初の点(山の上の側)
   const parkingEnd = Math.max(-1, ...parkings.map((P) => P.touchEnd ?? -1));   // 駐車場が道に接する最後の点(ふもと側)
