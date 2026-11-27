@@ -16,11 +16,18 @@ export const CAR_CONFIGS = {
 // ルート66(driving_us_s)のループ順。108区間で1周。
 // 3:青看板 8:黄看板 17:シェル 26:黄看板 35:マルボロ 44:青看板 53:ケンタッキー
 // 59:黄看板 66:青看板 80:黄看板 89:バグダッドカフェ 101:軍事基地 108:ナイトホーク
-// ルート66の地図の倍率。道路・看板・建物をまとめて同じ割合で拡大する(1=元の寸法)。
-export const ROUTE66_SCALE = 1.17;   // 1.3 × 0.9
-const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);
-// ルート66の車線中心の、中央線からの距離(m)。元の2.9m×倍率から0.6m内側。
-const ROUTE66_LANE = +(R66(2.9) - 0.6).toFixed(3);
+// ルート66の地図の倍率。地図全体は元の寸法(1倍)。
+export const ROUTE66_SCALE = 1;
+// 道路だけ横に広げる: 中央線(元座標 x=2.25)から左右 half m(道路と少し外)を横へ k 倍。
+// その外の建物・看板・電柱は大きさを変えず、広げた分だけ外へずらす(js/main.js の stretchRoadLaterally)。
+export const ROUTE66_ROAD = { center: 2.25, half: 6, k: 1.17 };
+// 元座標の x → 世界座標の x(道路の帯は k 倍、外はずらすだけ)、とその逆
+export const route66WorldX = (x) => { const { center: c, half: W, k } = ROUTE66_ROAD, d = x - c, a = Math.abs(d); return c + (a <= W ? d * k : Math.sign(d) * (a + (k - 1) * W)); };
+export const route66LocalX = (X) => { const { center: c, half: W, k } = ROUTE66_ROAD, d = X - c, a = Math.abs(d); return c + (a <= W * k ? d / k : Math.sign(d) * (a - (k - 1) * W)); };
+const R66 = (meters) => +(meters * ROUTE66_SCALE).toFixed(3);   // 道に沿った長さ・高さ
+const R66X = (x) => +route66WorldX(x).toFixed(3);               // 横の位置(元座標 x)
+// ルート66の車線中心の、中央線からの距離(m)。元の2.9m×道路の横の倍率から0.6m内側。
+const ROUTE66_LANE = +(2.9 * ROUTE66_ROAD.k - 0.6).toFixed(3);
 
 const ROUTE66_GROUND_MATERIALS = [
   '[Formica Beige]', 'Formica Beige', 'M01_Silver_Fog', 'M01',
@@ -536,8 +543,9 @@ export const MAP_CONFIGS = {
     label: 'ルート66',
     file: 'map/route66/sa01.glb',
     preview: 'picture/root66.png',
-    // driving_us_s の砂漠マップ。GLBは1単位=1m。道路幅を広げるため全体を拡大する。
+    // driving_us_s の砂漠マップ。GLBは1単位=1m。地図は元の寸法のまま、道路の帯だけ横に広げる。
     scale: ROUTE66_SCALE,
+    roadLateralStretch: ROUTE66_ROAD,
     assetRevision: '20260927-route66-1',
     // sa01(ベース道路)の間に看板・店などの特殊マップが入る108区間を1周とする。
     segmentFiles: ROUTE66_SEQUENCE.map((name) => `map/route66/${name}.glb`),
@@ -569,10 +577,10 @@ export const MAP_CONFIGS = {
     // 右側通行。車線は中央線(元寸法でx=2.25)から左右へ約3.2m。
     // 元の2.9m(1.3倍で3.77m)は外側に寄りすぎたので、車体幅の1/3(約0.6m)中央へ寄せた。
     // 自動運転・同方向車・対向車・開始位置はすべてこの距離にそろえる。
-    cpuCenterLineEntryX: R66(2.25),
+    cpuCenterLineEntryX: R66X(2.25),
     cpuLaneOffset: -ROUTE66_LANE,
-    cpuSameDirectionLaneRangeX: [R66(3.6), R66(6.3)],
-    cpuOncomingLaneRangeX: [R66(-1.8), R66(0.9)],
+    cpuSameDirectionLaneRangeX: [R66X(3.6), R66X(6.3)],
+    cpuOncomingLaneRangeX: [R66X(-1.8), R66X(0.9)],
     // CPU車は海岸線の速度の1/3。ただし同方向車は100〜150km/hに設定する。
     cpuSpeedScale: 1 / 3,
     cpuSameDirectionSpeedRangeKmh: [100, 150],
@@ -583,7 +591,7 @@ export const MAP_CONFIGS = {
     autoDriveMode: 'seaCruise130',
     spawnSearchRadius: 2000,
     spawnReference: 'fixed',
-    spawnReferenceX: R66(2.25),
+    spawnReferenceX: R66X(2.25),
     spawnReferenceZ: -20,
     spawnExactReference: false,
     spawnDirectionMode: 'configured',

@@ -25,7 +25,7 @@ const PEBBLE_ZONES = {
   sa07: [{ maxX: -1.72, z: [-408.2, -330.7] }],
 };
 
-export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
+export function createRoute66Scenery(scene, segmentFiles, mapScale = 1, toLocalX = (x) => x) {
   const names = segmentFiles.map((file) => file.replace(/^.*\//, '').replace(/\.glb$/, ''));
   const step = SEGMENT_STEP;
   const group = new THREE.Group();
@@ -121,7 +121,7 @@ export function createRoute66Scenery(scene, segmentFiles, mapScale = 1) {
     return { name: names[index], localZ: z + raw * step + SEGMENT_TOP_Z };
   };
   const blocked = (worldX, worldZ) => {
-    const x = worldX / mapScale, z = worldZ / mapScale;
+    const x = toLocalX(worldX / mapScale), z = worldZ / mapScale;   // 道路の帯は横に広げてあるので、元座標の x に戻して判定
     if (x > ROAD_BAND[0] && x < ROAD_BAND[1]) return true;
     const { name, localZ } = segmentAt(z);
     for (const zone of PEBBLE_ZONES[name] ?? []) {

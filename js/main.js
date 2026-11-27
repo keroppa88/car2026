@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS } from './game-config.js?v=20261127-s33';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s1';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261127-1';
@@ -26,7 +26,7 @@ import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
 import { createMoorFog } from './moor-fog.js?v=20261115-roadside-fog-restored-1';
-import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2';
+import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
 
 (function () {
   'use strict';
@@ -5551,6 +5551,22 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
     return centerLineMaterials.map((material) => material.name || '(unnamed)');
   }
 
+  // 道路の帯だけ横(x)に広げる(ルート66)。形を区間の座標に焼き込んでから、中央線から half m の中は k 倍、
+  // その外は大きさを変えずに広げた分だけ外へずらす。道に沿った向き(z)と高さ(y)は変えない。
+  function stretchRoadLaterally(root, { center, half, k }) {
+    root.updateMatrixWorld(true);
+    const inv = root.matrixWorld.clone().invert(), meshes = [];
+    root.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      const g = m.geometry.clone(); g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+      const pos = g.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) { const d = pos.getX(i) - center, a = Math.abs(d); pos.setX(i, center + (a <= half ? d * k : Math.sign(d) * (a + (k - 1) * half))); }
+      pos.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere();
+      m.geometry = g; m.removeFromParent(); root.add(m); m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.set(1, 1, 1);
+    }
+    root.updateMatrixWorld(true);
+  }
+
   function mergeMapMeshes(root) {
     const groups = new Map();
     root.updateMatrixWorld(true);
@@ -6118,6 +6134,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
           let count = 0;
           template.traverse((object) => { if (object.isMesh) count++; });
           if (count > 200) template = mergeMapMeshes(template);
+          if (MAP_CONFIG.roadLateralStretch) stretchRoadLaterally(template, MAP_CONFIG.roadLateralStretch);
           template.userData.sequenceCenterLineMaterials = centerLineMaterials;
           const sourceScale = MAP_CONFIG.segmentScaleOverrides?.[sourceUrl] ?? 1;
           template.scale.multiplyScalar(sourceScale);
@@ -7011,7 +7028,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20260929-r66shade-2
         document.body.dataset.mapFog = 'none';
       } else {
         route66Scenery = createRoute66Scenery(scene, MAP_CONFIG.segmentFiles,
-          MAP_CONFIG.scale);
+          MAP_CONFIG.scale, route66LocalX);
         document.body.dataset.mapFog = 'route66-desert';
       }
       if (COURSE_KEY === 'moor') {
