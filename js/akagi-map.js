@@ -72,8 +72,12 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const T = (x, z) => {
     const fx = THREE.MathUtils.clamp((x - minX) / G.cell, 0, cols - 1e-6), fz = THREE.MathUtils.clamp((z - minZ) / G.cell, 0, lines - 1e-6);
     const ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, k = iz * (cols + 1) + ix;
-    return (G.h[k] * (1 - tx) + G.h[k + 1] * tx) * (1 - tz) + (G.h[k + cols + 1] * (1 - tx) + G.h[k + cols + 2] * tx) * tz;
+    let t = (G.h[k] * (1 - tx) + G.h[k + 1] * tx) * (1 - tz) + (G.h[k + cols + 1] * (1 - tx) + G.h[k + cols + 2] * tx) * tz;
+    // 平らにする所(flattenAreas: { pts, y, blend }): 中は高さ y で水平、外へ blend m かけて元の地形へなめらかな斜面でつなぐ(地形そのものを変える。板は使わない)
+    for (const A of flattenAreas) { if (x < A.x0 - A.blend || x > A.x1 + A.blend || z < A.z0 - A.blend || z > A.z1 + A.blend) continue; const e = inPoly(A, x, z) ? 0 : edgeDist(A, x, z); if (e < A.blend) t = THREE.MathUtils.lerp(A.y, t, THREE.MathUtils.smoothstep(e, 0, A.blend)); }
+    return t;
   };
+  let flattenAreas = [];
   // 近くを通る道の「区間」ごとの、いちばん近い所(つづら折りでは 2〜3 本の道が近くを通る)
   // (読み込みを速く: 候補を並べ替えず、近い順に 3 本だけ選ぶ。同じ点を続けて聞かれたら前の答えを返す)
   const candD = new Float64Array(4096), candI = new Int32Array(4096);
@@ -110,6 +114,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const CUT = 2.2, FILL = 0.75, DITCH = 1.2;   // 崖の傾き(高さ/横)、盛り土の傾き、崖の下の側溝・草の幅
   // ---- 塗って決めた場所(tools/akagi/apply_top_paint.py): 草原(木なし)・草むら(木なし)・駐車場(平らな舗装)・トイレ ----
   const region = (pts) => { const xs = pts.map((q) => q[0]), zs = pts.map((q) => q[1]); return { pts, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; };
+  flattenAreas = (data.flattenAreas || []).map((A) => Object.assign(region(A.pts), { y: A.y, blend: A.blend ?? 8 }));
   const inPoly = (P, x, z) => {
     if (x < P.x0 || x > P.x1 || z < P.z0 || z > P.z1) return false;
     let c = false; const q = P.pts;
