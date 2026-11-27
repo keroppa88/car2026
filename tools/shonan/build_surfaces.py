@@ -68,6 +68,7 @@ def main():
     layers = json.loads(subprocess.check_output(['node', 'tools/shonan/export_surfaces.mjs'], cwd=ROOT))
     city = json.loads(CITY.read_text())
     terrain = json.loads(TERRAIN.read_text())
+    ground_areas = clean(unary_union([Polygon(q).buffer(0.5) for q in city.get('groundAreas', [])])) if city.get('groundAreas') else Polygon()
     tx, tz, c, w, h = [terrain[k] for k in ['x0', 'z0', 'c', 'w', 'h']]
     dem = np.asarray(terrain['d']).reshape(h, w) / 10
     active = np.maximum.reduce([dem[:-1, :-1], dem[1:, :-1], dem[:-1, 1:], dem[1:, 1:]]) >= 0.05
@@ -262,8 +263,13 @@ def main():
                     xyz[signed<0] = xyz[signed<0][:,[0,2,1]]
                     if layer['name'] == 'terrain':
                         rgb = []
-                        for y in xyz[:,:,1].ravel():
-                            if y < 1.2:
+                        # 指示で「地面で統一」した所(city の groundAreas)は、高さはそのままで地面と同じ色
+                        flat = sg.contains_xy(ground_areas, pts[:,:,0].ravel(), pts[:,:,1].ravel()) if not ground_areas.is_empty else np.zeros(pts.shape[0]*3, bool)
+                        gcol = [srgb(v/255) for v in (0x8d,0x8c,0x88)]
+                        for y, fl in zip(xyz[:,:,1].ravel(), flat):
+                            if fl:
+                                rgb.append(gcol)
+                            elif y < 1.2:
                                 rgb.append([srgb(v/255) for v in (0xd8,0xc9,0xa3)])
                             else:
                                 rgb.append(colorsys.hls_to_rgb(.24+min(.06,y/900), .36-min(.08,y/600), .32))

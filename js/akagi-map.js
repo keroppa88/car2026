@@ -127,8 +127,10 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const inCut = (x, z) => cuts.some((C) => x > C.x0 && x < C.x1 && z > C.z0 && z < C.z1 && inPoly(C, x, z));   // 砂の待避所・横道(tools/haruna/apply_quarter_paint.py)
   const slabs = (data.slabs || []).map(region);
   // 駐車場の広場(lots): 道路ではない平らなアスファルト(白線なし)。高さは背骨(spine: もとの脇道の点と高さ)のいちばん近い点。まわり 4m で元の地面へ
-  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane }));
+  // cliff: ふちを崖のように切り立たせる(まわりの地面へなめらかにつながない)。line: 中心線 [[x, z, y], ...] にそって高さを補間(横は水平)。surface: 'grass' なら草の色
+  const lots = (data.lots || []).map((L) => Object.assign(region(L.pts), { spine: L.spine || [], plane: L.plane, line: L.line, cliff: !!L.cliff, surface: L.surface }));
   const lotY = (L, x, z) => { if (L.plane) return L.plane[0] * x + L.plane[1] * z + L.plane[2];   // plane: [a, b, c] = 傾いた平らな面 y = a x + b z + c
+    if (L.line) { let bd = Infinity, y = 0; const q = L.line; for (let i = 0; i + 1 < q.length; i++) { const dx = q[i + 1][0] - q[i][0], dz = q[i + 1][1] - q[i][1], t = Math.max(0, Math.min(1, ((x - q[i][0]) * dx + (z - q[i][1]) * dz) / (dx * dx + dz * dz || 1))), px = q[i][0] + dx * t, pz = q[i][1] + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < bd) { bd = dd; y = q[i][2] + (q[i + 1][2] - q[i][2]) * t; } } return y; }
  let bd = Infinity, y = 0; for (const [sx, sz, sy] of L.spine) { const dd = (sx - x) ** 2 + (sz - z) ** 2; if (dd < bd) { bd = dd; y = sy; } } return y; };   // 板の駐車場: 中は道と同じ高さで平ら(崖の上へ張り出してよい)。ふちはコンクリートの側面
   const flats = aprons.concat(sands);               // 道の高さにそろえる所(道から 18m より先は元の地面へ寄せる: 長い横道が浮かないように)
   // 一車線の横道(sideRoads: 中心線と幅)。本線の路面の中から始めて、奥へ。形は帯の多角形にして flats に入れる(高さの決め方は同じ)
@@ -287,7 +289,11 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // 足した所(アスファルト・砂の板)の下の地面は少し下げる(升目の地面が板の上へ出て、板が隠れないように)
   // 待避所は「道の幅が広がった所」: 地面そのものを道の高さにする(H)ので下げない。OSM の道の下だけ少し下げる
   // アスファルトを足した所(待避所・つなぎ)の下の地面は少し下げて、板とちらつかないようにする(ほかは下げない)
-  const underFlat = (x, z) => (onOsmRoad(x, z, 0.6, true) ? 0.12 : 0) || (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.2 : 0);   // 板の駐車場の下の地面は 25cm 下げる
+  // 崖の駐車場(cliff)の中とふちの外 6m は(道のふちの列は除く)、ほかの地面(粗い升目・道わきの地面)を駐車場とまわりの地面の両方より 1m 下へ沈める(上には別に細かい地面と崖の側面を作る)
+  const CLIFF_CL = EDGE + DITCH + 0.6;   // 道わきの地面の 4 列目(側溝の外)の線
+  const cliffSink = (x, z) => { let s = 0; if (!lots.some((L) => L.cliff)) return 0; const rd0 = roadAt(x, z); if (rd0 && rd0.d < EDGE + 0.3) return 0; if (rd0 && rd0.d < CLIFF_CL + 0.05 && !lots.some((L) => L.cliff && (inPoly(L, x, z) || edgeDist(L, x, z) < 3))) return 0;   // 側溝の所は、駐車場の近く(3m)でなければ下げない
+    for (const L of lots) { if (!L.cliff || x < L.x0 - 6 || x > L.x1 + 6 || z < L.z0 - 6 || z > L.z1 + 6) continue; if (inPoly(L, x, z)) s = Math.max(s, 1.3); else if (edgeDist(L, x, z) < 6) s = Math.max(s, Math.max(0, H(x, z) - lotY(L, x, z)) + 1.3); } return s; };
+  const underFlat = (x, z) => cliffSink(x, z) || (onOsmRoad(x, z, 0.6, true) ? 0.12 : 0) || (lots.some((A) => x >= A.x0 - 1 && x <= A.x1 + 1 && z >= A.z0 - 1 && z <= A.z1 + 1 && (inPoly(A, x, z) || edgeDist(A, x, z) < 1)) ? 0.3 : slabs.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.25 : aprons.some((A) => x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1 && inPoly(A, x, z)) ? 0.2 : 0);   // 板の駐車場の下の地面は 25cm 下げる
   // 歩道: 塗った紫の線を、道の点ごとの「左・右に歩道あり」に置きかえる(路肩をのばした帯として、道に沿って作る)
   const WALK = 2.0, walk = [new Uint8Array(n), new Uint8Array(n)];   // [左, 右]
   for (const line of data.sidewalks || []) for (let k = 0; k + 1 < line.length; k++) {
@@ -306,7 +312,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const i = lg[0].i, q = route[i], nn = tangents[i], sd = (x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1;
       if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
     }
-    for (const L of lots) { if (x < L.x0 - 4 || x > L.x1 + 4 || z < L.z0 - 4 || z > L.z1 + 4) continue; const y = lotY(L, x, z) - 0.05; if (inPoly(L, x, z)) return y; const e = edgeDist(L, x, z); if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
+    for (const L of lots) { if (x < L.x0 - 4 || x > L.x1 + 4 || z < L.z0 - 4 || z > L.z1 + 4) continue; const y = lotY(L, x, z) - 0.05; if (inPoly(L, x, z)) return y; if (L.cliff) continue; const e = edgeDist(L, x, z); if (e < 4) h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
     for (const S of slabs) if (x >= S.x0 && x <= S.x1 && z >= S.z0 && z <= S.z1 && inPoly(S, x, z)) { const k = nearestRoute(x, z, 4); if (k.i >= 0) return route[k.i].y + 0.06; }   // 板の駐車場(切った所より先に見る)。高さは板の上面(車が埋まらないように)
     if (inCut(x, z)) return h;
     { // OSM の脇道: 道の上は道の高さ、両わき 4m で元の地面へ
@@ -499,6 +505,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (let i = 0; i + 1 < n; i++) for (let k = 0; k + 1 < m; k++) {
         const a2 = base + i * m + k, b2 = a2 + m;
         if (!clearOfRoad([a2, b2, a2 + 1, b2 + 1])) continue;
+        if (lots.some((L) => L.cliff) && (() => { const ids = [a2, b2, a2 + 1, b2 + 1], xs = ids.map((id) => v[id * 3]), zs = ids.map((id) => v[id * 3 + 2]), cx = xs.reduce((a, b) => a + b) / 4, cz = zs.reduce((a, b) => a + b) / 4, rr = Math.max(...ids.map((id, j) => Math.hypot(xs[j] - cx, zs[j] - cz))); if (ids.every((id) => nearestRoute(v[id * 3], v[id * 3 + 2]).d < CLIFF_CL + 0.05 && !lots.some((L) => L.cliff && (inPoly(L, v[id * 3], v[id * 3 + 2]) || edgeDist(L, v[id * 3], v[id * 3 + 2]) < 3)))) return false; return lots.some((L) => L.cliff && cx > L.x0 - rr - 2 && cx < L.x1 + rr + 2 && cz > L.z0 - rr - 2 && cz < L.z1 + rr + 2 && (inPoly(L, cx, cz) || edgeDist(L, cx, cz) < rr + 1)); })()) continue;   // 崖の駐車場にかかる四角は張らない(細かい地面が代わりに覆う)
         if ((slabs.length || lots.length) && [a2, b2, a2 + 1, b2 + 1].some((id) => slabs.concat(lots).some((S) => inPoly(S, v[id * 3], v[id * 3 + 2]) || edgeDist(S, v[id * 3], v[id * 3 + 2]) < 1))) continue;   // 板の駐車場の上・ふちには道わきの地面を張らない(盛り上がりが板にかぶらない)
         ind.push(a2, b2, a2 + 1, a2 + 1, b2, b2 + 1); qInfo.push([side, i, k]);
       }
@@ -840,7 +847,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       }
     }
     // 傾いた平らな駐車場(plane)のまわりも同じ土手(ふちから外へ 4m、1m ごと)
-    for (const P of lots.filter((L) => L.plane)) for (let i = 0; i < P.pts.length; i++) {
+    for (const P of lots.filter((L) => L.plane && !L.cliff)) for (let i = 0; i < P.pts.length; i++) {
       const [ax, az] = P.pts[i], [bx, bz] = P.pts[(i + 1) % P.pts.length], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L));
       let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(P, (ax + bx) / 2 + nx * 0.3, (az + bz) / 2 + nz * 0.3)) { nx = -nx; nz = -nz; }
       for (let k = 0; k < m; k++) {
@@ -1064,14 +1071,52 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
     const onEdge = (P, x, z) => { let best = Infinity, bx = x, bz = z; const q = P.pts; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < best) { best = dd; bx = px; bz = pz; } } return [bx, bz]; };
     // 傾いた平らな駐車場(plane): 塗った形を 1m 升目で切り分けて三角に割る(ふちが塗った形のまま、ギザギザにならない)
     const clipP = (P, axis, val, keepLess) => { const out = [], inside = (q) => (keepLess ? q[axis] <= val : q[axis] >= val); for (let k = 0; k < P.length; k++) { const a = P[k], b = P[(k + 1) % P.length], ia = inside(a), ib = inside(b); if (ia) out.push(a); if (ia !== ib) { const t = (val - a[axis]) / (b[axis] - a[axis]); out.push(axis === 0 ? [val, a[1] + (b[1] - a[1]) * t] : [a[0] + (b[0] - a[0]) * t, val]); } } return out; };
-    for (const P of lots.filter((L) => L.plane)) for (let gx = Math.floor(P.x0); gx < P.x1; gx++) {
+    const vg = [];
+    for (const P of lots.filter((L) => L.plane || L.line)) for (let gx = Math.floor(P.x0); gx < P.x1; gx++) {
       const colP = clipP(clipP(P.pts, 0, gx, false), 0, gx + 1, true); if (colP.length < 3) continue;
       for (let gz = Math.floor(P.z0); gz < P.z1; gz++) {
         const piece = clipP(clipP(colP, 1, gz, false), 1, gz + 1, true); if (piece.length < 3) continue;
-        for (const t of THREE.ShapeUtils.triangulateShape(piece.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of [t[0], t[2], t[1]]) { const [a, b] = piece[k]; v.push(a, lotY(P, a, b) + 0.04, b); }   // 面の向きを上に
+        for (const t of THREE.ShapeUtils.triangulateShape(piece.map(([x, z]) => new THREE.Vector2(x, z)), [])) for (const k of [t[0], t[2], t[1]]) { const [a, b] = piece[k]; (P.surface === 'grass' ? vg : v).push(a, lotY(P, a, b) + 0.04, b); }   // 面の向きを上に
       }
     }
-    for (const P of lots.filter((L) => !L.plane)) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
+    // 地面の色(道わきの地面と同じ: 草原はその色、ほかは道の近くの草から森の色へ)
+    const groundCol = (x, z) => { if (inAny(meadows, x, z)) return MEADOW; const r = roadAt(x, z), far = THREE.MathUtils.smoothstep(r ? r.d - EDGE : 99, 2.5, 7); return [0.17, 0.26, 0.08].map((g, j) => g + (AKAGI_FOREST[j] - g) * far); };
+    if (vg.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(vg, 3)); const gc = []; for (let k = 0; k < vg.length; k += 3) gc.push(...groundCol(vg[k], vg[k + 2])); gg.setAttribute('color', new THREE.Float32BufferAttribute(gc, 3)); gg.computeVertexNormals(); const gm = new THREE.Mesh(gg, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })); gm.name = 'akagi-roadside'; scenery.add(gm); }
+    // 崖の駐車場(cliff): ふちの側面(切り立った土の崖)と、ふちの外 15m の細かい地面(地形の高さどおり)
+    for (const P of lots.filter((L) => L.cliff)) {
+      const wv = [], tv2 = [], tc2 = [], q = P.pts;
+      for (let i = 0; i < q.length; i++) {
+        const [ax, az] = q[i], [bx, bz] = q[(i + 1) % q.length], L = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(L));
+        let nx = -(bz - az) / L, nz = (bx - ax) / L; if (inPoly(P, (ax + bx) / 2 + nx * 0.3, (az + bz) / 2 + nz * 0.3)) { nx = -nx; nz = -nz; }
+        const ys = []; for (let k = 0; k <= m; k++) { const x = ax + (bx - ax) * k / m, z = az + (bz - az) * k / m; ys.push([x, z, lotY(P, x, z) + 0.04, H(x + nx * 0.05, z + nz * 0.05)]); }
+        for (let k = 0; k < m; k++) { const [x0, z0, l0, h0] = ys[k], [x1, z1, l1, h1] = ys[k + 1], lo0 = Math.min(l0, h0) - 0.4, lo1 = Math.min(l1, h1) - 0.4, hi0 = Math.max(l0, h0), hi1 = Math.max(l1, h1);
+          wv.push(x0, lo0, z0, x1, lo1, z1, x1, hi1, z1, x0, lo0, z0, x1, hi1, z1, x0, hi0, z0); }
+      }
+      const snap = (x, z) => { let best = Infinity, bx = x, bz = z; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const ax = q[j][0], az = q[j][1], dx = q[i][0] - ax, dz = q[i][1] - az, l2 = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, dd = (px - x) ** 2 + (pz - z) ** 2; if (dd < best) { best = dd; bx = px; bz = pz; } } return [bx, bz]; };
+      const R12 = 15;
+      for (let x = Math.floor(P.x0) - R12; x < P.x1 + R12; x++) for (let z = Math.floor(P.z0) - R12; z < P.z1 + R12; z++) {
+        const cx = x + 0.5, cz = z + 0.5; if ([[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]].every(([a, b]) => inPoly(P, a, b)) || (!inPoly(P, cx, cz) && edgeDist(P, cx, cz) > R12)) continue;   // ふちにかかる升目も張る(中の点はふちへ寄せる)
+        if ([[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1], [cx, cz]].some(([a, b]) => lots.some((L2) => L2 !== P && inPoly(L2, a, b)))) continue;   // ほかの駐車場にかかる所には張らない(そちらの細かい地面が覆う)
+        // 道にかかる升目は、道のふち(中心から EDGE)の線で切って外側だけ張る。ふちの線上の点は道の高さ
+        let poly = [[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]], onEdgeLine = new Set();
+        const rk = nearestRoute(cx, cz);
+        const nearLot = inPoly(P, cx, cz) || edgeDist(P, cx, cz) < 3, OFFL = nearLot ? EDGE : CLIFF_CL;   // 駐車場の近くは道のふちまで、ほかは側溝の外の線まで(側溝は道わきの地面のまま)
+        if (rk.i >= 0 && rk.d < OFFL + 2) {
+          const q0 = route[rk.i], nn = tangents[rk.i], sg = (cx - q0.x) * nn.x + (cz - q0.z) * nn.z >= 0 ? 1 : -1, sd = ([a, b]) => sg * ((a - q0.x) * nn.x + (b - q0.z) * nn.z) - OFFL;
+          const out = [];
+          for (let k = 0; k < poly.length; k++) { const A = poly[k], B = poly[(k + 1) % poly.length], da = sd(A), db = sd(B); if (da >= 0) out.push(A); if ((da >= 0) !== (db >= 0)) { const t = da / (da - db), C = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; onEdgeLine.add(C); out.push(C); } }
+          poly = out; if (poly.length < 3) continue;
+        }
+        const yAt = (a, b) => { const r = roadAt(a, b); return r && r.d < EDGE + 0.05 ? r.y - 0.03 : H(a, b); };   // 道のふちは道の高さ
+        const cs = poly.map((pt) => { const [a, b] = pt; if (onEdgeLine.has(pt)) return [a, b, nearLot ? roadAt(a, b).y - 0.03 : H(a, b)]; if (!inPoly(P, a, b)) return [a, b, yAt(a, b)]; const [sx, sz] = snap(a, b), l = Math.hypot(sx - a, sz - b) || 1; return [sx, sz, yAt(sx + (sx - a) / l * 0.08, sz + (sz - b) / l * 0.08)]; });   // ふちの点: 中の点からふちへ向かう向きに少し外の高さ(崖の上端・下端とそろう)
+        for (let k = 1; k + 1 < cs.length; k++) for (const j of [0, k + 1, k]) { const [a, b, y] = cs[j]; tv2.push(a, y + 0.02, b); tc2.push(...groundCol(a, b)); }
+      }
+      const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wv, 3)); wg.computeVertexNormals();
+      const wm = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ name: 'GunmaCliff', color: 0x75695a, side: THREE.DoubleSide })); wm.name = 'akagi-lot-cliff'; scenery.add(wm);
+      const tg2 = new THREE.BufferGeometry(); tg2.setAttribute('position', new THREE.Float32BufferAttribute(tv2, 3)); tg2.setAttribute('color', new THREE.Float32BufferAttribute(tc2, 3)); tg2.computeVertexNormals();
+      const tm2 = new THREE.Mesh(tg2, new THREE.MeshLambertMaterial({ name: 'GunmaGrass', vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); tm2.name = 'akagi-roadside'; scenery.add(tm2);
+    }
+    for (const P of lots.filter((L) => !L.plane && !L.line)) for (let x = P.x0 - 1.5; x < P.x1 + 1.5; x += 1.5) for (let z = P.z0 - 1.5; z < P.z1 + 1.5; z += 1.5) {
       const cs = [[x, z], [x + 1.5, z], [x + 1.5, z + 1.5], [x, z + 1.5]], ins = cs.map(([a, b]) => inPoly(P, a, b));
       if (!ins.some(Boolean)) continue;
       const q = cs.map(([a, b], k) => (ins[k] ? [a, b] : onEdge(P, a, b)));
@@ -1161,6 +1206,23 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals();
       const roof = new THREE.Mesh(rg, roofC); g.add(roof);
       for (const sx of [-1, 1]) { const gv = [sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0], gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, lam(0xf2f0ea))); }   // 妻壁は白
+    } else if (Hs.type === 'hexHouse') {   // 正六角形の平屋。白い壁、オレンジの六角すいの屋根、てっぺんに小さな換気塔(写真の建物)
+      const Rh = Hs.radius ?? Math.min(len, wid) / 2, WH = 3.2, roofC = lam(0xd2582e, { flatShading: true });
+      body = new THREE.Mesh(new THREE.CylinderGeometry(Rh, Rh, WH, 6), lam(0xf2f0ea, { flatShading: true })); body.position.set(0, base + WH / 2, 0); body.rotation.y = Math.PI / 6; g.add(body);
+      const RO = Rh + 0.9, RISE = Rh * 0.55, roof = new THREE.Mesh(new THREE.ConeGeometry(RO, RISE, 6), roofC); roof.position.set(0, base + WH + RISE / 2, 0); roof.rotation.y = Math.PI / 6; g.add(roof);
+      const tw = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 6), lam(0xe6e6e0, { flatShading: true })); tw.position.set(0, base + WH + RISE * 0.82 + 0.35, 0); g.add(tw);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.4, 6), roofC); cap.position.set(0, base + WH + RISE * 0.82 + 1.4, 0); g.add(cap);
+      // 6 つの壁: 道に向いた面に入口、ほかの面に窓
+      const ap = Rh * Math.cos(Math.PI / 6);
+      for (let f = 0; f < 6; f++) { const a = f * Math.PI / 3, px = Math.sin(a) * (ap + 0.03), pz = Math.cos(a) * (ap + 0.03);   // 面の中心(1 つの面が +z = 道の向き)
+        if (f === 0) plate(1.6, 2.2, lam(0x6d5a48), px, base + 1.1, pz, a); else plate(Math.min(2.4, Rh * 0.6), 1.1, dark, px, base + 1.8, pz, a); }
+    } else if (Hs.type === 'orangeHouse') {   // 平屋の小さな四角い建物。白い壁、オレンジの切妻屋根
+      const W = len * 0.95, D = wid * 0.95, roofC = lam(0xd2582e);
+      body = box(W, 3, D, lam(0xf2f0ea), 0, base, 0); plate(1.0, 2.0, lam(0x6d5a48), -W * 0.2, base + 1.0, D / 2 + 0.03); plate(1.2, 0.9, dark, W * 0.2, base + 1.7, D / 2 + 0.03);
+      const RISE = Math.min(1.8, D * 0.35), hw = D / 2 + 0.5, hl = W / 2 + 0.4, rv = [];
+      for (const sd of [-1, 1]) rv.push(-hl, base + 3, sd * hw, hl, base + 3, sd * hw, hl, base + 3 + RISE, 0, -hl, base + 3, sd * hw, hl, base + 3 + RISE, 0, -hl, base + 3 + RISE, 0);
+      const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv, 3)); rg.computeVertexNormals(); g.add(new THREE.Mesh(rg, roofC));
+      for (const sx of [-1, 1]) { const gv = [sx * W / 2, base + 3, -D / 2, sx * W / 2, base + 3, D / 2, sx * W / 2, base + 3 + RISE * (D / 2) / hw, 0], gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, lam(0xf2f0ea))); }
     } else if (Hs.type === 'toilet') {   // E: 公衆トイレ。上は白壁、下は濃い灰色、黒い瓦の切妻屋根
       const W = len * 0.9, D = wid * 0.85;
       body = box(W, 1.2, D, lam(0x3a3d41), 0, base, 0); box(W, 1.8, D, lam(0xf0efe9), 0, base + 1.2, 0);
@@ -1667,7 +1729,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const shadeMeshes = [ground]; group.traverse((o) => { if (o.isMesh) shadeMeshes.push(o); }); scenery.traverse((o) => { if (o.name === 'akagi-roadside') shadeMeshes.push(o); });
   for (const mesh of shadeMeshes) {
     const pos = mesh.geometry.getAttribute('position'), mask = new Float32Array(pos.count);
-    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(flats, x, z) || lots.some((L) => L.plane && inPoly(L, x, z)) ? 0 : 1; }
+    for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); mask[k] = inAny(meadows, x, z) || inAny(bushes, x, z) || inAny(parkings, x, z) || inAny(flats, x, z) || lots.some((L) => (L.plane || L.line) && inPoly(L, x, z)) ? 0 : 1; }
     mesh.geometry.setAttribute('canopyMask', new THREE.BufferAttribute(mask, 1));
   }
   const softGroundAt = (x, z) => { if (parkings.some((P) => inPoly(P, x, z)) || aprons.some((P) => inPoly(P, x, z)) || sideRoads.some((P) => inPoly(P, x, z))) return false; const r = roadAt(x, z); return !r || r.d > R + SHOULDER + 0.3; };   // 駐車場は舗装
