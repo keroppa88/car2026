@@ -114,6 +114,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const CUT = 2.2, FILL = 0.75, DITCH = 1.2;   // 崖の傾き(高さ/横)、盛り土の傾き、崖の下の側溝・草の幅
   // ---- 塗って決めた場所(tools/akagi/apply_top_paint.py): 草原(木なし)・草むら(木なし)・駐車場(平らな舗装)・トイレ ----
   const region = (pts) => { const xs = pts.map((q) => q[0]), zs = pts.map((q) => q[1]); return { pts, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; };
+  const rampAreas = (data.rampAreas || []).map((A) => Object.assign(region(A.pts), { blend: A.blend ?? 4 }));
   flattenAreas = (data.flattenAreas || []).map((A) => Object.assign(region(A.pts), { y: A.y, blend: A.blend ?? 8 }));
   const inPoly = (P, x, z) => {
     if (x < P.x0 || x > P.x1 || z < P.z0 || z > P.z1) return false;
@@ -317,6 +318,8 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   const H = (x, z) => {
     let h = H0(x, z);
     const lg = legsAt(x, z); if (lg.length && lg[0].d <= EDGE) return h;   // 道路面は一切変更しない
+    // 本線とのつなぎ目(rampAreas: { pts, blend }): 中は本線の路面の高さ(側溝・段差なし)、外へ blend m で元の地面へ
+    for (const A of rampAreas) { if (x < A.x0 - A.blend || x > A.x1 + A.blend || z < A.z0 - A.blend || z > A.z1 + A.blend) continue; const e = inPoly(A, x, z) ? 0 : edgeDist(A, x, z); if (e >= A.blend) continue; const r = roadAt(x, z); if (!r) continue; const y = r.y - 0.05; if (e <= 0) return y; h = THREE.MathUtils.lerp(y, h, THREE.MathUtils.smoothstep(e, 0, A.blend)); }
     if (lg.length && lg[0].d < EDGE + WALK + 4) {   // 歩道: 路肩の外 2m は道の高さ(歩道の板の下)。その先 4m で元の地面へ
       const i = lg[0].i, q = route[i], nn = tangents[i], sd = (x - q.x) * nn.x + (z - q.z) * nn.z > 0 ? 0 : 1;
       if (walk[sd][i]) { const e = lg[0].d - EDGE - WALK; if (e <= 0) return lg[0].y - 0.05; h = THREE.MathUtils.lerp(lg[0].y - 0.05, h, THREE.MathUtils.smoothstep(e, 0, 4)); }
