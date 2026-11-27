@@ -33,3 +33,4 @@ for g in GREEN: d['grassAreas'].append({'pts': [list(p) for p in g], 'fade': 1.0
 # 赤: 台地は道と同じ高さ(駐車場と同じ決め方)
 pad.pop('plane'); pad['road'] = True
 FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
+# (17:10 の指示) 取り消した所の草と木は残す → visitor_center4.py
