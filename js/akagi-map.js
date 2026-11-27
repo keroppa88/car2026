@@ -1209,14 +1209,18 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       for (const sx of [-1, 1]) { const gv = [sx * W / 2, base + 6, -D / 2, sx * W / 2, base + 6, D / 2, sx * W / 2, base + 6 + RISE * (D / 2) / hw, 0], gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gv, 3)); gg.computeVertexNormals(); g.add(new THREE.Mesh(gg, lam(0xf2f0ea))); }   // 妻壁は白
     } else if (Hs.type === 'hexHouse') {   // 正六角形の平屋。白い壁、オレンジの六角すいの屋根、てっぺんに小さな換気塔(写真の建物)
       const Rh = Hs.radius ?? Math.min(len, wid) / 2, WH = 3.2, roofC = lam(0xd2582e, { flatShading: true });
-      body = new THREE.Mesh(new THREE.CylinderGeometry(Rh, Rh, WH, 6), lam(0xf2f0ea, { flatShading: true })); body.position.set(0, base + WH / 2, 0); body.rotation.y = Math.PI / 6; g.add(body);
-      const RO = Rh + 0.9, RISE = Rh * 0.55, roof = new THREE.Mesh(new THREE.ConeGeometry(RO, RISE, 6), roofC); roof.position.set(0, base + WH + RISE / 2, 0); roof.rotation.y = Math.PI / 6; g.add(roof);
-      const tw = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 6), lam(0xe6e6e0, { flatShading: true })); tw.position.set(0, base + WH + RISE * 0.82 + 0.35, 0); g.add(tw);
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.4, 6), roofC); cap.position.set(0, base + WH + RISE * 0.82 + 1.4, 0); g.add(cap);
+      // 床は水平で、まわりの地面のいちばん高い所にそろえる。下のすき間は茶色の崖のような土台(六角柱)
+      const hy = []; for (let k = 0; k < 12; k++) { const t = k * Math.PI / 6; hy.push(H(cx + Math.cos(t) * Rh, cz + Math.sin(t) * Rh)); } hy.push(H(cx, cz));
+      const yLo = Math.min(...hy) - 0.2, hb = Math.max(...hy) - yLo; g.position.y = yLo;
+      { const bm = new THREE.Mesh(new THREE.CylinderGeometry(Rh + 0.1, Rh + 0.1, hb, 6), lam(0x75695a, { flatShading: true })); bm.position.set(0, hb / 2, 0); bm.rotation.y = Math.PI / 6; g.add(bm); }
+      body = new THREE.Mesh(new THREE.CylinderGeometry(Rh, Rh, WH, 6), lam(0xf2f0ea, { flatShading: true })); body.position.set(0, hb + WH / 2, 0); body.rotation.y = Math.PI / 6; g.add(body);
+      const RO = Rh + 0.9, RISE = Rh * 0.55, roof = new THREE.Mesh(new THREE.ConeGeometry(RO, RISE, 6), roofC); roof.position.set(0, hb + WH + RISE / 2, 0); roof.rotation.y = Math.PI / 6; g.add(roof);
+      const tw = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 6), lam(0xe6e6e0, { flatShading: true })); tw.position.set(0, hb + WH + RISE * 0.82 + 0.35, 0); g.add(tw);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.4, 6), roofC); cap.position.set(0, hb + WH + RISE * 0.82 + 1.4, 0); g.add(cap);
       // 6 つの壁: 道に向いた面に入口、ほかの面に窓
       const ap = Rh * Math.cos(Math.PI / 6);
       for (let f = 0; f < 6; f++) { const a = f * Math.PI / 3, px = Math.sin(a) * (ap + 0.03), pz = Math.cos(a) * (ap + 0.03);   // 面の中心(1 つの面が +z = 道の向き)
-        if (f === 0) plate(1.6, 2.2, lam(0x6d5a48), px, base + 1.1, pz, a); else plate(Math.min(2.4, Rh * 0.6), 1.1, dark, px, base + 1.8, pz, a); }
+        if (f === 0) plate(1.6, 2.2, lam(0x6d5a48), px, hb + 1.1, pz, a); else plate(Math.min(2.4, Rh * 0.6), 1.1, dark, px, hb + 1.8, pz, a); }
     } else if (Hs.type === 'orangeHouse') {   // 平屋の小さな四角い建物。白い壁、オレンジの切妻屋根
       const W = len * 0.95, D = wid * 0.95, roofC = lam(0xd2582e);
       body = box(W, 3, D, lam(0xf2f0ea), 0, base, 0); plate(1.0, 2.0, lam(0x6d5a48), -W * 0.2, base + 1.0, D / 2 + 0.03); plate(1.2, 0.9, dark, W * 0.2, base + 1.7, D / 2 + 0.03);
