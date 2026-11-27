@@ -19,3 +19,4 @@ c = WHITE.centroid; rin = WHITE.exterior.distance(c); R = round(min(hexh['radius
 d['houses'].append({'type': 'hexHouse', 'radius': R, 'r': [[round(c.x - 1, 2), round(c.y - 1, 2)], [round(c.x + 1, 2), round(c.y - 1, 2)], [round(c.x + 1, 2), round(c.y + 1, 2)], [round(c.x - 1, 2), round(c.y + 1, 2)]]})
 print('敷地', l0 - len(d['lots']), '草', g0 - len(d['grassAreas']), '木', t0 - len(d['treesExact']), '建物の半径', R, '中心', round(c.x, 2), round(c.y, 2))
 FILE.write_text(json.dumps(d, ensure_ascii=False, separators=(',', ':')))
+# 17:39 の指示: 入口は水色の線(-100.25,47.5 〜 -97.25,43.25)の面に → houses の hexHouse に frontLine を足した

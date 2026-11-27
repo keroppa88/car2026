@@ -1212,6 +1212,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
       // 床は水平で、まわりの地面のいちばん高い所にそろえる。下のすき間は茶色の崖のような土台(六角柱)
       const hy = []; for (let k = 0; k < 12; k++) { const t = k * Math.PI / 6; hy.push(H(cx + Math.cos(t) * Rh, cz + Math.sin(t) * Rh)); } hy.push(H(cx, cz));
       const yLo = Math.min(...hy) - 0.2, hb = Math.max(...hy) - yLo; g.position.y = yLo;
+      if (Hs.frontLine) { const [[ax, az], [bx, bz]] = Hs.frontLine; let nx = bz - az, nz = -(bx - ax); if (nx * ((ax + bx) / 2 - cx) + nz * ((az + bz) / 2 - cz) < 0) { nx = -nx; nz = -nz; } g.rotation.y = Math.atan2(nx, nz); }   // 入口の面(frontLine の線と平行な面)を指定の向きに
       { const bm = new THREE.Mesh(new THREE.CylinderGeometry(Rh + 0.1, Rh + 0.1, hb, 6), lam(0x75695a, { flatShading: true })); bm.position.set(0, hb / 2, 0); bm.rotation.y = Math.PI / 6; g.add(bm); }
       body = new THREE.Mesh(new THREE.CylinderGeometry(Rh, Rh, WH, 6), lam(0xf2f0ea, { flatShading: true })); body.position.set(0, hb + WH / 2, 0); body.rotation.y = Math.PI / 6; g.add(body);
       const RO = Rh + 0.9, RISE = Rh * 0.55, roof = new THREE.Mesh(new THREE.ConeGeometry(RO, RISE, 6), roofC); roof.position.set(0, hb + WH + RISE / 2, 0); roof.rotation.y = Math.PI / 6; g.add(roof);
