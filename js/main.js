@@ -11459,7 +11459,12 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       el.appendChild(grip);
       let drag = null;
       grip.addEventListener('pointerdown', (ev) => { ev.preventDefault(); grip.setPointerCapture(ev.pointerId); drag = { x: ev.clientX, y: ev.clientY, w: el.offsetWidth, h: el.offsetHeight }; });
-      grip.addEventListener('pointermove', (ev) => { if (!drag) return; el.style.width = Math.round(Math.max(120, Math.min(window.innerWidth - 16, drag.w + (drag.x - ev.clientX)))) + 'px'; el.style.height = Math.round(Math.max(120, Math.min(window.innerHeight - 16, drag.h + (ev.clientY - drag.y)))) + 'px'; });
+      grip.addEventListener('pointermove', (ev) => { if (!drag) return; if (miniMap.userPos) { const r = el.getBoundingClientRect(); drag.right ??= r.right; } el.style.width = Math.round(Math.max(120, Math.min(window.innerWidth - 16, drag.w + (drag.x - ev.clientX)))) + 'px'; el.style.height = Math.round(Math.max(120, Math.min(window.innerHeight - 16, drag.h + (ev.clientY - drag.y)))) + 'px'; if (drag.right != null) { el.style.left = Math.round(drag.right - el.offsetWidth) + 'px'; miniMap.userPos = [el.style.left, el.style.top]; } });   // 動かした後も右のふちを止めて左下へ広げる
+      // 地図の上をドラッグすると、枠ごと動かせる(場所は覚えておく)
+      let mv = null; el.style.cursor = 'move';
+      el.addEventListener('pointerdown', (ev) => { if (ev.target === grip) return; ev.preventDefault(); el.setPointerCapture(ev.pointerId); const r = el.getBoundingClientRect(); mv = { x: ev.clientX - r.left, y: ev.clientY - r.top }; });
+      el.addEventListener('pointermove', (ev) => { if (!mv) return; const x = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, ev.clientX - mv.x)), y = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ev.clientY - mv.y)); Object.assign(el.style, { left: Math.round(x) + 'px', top: Math.round(y) + 'px', right: 'auto' }); miniMap.userPos = [el.style.left, el.style.top]; });
+      el.addEventListener('pointerup', () => { mv = null; });
       grip.addEventListener('pointerup', () => { if (drag) (miniMap.userSize ||= {})[miniMap.mode] = [el.style.width, el.style.height]; drag = null; });   // 変えた大きさは覚えておく(Q で切りかえても)
     }
     const s = miniMap.el.style, r = miniMap.road, ar = kind === 'fuji' && r ? r.img.width / r.img.height : 2 / 3;
@@ -11468,7 +11473,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       const k = miniMap.mode === 1 ? 0.42 : 0.85, mh = window.innerHeight * k, mw = window.innerWidth * k;
       let w = mw, h = w / ar; if (h > mh) { h = mh; w = h * ar; }
       if (miniMap.lastMode !== miniMap.mode) { const u = miniMap.userSize?.[miniMap.mode]; Object.assign(s, u ? { width: u[0], height: u[1] } : { width: Math.round(w) + 'px', height: Math.round(h) + 'px' }); }
-      Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto' });
+      Object.assign(s, { display: 'block' }, miniMap.userPos ? { left: miniMap.userPos[0], top: miniMap.userPos[1], right: 'auto' } : { top: '8px', right: '8px', left: 'auto' });
     } else s.display = 'none';
     miniMap.lastMode = miniMap.mode;
     document.body.dataset.miniMap = String(miniMap.mode);
