@@ -59,6 +59,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
   const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE || AKAGI_COURSE;
+  const WIDE_ZOOM_COURSE = MAP_VIEW_COURSE || COURSE_KEY === 'tokyo';   // マウスホイールで全体が見えるところまで引ける(首都高速も)
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -2296,7 +2297,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // 追従カメラの振れる範囲。下げすぎると地面へ潜るので 0.08 で止める。
   const CAM_PITCH_MIN = 0.08;
   // 日本橋・湘南: 客観視点で真上近く(約89度)まで振れるようにして、地図を真上から見られる
-  const CAM_PITCH_MAX = MAP_VIEW_COURSE ? Math.PI / 2 - 0.02 : 1.25;
+  const CAM_PITCH_MAX = WIDE_ZOOM_COURSE ? Math.PI / 2 - 0.02 : 1.25;
   // 主観視点(bonnetView 2)は車体を映さないので、真上まで見上げられるようにする。
   // 見上げる角度は lookPitch = 0.34 - cam.pitch なので、真上(π/2)には
   // cam.pitch が負まで必要になる。真上ちょうどは lookAt の上方向と重なって
@@ -2586,7 +2587,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   window.addEventListener('wheel', (e) => {
     if (musicMode) return;   // 音楽メニュー中はホイールを曲選択に使う
     // 日本橋はビルを眺められるよう、ずっと遠くまで引ける
-    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, MAP_VIEW_COURSE ? 4000 : 28);
+    cam.dist = clamp(cam.dist * (1 + e.deltaY * 0.001), 5.5, WIDE_ZOOM_COURSE ? 4000 : 28);
   }, { passive: true });
 
   window.addEventListener('resize', () => {
@@ -11391,7 +11392,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // ---- 道路だけの地図(模式図): クリーム色の地に、道路を濃いグレーの太い線で。自車は赤い二等辺三角形 ----
   // follow: 自車を横の中央・上から 2/3 に固定し、進む向きが上になるよう地図を回す(前 200m・後ろ 100m)。fuji: コース全体を写真の向きで
   const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
-  const MINIMAP_BG = '#f3ead2', MINIMAP_ROAD = '#4a4a48';
+  const MINIMAP_BG = '#33cc33', MINIMAP_ROAD = '#2e342e';   // 液晶風(音楽ウインドウと同じ緑の液晶に濃いグレー)
   function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE ? 'fuji' : 'photo'; }
   // 道路の線(世界座標)。峠: コースの中心線だけ(脇道は描かない)。首都高速: 路面の三角形
   function roadMapShapes() {
@@ -11441,15 +11442,24 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   function layoutRoadMap(kind) {
     if (miniMap.mode && !miniMap.road) {
       miniMap.road = buildRoadMapImage(kind === 'fuji' ? fujiMapRotation() : 0);
-      const el = miniMap.el; el.style.pointerEvents = 'auto'; el.style.resize = 'both'; el.style.minWidth = '120px'; el.style.minHeight = '120px';
-      el.style.background = MINIMAP_BG; el.title = '右下の角をドラッグで大きさを変える';
+      const el = miniMap.el; el.style.pointerEvents = 'auto'; el.style.background = MINIMAP_BG;
+      el.style.border = '6px solid #050505'; el.style.borderRadius = '4px'; el.style.boxShadow = 'inset 0 0 18px rgba(0,40,0,0.45)';
+      for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'dblclick']) el.addEventListener(e, (ev) => ev.stopPropagation());   // 地図の上ではカメラを動かさない
+      // 左下の角(右上に置いた枠なので左下)をドラッグして大きさを変える
+      const grip = document.createElement('div'); grip.title = 'ドラッグで大きさを変える';
+      grip.style.cssText = 'position:absolute;left:0;bottom:0;width:22px;height:22px;cursor:nesw-resize;background:linear-gradient(45deg,#050505 0 50%,transparent 50%);';
+      el.appendChild(grip);
+      let drag = null;
+      grip.addEventListener('pointerdown', (ev) => { ev.preventDefault(); grip.setPointerCapture(ev.pointerId); drag = { x: ev.clientX, y: ev.clientY, w: el.offsetWidth, h: el.offsetHeight }; });
+      grip.addEventListener('pointermove', (ev) => { if (!drag) return; el.style.width = Math.round(Math.max(120, Math.min(window.innerWidth - 16, drag.w + (drag.x - ev.clientX)))) + 'px'; el.style.height = Math.round(Math.max(120, Math.min(window.innerHeight - 16, drag.h + (ev.clientY - drag.y)))) + 'px'; });
+      grip.addEventListener('pointerup', () => { if (drag) (miniMap.userSize ||= {})[miniMap.mode] = [el.style.width, el.style.height]; drag = null; });   // 変えた大きさは覚えておく(Q で切りかえても)
     }
     const s = miniMap.el.style, r = miniMap.road, ar = kind === 'fuji' && r ? r.img.width / r.img.height : 2 / 3;
     if (miniMap.mode === 1 || miniMap.mode === 2) {
       // 大きさはマウスで変えた後はそのまま(右下の角をドラッグ)。最初は 右上に小さく / 2 回目は大きく
       const k = miniMap.mode === 1 ? 0.42 : 0.85, mh = window.innerHeight * k, mw = window.innerWidth * k;
       let w = mw, h = w / ar; if (h > mh) { h = mh; w = h * ar; }
-      if (miniMap.lastMode !== miniMap.mode) Object.assign(s, { width: Math.round(w) + 'px', height: Math.round(h) + 'px' });
+      if (miniMap.lastMode !== miniMap.mode) { const u = miniMap.userSize?.[miniMap.mode]; Object.assign(s, u ? { width: u[0], height: u[1] } : { width: Math.round(w) + 'px', height: Math.round(h) + 'px' }); }
       Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto' });
     } else s.display = 'none';
     miniMap.lastMode = miniMap.mode;
@@ -11462,7 +11472,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     g.lineTo(x - fx * size * 0.7 + sx * size * 0.55, y - fz * size * 0.7 + sz * size * 0.55);
     g.lineTo(x - fx * size * 0.7 - sx * size * 0.55, y - fz * size * 0.7 - sz * size * 0.55);
     g.closePath();
-    g.fillStyle = '#e8201c'; g.fill(); g.lineWidth = Math.max(1.5, size * 0.14); g.strokeStyle = '#ffffff'; g.stroke();
+    g.fillStyle = '#e8201c'; g.fill(); g.lineWidth = Math.max(1.5, size * 0.14); g.strokeStyle = '#050505'; g.stroke();
   }
   function drawRoadMap() {
     const r = miniMap.road; if (!r) return;
@@ -11487,7 +11497,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     g.save(); g.translate(cx, cy); g.rotate(-Math.PI / 2 - Math.atan2(fz, fx)); g.scale(s / r.ppm, s / r.ppm);
     g.imageSmoothingEnabled = true; g.drawImage(r.img, -(player.pos.x - r.x0) * r.ppm, -(player.pos.z - r.z0) * r.ppm);
     g.restore();
-    drawCarMark(g, cx, cy, 0, -1, Math.max(7, H * 0.03));
+    drawCarMark(g, cx, cy, 0, -1, Math.max(8, H * 0.04));
   }
   function drawMiniMap() {
     if (miniMap.mode && miniMap.road) { drawRoadMap(); return; }
@@ -11666,6 +11676,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       target.z + Math.cos(a) * cp * cam.dist
     );
     camera.lookAt(target);
+    if (COURSE_KEY === 'tokyo') {   // 首都高速: 引いたぶんだけ遠くまで描き、霞も遠ざける(全体が見えるように)
+      const far = Math.max(1200, cam.dist * 3 + 800);
+      if (Math.abs(camera.far - far) > 1) { camera.far = far; camera.updateProjectionMatrix(); }
+      if (scene.fog?.isFog) { const e = Math.max(0, cam.dist - 12); scene.fog.near = 130 + e * 2; scene.fog.far = 480 + e * 4; }
+    }
 
     // keep the shadow camera centered on the player
     sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
