@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s6';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s7';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261127-1';
@@ -5569,6 +5569,36 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     root.updateMatrixWorld(true);
   }
 
+  // 区間の中の建物だけ大きくする(box の中にまるごと入る形を、pivot を足もとの中心に factor 倍)。地面の材質(ground)は変えない
+  // 区間の中の建物だけ大きくする: box の中にまるごと入る三角形を、pivot(足もと)を中心に factor 倍。地面に敷いた三角形は変えない
+  // (同じ材質の形が区間全体にまたがっていることがあるので、形ごとではなく三角形ごとに見る。電線のように外へのびる三角形はそのまま)
+  function scaleSegmentObjects(root, { box: [x0, z0, x1, z1], pivot: [px, pz], factor: f }) {
+    let n = 0;
+    root.updateMatrixWorld(true);
+    const meshes = []; root.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const o of meshes) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+      if (b.max.x < x0 || b.min.x > x1 || b.max.z < z0 || b.min.z > z1) continue;
+      const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()); g.applyMatrix4(o.matrixWorld);
+      const pos = g.getAttribute('position'), inside = (k) => { const x = pos.getX(k), z = pos.getZ(k); return x >= x0 && x <= x1 && z >= z0 && z <= z1; };
+      // 地面に平たく敷いた三角形(3 点とも高さ 2cm 以下)は変えない(屋根などは地面と同じ材質でも大きくする)
+      const groundTri = new Uint8Array(pos.count / 3);
+      for (let t = 0; t < pos.count / 3; t++) if (Math.max(pos.getY(t * 3), pos.getY(t * 3 + 1), pos.getY(t * 3 + 2)) <= 0.02) groundTri[t] = 1;
+      let hit = 0;
+      for (let t = 0; t < pos.count / 3; t++) {
+        if (groundTri[t] || !inside(t * 3) || !inside(t * 3 + 1) || !inside(t * 3 + 2)) continue;
+        for (let k = t * 3; k < t * 3 + 3; k++) pos.setXYZ(k, px + (pos.getX(k) - px) * f, pos.getY(k) * f, pz + (pos.getZ(k) - pz) * f);
+        hit++;
+      }
+      if (!hit) continue;
+      pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+      o.geometry = g; o.removeFromParent(); root.add(o); o.position.set(0, 0, 0); o.quaternion.identity(); o.scale.set(1, 1, 1); n += hit;
+    }
+    root.updateMatrixWorld(true);
+    document.body.dataset.segmentObjectsScaled = String(n);
+  }
+
   function mergeMapMeshes(root) {
     const groups = new Map();
     root.updateMatrixWorld(true);
@@ -6137,6 +6167,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
           template.traverse((object) => { if (object.isMesh) count++; });
           if (count > 200) template = mergeMapMeshes(template);
           if (MAP_CONFIG.roadLateralStretch) stretchRoadLaterally(template, MAP_CONFIG.roadLateralStretch);
+          for (const [key, sc] of Object.entries(MAP_CONFIG.segmentObjectScales ?? {})) if (sourceUrl.includes(key)) scaleSegmentObjects(template, sc);
           template.userData.sequenceCenterLineMaterials = centerLineMaterials;
           const sourceScale = MAP_CONFIG.segmentScaleOverrides?.[sourceUrl] ?? 1;
           template.scale.multiplyScalar(sourceScale);

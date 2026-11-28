@@ -547,6 +547,8 @@ export const MAP_CONFIGS = {
     // driving_us_s の砂漠マップ。GLBは1単位=1m。地図は元の寸法のまま、道路の帯だけ横に広げる。
     scale: ROUTE66_SCALE,
     roadLateralStretch: ROUTE66_ROAD,
+    // ナイトホーク(sa08)の店だけ 1.5 倍(道に面した側はそのまま、奥と上へ大きく)。座標は区間の中の座標(道路を広げた後)
+    segmentObjectScales: { sa08: { box: [-17, -371, -2.3, -358.5], pivot: [-2.4, -364.7], factor: 1.5 } },
     assetRevision: '20260927-route66-1',
     // sa01(ベース道路)の間に看板・店などの特殊マップが入る108区間を1周とする。
     segmentFiles: ROUTE66_SEQUENCE.map((name) => `map/route66/${name}.glb`),
