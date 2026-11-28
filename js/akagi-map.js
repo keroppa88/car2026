@@ -1855,7 +1855,7 @@ export function buildAkagiMap(data, { akagi = true } = {}) {
   // くだりの暗転を始める所(fadeAt の近くの道の点。榛名山: 駐車場B)
   const fadeIndex = data.fadeAt ? nearestRoute(data.fadeAt[0], data.fadeAt[1], 4).i : null;
   const loopTopIndex = data.loopTopAt ? nearestRoute(data.loopTopAt[0], data.loopTopAt[1], 4).i : null;   // くだりで端まで来たら、ここへ戻る
-  return { fadeIndex, loopTopIndex, parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
+  return { osmRoads: osmRoads.map((r) => ({ pts: r.pts, kind: r.kind })), fadeIndex, loopTopIndex, parkedCars, bottomStraight, parkingEnd, meadowFrom, setNight, colliders, softGroundAt, group, ground, scenery, route, tangents, ext, extTangents, extIndices, seam, climb: route[0].y - route[n - 1].y, start, goal, parkingStart,
     mistColor: new THREE.Color(0xaebdb4), mistTime: { value: 0 }, groundHeightAt, groundNormalAt, terrainHeightAt, ringPosition,
     gridBounds: { minX, maxX, minZ, maxZ } };
 }

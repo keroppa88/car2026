@@ -129,6 +129,7 @@ export const MAP_CONFIGS = {
   tokyo: {
     ...commonMap,
     label: '首都高速',
+    miniMapRoadMaterial: 'M06_Steel_Smoke',   // 走行中の地図(模式図)に描く高速の路面
     file: 'map/map_tokyo.glb',
     preview: 'picture/tokyo.png',
     scale: 0.002952755906,

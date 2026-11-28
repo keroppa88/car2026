@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s1';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s2';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261127-1';
@@ -21,7 +21,7 @@ import { createGunmaRoadsideForest } from './gunma-forest.js?v=20260925-endless-
 import { buildGunmaTrafficPaths, sampleGunmaTrafficPath } from './gunma-traffic.js?v=20260925-endless-1';
 import { buildMoorMap } from './moor-map.js?v=20260927-moor-2';
 import { buildFujiMap } from './fuji-map.js?v=20261117-tidy-1';
-import { buildAkagiMap } from './akagi-map.js?v=20261128-2';
+import { buildAkagiMap } from './akagi-map.js?v=20261128-3';
 import { buildNeoMap, NEO_DRIVABLE_HALF, NIHON_CROSSINGS } from './neo-map.js?v=20261018-eki-1';
 import { createNeoCity } from './neo-city.js?v=20261018-eki-1';
 import { createMoorScenery } from './moor-scenery.js?v=20260927-moor-4';
@@ -11372,6 +11372,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       el.appendChild(cv); document.body.appendChild(el); miniMap.el = el; miniMap.cv = cv;
     }
 
+    const kind = miniMapKind();
+    if (kind !== 'photo') { layoutRoadMap(kind); return; }
     const osmNow = !!tokyoEkiCity?.bounds?.();
     if (miniMap.mode && (!miniMap.img || (osmNow && !miniMap.osmReady))) { buildMiniMapImage(); miniMap.osmReady = osmNow; }
     // 地図の縦横比に合わせた枠にする(余白の黒い部分を作らない)
@@ -11386,7 +11388,110 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     } else s.display = 'none';
     document.body.dataset.miniMap = String(miniMap.mode);
   }
+  // ---- 道路だけの地図(模式図): クリーム色の地に、道路を濃いグレーの太い線で。自車は赤い二等辺三角形 ----
+  // follow: 自車を横の中央・上から 2/3 に固定し、進む向きが上になるよう地図を回す(前 200m・後ろ 100m)。fuji: コース全体を写真の向きで
+  const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
+  const MINIMAP_BG = '#f3ead2', MINIMAP_ROAD = '#4a4a48';
+  function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE ? 'fuji' : 'photo'; }
+  // 道路の線(世界座標)。峠: コースの中心線(赤城山・榛名山は脇道も)。首都高速: 路面の三角形
+  function roadMapShapes() {
+    const lines = [], tris = [];
+    if (gunmaCourse?.route?.length) {
+      lines.push({ pts: gunmaCourse.route.map((p) => [p.x, p.z]), w: 9 });
+      for (const r of gunmaCourse.osmRoads || []) if (r.kind !== 'trail') lines.push({ pts: r.pts, w: 5.5 });
+    } else {
+      // 首都高速: 高速の路面の材質(M06_Steel_Smoke)の三角形。前後のコピー(ループ用)も含める
+      const v = new THREE.Vector3(), name = MAP_CONFIG.miniMapRoadMaterial, src = [];
+      if (name) scene.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && (Array.isArray(o.material) ? o.material : [o.material]).some((q) => q?.name === name)) src.push(o); });
+      for (const m of (name ? src : roadMeshes)) {
+        m.updateMatrixWorld(true);
+        const pos = m.geometry.getAttribute('position'), idx = m.geometry.index;
+        const n = idx ? idx.count : pos.count, at = (k) => { v.fromBufferAttribute(pos, idx ? idx.getX(k) : k).applyMatrix4(m.matrixWorld); return [v.x, v.z]; };
+        for (let k = 0; k + 2 < n; k += 3) tris.push([at(k), at(k + 1), at(k + 2)]);
+      }
+    }
+    return { lines, tris };
+  }
+  // 道路の絵を 1 度だけ作る。rot: 地図を回す角度(富士の全体図)
+  function buildRoadMapImage(rot = 0) {
+    const { lines, tris } = roadMapShapes(), c = Math.cos(rot), sn = Math.sin(rot), tr = ([x, z]) => [x * c - z * sn, x * sn + z * c];
+    const L = lines.map((l) => ({ w: l.w, pts: l.pts.map(tr) })), T = tris.map((t) => t.map(tr));
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const p of L.flatMap((l) => l.pts).concat(T.flat())) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); }
+    if (!isFinite(x0)) return null;
+    const pad = 40; x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
+    const ppm = Math.min(2, 4096 / Math.max(x1 - x0, z1 - z0)), W = Math.ceil((x1 - x0) * ppm), H = Math.ceil((z1 - z0) * ppm);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+    g.fillStyle = MINIMAP_BG; g.fillRect(0, 0, W, H);
+    g.fillStyle = MINIMAP_ROAD; g.strokeStyle = MINIMAP_ROAD; g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const t of T) { g.beginPath(); t.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, (x - x0) * ppm, (z - z0) * ppm)); g.closePath(); g.fill(); g.lineWidth = Math.max(1, 3 * ppm); g.stroke(); }   // ふちを 3m 太らせる(細い所も見えるように)
+    for (const l of L) { g.lineWidth = Math.max(2, l.w * ppm); g.beginPath(); l.pts.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, (x - x0) * ppm, (z - z0) * ppm)); g.stroke(); }
+    document.body.dataset.miniMapRoad = `${L.length} lines, ${T.length} tris, ${W}x${H}, ${x0.toFixed(0)},${z0.toFixed(0)},${x1.toFixed(0)},${z1.toFixed(0)}`;
+    return { img: cv, x0, z0, ppm, rot, lines: L };
+  }
+  // 富士: 写真の全体図の向き(ホームストレートが上で横向き、1 コーナーが右)。いちばん長いまっすぐな所を、進む向きが右になるように回す
+  function fujiMapRotation() {
+    const R = gunmaCourse.route, n = R.length; let best = { len: 0, dx: 1, dz: 0 };
+    for (let i = 0; i < n; i++) {
+      const a = R[i]; let j = i + 1;
+      while (j < n) { const b = R[j], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz); let ok = true; for (let k = i + 1; k < j; k++) { const q = R[k]; if (Math.abs((q.x - a.x) * dz - (q.z - a.z) * dx) / (l || 1) > 3) { ok = false; break; } } if (!ok) break; j++; }
+      const b = R[j - 1], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz); if (l > best.len) best = { len: l, dx, dz };
+    }
+    return -Math.atan2(best.dz, best.dx);
+  }
+  function layoutRoadMap(kind) {
+    if (miniMap.mode && !miniMap.road) {
+      miniMap.road = buildRoadMapImage(kind === 'fuji' ? fujiMapRotation() : 0);
+      const el = miniMap.el; el.style.pointerEvents = 'auto'; el.style.resize = 'both'; el.style.minWidth = '120px'; el.style.minHeight = '120px';
+      el.style.background = MINIMAP_BG; el.title = '右下の角をドラッグで大きさを変える';
+    }
+    const s = miniMap.el.style, r = miniMap.road, ar = kind === 'fuji' && r ? r.img.width / r.img.height : 2 / 3;
+    if (miniMap.mode === 1 || miniMap.mode === 2) {
+      // 大きさはマウスで変えた後はそのまま(右下の角をドラッグ)。最初は 右上に小さく / 2 回目は大きく
+      const k = miniMap.mode === 1 ? 0.42 : 0.85, mh = window.innerHeight * k, mw = window.innerWidth * k;
+      let w = mw, h = w / ar; if (h > mh) { h = mh; w = h * ar; }
+      if (miniMap.lastMode !== miniMap.mode) Object.assign(s, { width: Math.round(w) + 'px', height: Math.round(h) + 'px' });
+      Object.assign(s, { display: 'block', top: '8px', right: '8px', left: 'auto' });
+    } else s.display = 'none';
+    miniMap.lastMode = miniMap.mode;
+    document.body.dataset.miniMap = String(miniMap.mode);
+  }
+  function drawCarMark(g, x, y, fx, fz, size) {   // 赤い二等辺三角形(とがった方が進む向き)
+    const sx = -fz, sz = fx;
+    g.beginPath();
+    g.moveTo(x + fx * size * 1.3, y + fz * size * 1.3);
+    g.lineTo(x - fx * size * 0.7 + sx * size * 0.55, y - fz * size * 0.7 + sz * size * 0.55);
+    g.lineTo(x - fx * size * 0.7 - sx * size * 0.55, y - fz * size * 0.7 - sz * size * 0.55);
+    g.closePath();
+    g.fillStyle = '#e8201c'; g.fill(); g.lineWidth = Math.max(1.5, size * 0.14); g.strokeStyle = '#ffffff'; g.stroke();
+  }
+  function drawRoadMap() {
+    const r = miniMap.road; if (!r) return;
+    const cv = miniMap.cv, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (!W || !H) return;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = cv.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = MINIMAP_BG; g.fillRect(0, 0, W, H);
+    const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
+    if (miniMapKind() === 'fuji') {   // 全体図
+      const sc = Math.min(W / r.img.width, H / r.img.height), ox = (W - r.img.width * sc) / 2, oy = (H - r.img.height * sc) / 2;
+      // 全体図は縮むので、道は絵ではなく線で描く(枠の大きさによらず太さ一定)
+      const q = r.ppm * sc; g.strokeStyle = MINIMAP_ROAD; g.lineJoin = 'round'; g.lineCap = 'round'; g.lineWidth = Math.max(3, Math.min(W, H) * 0.035);
+      for (const l of r.lines) { g.beginPath(); l.pts.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, ox + (x - r.x0) * q, oy + (z - r.z0) * q)); g.stroke(); }
+      const c = Math.cos(r.rot), sn = Math.sin(r.rot), px = player.pos.x * c - player.pos.z * sn, pz = player.pos.x * sn + player.pos.z * c;
+      drawCarMark(g, ox + (px - r.x0) * r.ppm * sc, oy + (pz - r.z0) * r.ppm * sc, fx * c - fz * sn, fx * sn + fz * c, Math.max(7, Math.min(W, H) * 0.035));
+      return;
+    }
+    // 自車を中心に、進む向きが上になるよう回す。縦 300m(前 200m・後ろ 100m)が枠の高さ
+    const s = H / 300, cx = W / 2, cy = H * 2 / 3;
+    g.save(); g.translate(cx, cy); g.rotate(-Math.PI / 2 - Math.atan2(fz, fx)); g.scale(s / r.ppm, s / r.ppm);
+    g.imageSmoothingEnabled = true; g.drawImage(r.img, -(player.pos.x - r.x0) * r.ppm, -(player.pos.z - r.z0) * r.ppm);
+    g.restore();
+    drawCarMark(g, cx, cy, 0, -1, Math.max(7, H * 0.03));
+  }
   function drawMiniMap() {
+    if (miniMap.mode && miniMap.road) { drawRoadMap(); return; }
     if (!miniMap.mode || !miniMap.img) return;
     const cv = miniMap.cv, dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
