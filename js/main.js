@@ -4559,9 +4559,14 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
         const initialDistance = clamp(distance, 0, endDistance);
         const at = sampleGunmaTrafficPath(path, initialDistance);
         const ahead = sampleGunmaTrafficPath(path, Math.min(initialDistance + 4, endDistance));
-        const vehicle = pickCpuVehicle(vehicles, created);
+        // 赤城山・榛名山は同じ数台の車を、自車の前後へ何度も出し直す。最初にバイクを選ぶと何度も出てきてしまうので、
+        // 車で作り、バイクは別に 1 台ぶん用意しておいて、出し直すたびに 25 台に 1 台(夜は 50 台に 1 台)の割合で入れかえる
+        const carOnly = vehicles.filter((v) => !isKabuVoxUrl(v.url)), bikeList = vehicles.filter((v) => isKabuVoxUrl(v.url));
+        const vehicle = AKAGI_COURSE && carOnly.length ? carOnly[created % carOnly.length] : pickCpuVehicle(vehicles, created);
         const bike = isKabuVoxUrl(vehicle.url);
         const car = makeCarGroup(vehicle.mesh.clone(), false, bike, 'gunmaCpuBoost');
+        let alt = null;
+        if (AKAGI_COURSE && bikeList.length) { const bv = bikeList[created % bikeList.length], bc = makeCarGroup(bv.mesh.clone(), false, true, 'gunmaCpuBoost'); bc.group.visible = false; alt = { group: bc.group, tilt: bc.tilt, radius: carRadiusFor(true, bc.group), kabu: true }; }
         // 街並み: 対向車の前照灯を2倍明るく見せる。光球の芯はすでに白く飽和していて
         // 色を強めても変わらないので、光球の大きさを2倍にして光る量を増やす。
         // トラック(前面が黄色いマーカーランプ)は元の明るさのまま。
@@ -4588,6 +4593,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
           ...(AKAGI_COURSE ? { akagiOffsetMeters: akagiOffset, active: spawnable } : {}),
           speedKmh,
         };
+        if (alt) { ai.looks = { car: { group: car.group, tilt: car.tilt, radius: ai.radius, kabu: bike }, bike: alt }; }
         ai.group.position.copy(ai.pos);
         ai.group.rotation.y = ai.heading;
         if (AKAGI_COURSE) ai.group.visible = spawnable;
@@ -10351,6 +10357,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       }
       ai.gunmaDistance = nextDistance;
       ai.active = true;
+      if (ai.looks) {   // 出し直すたびに、車かバイクかを選び直す(バイクは 25 台に 1 台、夜は 50 台に 1 台)
+        const look = Math.random() < (nightMode ? 1 / 50 : 1 / 25) ? ai.looks.bike : ai.looks.car;
+        if (look.group !== ai.group) { ai.group.visible = false; Object.assign(ai, { group: look.group, tilt: look.tilt, radius: look.radius, kabu: look.kabu }); }
+      }
+      { const ds = document.body.dataset; ds.akagiTrafficRespawns = String((+ds.akagiTrafficRespawns || 0) + 1); if (ai.kabu) ds.akagiBikeRespawns = String((+ds.akagiBikeRespawns || 0) + 1); }
       ai.group.visible = true;
     }
     ai.gunmaDistance += ai.v * dt;
