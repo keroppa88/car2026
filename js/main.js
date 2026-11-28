@@ -11350,7 +11350,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     hide(player.group); for (const ai of aiCars) hide(ai.group);
     const fog = scene.fog; scene.fog = null;
     const sh = sun.castShadow; sun.castShadow = false;
+    // 地図は夜でも昼の明るさで描く(一度描いた絵を使い回すので、夜に描くと真っ暗な地図のままになる)
+    const lit = [hemi.intensity, hemi.color.clone(), hemi.groundColor.clone(), sun.intensity, sun.color.clone()];
+    hemi.intensity = 0.55; hemi.color.copy(DAY_HEMI_SKY); hemi.groundColor.copy(DAY_HEMI_GROUND); sun.intensity = 0.85; sun.color.copy(DAY_SUN);
     renderer.setRenderTarget(rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    [hemi.intensity] = lit; hemi.color.copy(lit[1]); hemi.groundColor.copy(lit[2]); sun.intensity = lit[3]; sun.color.copy(lit[4]);
     const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
     rt.dispose(); scene.fog = fog; sun.castShadow = sh; hidden.forEach((o) => { o.visible = true; });
     const c = document.createElement('canvas'); c.width = W; c.height = H;
