@@ -11392,7 +11392,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // ---- 道路だけの地図(模式図): クリーム色の地に、道路を濃いグレーの太い線で。自車は赤い二等辺三角形 ----
   // follow: 自車を横の中央・上から 2/3 に固定し、進む向きが上になるよう地図を回す(前 200m・後ろ 100m)。fuji: コース全体を写真の向きで
   const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
-  const MINIMAP_BG = '#33cc33', MINIMAP_ROAD = '#2e342e';   // 液晶風(音楽ウインドウと同じ緑の液晶に濃いグレー)
+  const MINIMAP_BG = '#050c09', MINIMAP_ROAD = '#3df0b4';   // 古いモニター風: 黒い画面に、緑の発光色だけ(道路も自車も同じ色)
   function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE ? 'fuji' : 'photo'; }
   // 道路の線(世界座標)。峠: コースの中心線だけ(脇道は描かない)。首都高速: 路面の三角形
   function roadMapShapes() {
@@ -11422,10 +11422,18 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     const pad = 40; x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
     const ppm = Math.min(2, 4096 / Math.max(x1 - x0, z1 - z0)), W = Math.ceil((x1 - x0) * ppm), H = Math.ceil((z1 - z0) * ppm);
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
-    g.fillStyle = MINIMAP_BG; g.fillRect(0, 0, W, H);
+    // 地は透明(光のにじみが道だけにかかるように)
     g.fillStyle = MINIMAP_ROAD; g.strokeStyle = MINIMAP_ROAD; g.lineJoin = 'round'; g.lineCap = 'round';
     for (const t of T) { g.beginPath(); t.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, (x - x0) * ppm, (z - z0) * ppm)); g.closePath(); g.fill(); g.lineWidth = Math.max(1, 3 * ppm); g.stroke(); }   // ふちを 3m 太らせる(細い所も見えるように)
     for (const l of L) { g.lineWidth = Math.max(2, l.w * ppm); g.beginPath(); l.pts.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, (x - x0) * ppm, (z - z0) * ppm)); g.stroke(); }
+    // 道は細い線 2 本(道のふち)で描く: 塗った形から、内側へ t 画素縮めた形を抜く
+    if (rot === 0) {
+      // 線の太さはおよそ 1.4m
+      const t = Math.max(1, Math.round(1.4 * ppm)), er = document.createElement('canvas'); er.width = W; er.height = H; const e = er.getContext('2d');
+      e.drawImage(cv, 0, 0); e.globalCompositeOperation = 'destination-in';
+      for (const [dx, dy] of [[t, 0], [-t, 0], [0, t], [0, -t], [t, t], [t, -t], [-t, t], [-t, -t]]) e.drawImage(cv, dx, dy);
+      g.globalCompositeOperation = 'destination-out'; g.drawImage(er, 0, 0); g.globalCompositeOperation = 'source-over';
+    }
     document.body.dataset.miniMapRoad = `${L.length} lines, ${T.length} tris, ${W}x${H}, ${x0.toFixed(0)},${z0.toFixed(0)},${x1.toFixed(0)},${z1.toFixed(0)}`;
     return { img: cv, x0, z0, ppm, rot, lines: L };
   }
@@ -11443,11 +11451,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     if (miniMap.mode && !miniMap.road) {
       miniMap.road = buildRoadMapImage(kind === 'fuji' ? fujiMapRotation() : 0);
       const el = miniMap.el; el.style.pointerEvents = 'auto'; el.style.background = MINIMAP_BG;
-      el.style.border = '6px solid #050505'; el.style.borderRadius = '4px'; el.style.boxShadow = 'inset 0 0 18px rgba(0,40,0,0.45)';
+      el.style.border = '6px solid #2a2c2a'; el.style.borderRadius = '10px'; el.style.boxShadow = 'inset 0 0 22px rgba(61,240,180,0.18)';
       for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'dblclick']) el.addEventListener(e, (ev) => ev.stopPropagation());   // 地図の上ではカメラを動かさない
       // 左下の角(右上に置いた枠なので左下)をドラッグして大きさを変える
       const grip = document.createElement('div'); grip.title = 'ドラッグで大きさを変える';
-      grip.style.cssText = 'position:absolute;left:0;bottom:0;width:22px;height:22px;cursor:nesw-resize;background:linear-gradient(45deg,#050505 0 50%,transparent 50%);';
+      grip.style.cssText = 'position:absolute;left:0;bottom:0;width:22px;height:22px;cursor:nesw-resize;background:linear-gradient(45deg,#2a2c2a 0 50%,transparent 50%);';
       el.appendChild(grip);
       let drag = null;
       grip.addEventListener('pointerdown', (ev) => { ev.preventDefault(); grip.setPointerCapture(ev.pointerId); drag = { x: ev.clientX, y: ev.clientY, w: el.offsetWidth, h: el.offsetHeight }; });
@@ -11472,7 +11480,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     g.lineTo(x - fx * size * 0.7 + sx * size * 0.55, y - fz * size * 0.7 + sz * size * 0.55);
     g.lineTo(x - fx * size * 0.7 - sx * size * 0.55, y - fz * size * 0.7 - sz * size * 0.55);
     g.closePath();
-    g.fillStyle = '#e8201c'; g.fill(); g.lineWidth = Math.max(1.5, size * 0.14); g.strokeStyle = '#050505'; g.stroke();
+    g.fillStyle = MINIMAP_ROAD; g.shadowColor = MINIMAP_ROAD; g.shadowBlur = size * 0.8; g.fill(); g.shadowBlur = 0; g.lineWidth = Math.max(1.5, size * 0.14); g.strokeStyle = MINIMAP_BG; g.stroke();
   }
   function drawRoadMap() {
     const r = miniMap.road; if (!r) return;
@@ -11486,7 +11494,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     if (miniMapKind() === 'fuji') {   // 全体図
       const sc = Math.min(W / r.img.width, H / r.img.height), ox = (W - r.img.width * sc) / 2, oy = (H - r.img.height * sc) / 2;
       // 全体図は縮むので、道は絵ではなく線で描く(枠の大きさによらず太さ一定)
-      const q = r.ppm * sc; g.strokeStyle = MINIMAP_ROAD; g.lineJoin = 'round'; g.lineCap = 'round'; g.lineWidth = Math.max(3, Math.min(W, H) * 0.035);
+      const q = r.ppm * sc; g.strokeStyle = MINIMAP_ROAD; g.lineJoin = 'round'; g.lineCap = 'round'; g.lineWidth = Math.max(1.5, Math.min(W, H) * 0.012);   // ふつうの細さの 1 本線
+      g.shadowColor = MINIMAP_ROAD; g.shadowBlur = 8;
       for (const l of r.lines) { g.beginPath(); l.pts.forEach(([x, z], i) => (i ? g.lineTo : g.moveTo).call(g, ox + (x - r.x0) * q, oy + (z - r.z0) * q)); g.stroke(); }
       const c = Math.cos(r.rot), sn = Math.sin(r.rot), px = player.pos.x * c - player.pos.z * sn, pz = player.pos.x * sn + player.pos.z * c;
       drawCarMark(g, ox + (px - r.x0) * r.ppm * sc, oy + (pz - r.z0) * r.ppm * sc, fx * c - fz * sn, fx * sn + fz * c, Math.max(7, Math.min(W, H) * 0.035));
@@ -11495,7 +11504,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     // 自車を中心に、進む向きが上になるよう回す。縦 300m(前 200m・後ろ 100m)が枠の高さ
     const s = H / 300, cx = W / 2, cy = H * 2 / 3;
     g.save(); g.translate(cx, cy); g.rotate(-Math.PI / 2 - Math.atan2(fz, fx)); g.scale(s / r.ppm, s / r.ppm);
-    g.imageSmoothingEnabled = true; g.drawImage(r.img, -(player.pos.x - r.x0) * r.ppm, -(player.pos.z - r.z0) * r.ppm);
+    g.imageSmoothingEnabled = true; g.shadowColor = MINIMAP_ROAD; g.shadowBlur = 10; g.drawImage(r.img, -(player.pos.x - r.x0) * r.ppm, -(player.pos.z - r.z0) * r.ppm); g.shadowBlur = 0;
     g.restore();
     drawCarMark(g, cx, cy, 0, -1, Math.max(8, H * 0.04));
   }
