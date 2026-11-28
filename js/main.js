@@ -11393,12 +11393,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
   const MINIMAP_BG = '#f3ead2', MINIMAP_ROAD = '#4a4a48';
   function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE ? 'fuji' : 'photo'; }
-  // 道路の線(世界座標)。峠: コースの中心線(赤城山・榛名山は脇道も)。首都高速: 路面の三角形
+  // 道路の線(世界座標)。峠: コースの中心線だけ(脇道は描かない)。首都高速: 路面の三角形
   function roadMapShapes() {
     const lines = [], tris = [];
     if (gunmaCourse?.route?.length) {
       lines.push({ pts: gunmaCourse.route.map((p) => [p.x, p.z]), w: 9 });
-      for (const r of gunmaCourse.osmRoads || []) if (r.kind !== 'trail') lines.push({ pts: r.pts, w: 5.5 });
     } else {
       // 首都高速: 高速の路面の材質(M06_Steel_Smoke)の三角形。前後のコピー(ループ用)も含める
       const v = new THREE.Vector3(), name = MAP_CONFIG.miniMapRoadMaterial, src = [];
