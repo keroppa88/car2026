@@ -824,6 +824,13 @@ export const MAP_CONFIGS = {
   },
 };
 
+// TEST: ルート66の 9 区間(ベース道路・看板・店・基地)を 1 つずつ順にくり返す(建物の大きさの確認用)
+MAP_CONFIGS.route66test = {
+  ...MAP_CONFIGS.route66,
+  label: 'TEST',
+  segmentFiles: ['sa01', 'sa02', 'sa03', 'sa04', 'sa05', 'sa06', 'sa07', 'sa08', 'sa09'].map((name) => `map/route66/${name}.glb`),
+};
+
 // コース選択: まず分野(Cruising / Driving / Others)を選び、その分野のコースを選ぶ。desc はカードにマウスを重ねたときに出す紹介文
 export const MENU_GROUPS = [
   { key: 'cruising', label: 'Cruising', courses: [
@@ -833,7 +840,7 @@ export const MENU_GROUPS = [
     ['tokyo', '首都高速サーキット'], ['indy', 'オーバルコース'], ['fuji', '地理データ、サーキット'], ['akagi', '地理データ、あの漫画の舞台'], ['haruna', '地理データ、あの漫画の舞台'],
   ] },
   { key: 'others', label: 'Others', courses: [
-    ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'], ['tsukuba', '地理データ、フルーツライン'],
+    ['nihonbashi', '地理データ、東京駅エリア'], ['shonan', '地理データ、海沿いの道'], ['gunma', '架空の山岳アップダウン'], ['forest', 'ラリー、初期作品'], ['tsukuba', '地理データ、フルーツライン'], ['route66test', 'ルート66の9区間を順にくり返す(建物の確認用)'],
   ] },
 ];
 // デモ: 1 マップ 2 分ずつ、ランダムに巡る(直近 5 回に出たマップは選ばない)。マップごとに曲・空・昼夜が決まっている

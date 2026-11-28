@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s5';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s6';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261127-1';
@@ -61,7 +61,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE || AKAGI_COURSE;
   const WIDE_ZOOM_COURSE = MAP_VIEW_COURSE || COURSE_KEY === 'tokyo' || COURSE_KEY === 'gunma';   // マウスホイールで全体が見えるところまで引ける(首都高速・ぐんまーも)
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
-  const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
+  const ROUTE66_COURSE = COURSE_KEY === 'route66' || COURSE_KEY === 'route66test';   // TEST(ルート66の 9 区間を順にくり返す)も同じ扱い
+  const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || ROUTE66_COURSE;
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
   const DEMO_SEQUENCE = DEMO_MAPS.map((d) => d.course);   // デモのマップ(game-config.js の DEMO_MAPS。曲・空・昼夜もそこに)
   const DEMO_MAP = DEMO_MAPS.find((d) => d.course === COURSE_KEY) || null;
@@ -542,10 +543,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // 嵐が丘は低い雲の曇り空。
   // ルート66は元ゲームの初期色(#9bbae8、上空はその0.42倍)。霧は砂漠の茶色で、
   // 遠くの地面が空に溶けず地平線がくっきり出るようにする。
-  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : COURSE_KEY === 'route66' ? 0x414e61
+  const SKY = COURSE_KEY === 'moor' ? 0x9aa2a6 : ROUTE66_COURSE ? 0x414e61
     : 0x8ecbef;
   scene.background = new THREE.Color(SKY);
-  scene.fog = COURSE_KEY === 'route66'
+  scene.fog = ROUTE66_COURSE
     ? new THREE.FogExp2(0xc0aa8a, 0.003)
     // 街並みは前方約400mまで街を組み立てるので、そこで見えなくなるよう霞ませる。
     : NEO_COURSE ? new THREE.Fog(SKY, 150, 400)
@@ -577,11 +578,11 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // 夜へ切り替えたときは同じ色相を暗くして反映する。
   const weatherTopColor = new THREE.Color(SKY);
   const weatherHorizonColor = new THREE.Color(
-    COURSE_KEY === 'moor' ? 0xd1d5d4 : COURSE_KEY === 'route66' ? 0x9bbae8
+    COURSE_KEY === 'moor' ? 0xd1d5d4 : ROUTE66_COURSE ? 0x9bbae8
       : 0xeaf4fb);
   // ルート66の既定の空: パネル値で スカイ 色調60・彩度95・明暗60、
   // ホライゾン 色調55・彩度40・明暗80(明暗は 0.10+値×0.88 の明度)、雲A。
-  if (COURSE_KEY === 'route66') {
+  if (ROUTE66_COURSE) {
     weatherTopColor.setHSL(0.60, 0.95, 0.1 + 0.60 * 0.88);
     weatherHorizonColor.setHSL(0.55, 0.40, 0.1 + 0.80 * 0.88);
   }
@@ -597,7 +598,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   let weatherFlatSky = false;
   let weatherRain = false;
   let weatherStars = false;
-  let weatherCloudMode = TOUGE_COURSE || COURSE_KEY === 'route66' ? 1 : 0;   // 0=なし、1=雲1、2=雲2
+  let weatherCloudMode = TOUGE_COURSE || ROUTE66_COURSE ? 1 : 0;   // 0=なし、1=雲1、2=雲2
   let weatherDimVehicleLights = false;
   let weatherRainSystem = null;
   let weatherStarSystem = null;
@@ -687,7 +688,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     document.body.dataset.weatherColorCode = colorCode;
     scene.background.copy(top);
     const fog = scene.fog || savedFog;
-    if (fog && COURSE_KEY === 'route66') {
+    if (fog && ROUTE66_COURSE) {
       // 砂漠と同じ色。夜は同じ色相のまま暗くする。
       fog.color.setHex(0xc0aa8a).multiplyScalar(route66DesertShade());
     } else if (fog) fog.color.copy(hazeForCourse);
@@ -2237,7 +2238,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // インディアナポリスだけユーザー車を250km/h・加速力1.5倍にする。
   // CPU車の速度は個別のAI設定を使うため、この値の影響を受けない。
   // ルート66は自車だけ速度(最高速・各ギア・加速・自動運転の巡航)を1.5倍にする。
-  const PLAYER_SPEED_SCALE = COURSE_KEY === 'route66' ? 1.5 : 1;
+  const PLAYER_SPEED_SCALE = ROUTE66_COURSE ? 1.5 : 1;
   const PLAYER_TOP_SPEED_KMH = (COURSE_KEY === 'indy' ? 250 : 180) * PLAYER_SPEED_SCALE;
   const PLAYER_TOP_SPEED = PLAYER_TOP_SPEED_KMH / 3.6;
   const PLAYER_ACCEL_MULTIPLIER = (COURSE_KEY === 'indy' ? 1.5 : 1) * PLAYER_SPEED_SCALE;
@@ -6965,7 +6966,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     // ぐんまーは元の光量10倍・到達距離8倍・同距離での照射幅3倍。
     // 遠方へ照準を移し、距離減衰も緩めて山道の先まで明るさを保つ。
     // ルート66もぐんまーと同じ強さで、暗い砂漠の道の先まで照らす。
-    const gunmaHeadlights = TOUGE_COURSE || COURSE_KEY === 'route66';
+    const gunmaHeadlights = TOUGE_COURSE || ROUTE66_COURSE;
     // 街並みはぐんまーの半分の光量。照らす幅は20m先で10m(左右2灯の円の外側どうし)。
     // 光の円錐(半角 NEO_BEAM)を同じ角度だけ下へ傾け、円錐の上の縁を水平にする。
     // ライトの高さ(0.75m)より上は照らさない。路面は約1.6m先から。
@@ -7024,7 +7025,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
         applyWeatherSky();
         neoCity = createNeoCity(scene, gunmaCourse, MAP_CONFIG.spawnReferenceX ?? 0);
         document.body.dataset.mapFog = 'town-haze';
-      } else if (COURSE_KEY !== 'route66') {
+      } else if (!ROUTE66_COURSE) {
         scene.fog = null;
         document.body.dataset.mapFog = 'none';
       } else {
@@ -8281,9 +8282,10 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     akagi: 'NIKO,Night of Fire (1997)',
     moor: 'Ryuichi Sakamoto,Wuthering Heights (1992)',
     route66: 'David Ferguson,The Housebuilding Song (2021)',
+    route66test: 'David Ferguson,The Housebuilding Song (2021)',
   }[COURSE_KEY] ?? null;
   // ルート66はステージ既定の空のまま流す(曲の空色は当てない)。
-  const GUNMA_THEME_KEEP_SKY = COURSE_KEY === 'route66';
+  const GUNMA_THEME_KEEP_SKY = ROUTE66_COURSE;
   let gunmaThemeDone = false;
   let gunmaThemeRetryAt = 0;
   function startGunmaTheme() {
@@ -11394,7 +11396,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // follow: 自車を横の中央・上から 2/3 に固定し、進む向きが上になるよう地図を回す(前 200m・後ろ 100m)。fuji: コース全体を写真の向きで
   const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
   const MINIMAP_BG = '#050c09', MINIMAP_ROAD = '#3df0b4';   // 古いモニター風: 黒い画面に、緑の発光色だけ(道路も自車も同じ色)
-  const MINIMAP_NONE = new Set(['forest', 'sea', 'neo', 'route66', 'moor']);   // 地図なし(Q はビープ音だけ)
+  const MINIMAP_NONE = new Set(['forest', 'sea', 'neo', 'route66', 'route66test', 'moor']);   // 地図なし(Q はビープ音だけ)
   function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE || COURSE_KEY === 'indy' ? 'fuji' : MINIMAP_NONE.has(COURSE_KEY) ? 'none' : 'photo'; }
   let beepCtx = null;
   function miniMapBeep() {   // 地図のないマップで Q: 短いビープ音
