@@ -13,7 +13,7 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { VOX } from './vox.js';
 import { AUDIO } from './audio.js?v=20260730-interior-equal-power-xfade-1';
 import { buildSuzukaMap } from './suzuka-map.js?v=20260717-15';
-import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s2';
+import { CAR_CONFIGS, MAP_CONFIGS, DEMO_MAPS, route66LocalX } from './game-config.js?v=20261128-s5';
 import { CAR2_CPU_ROUTE } from './car2-route.js';
 import { buildGunmaMap } from './gunma-map.js?v=20260927-moor-1';
 import { createMountainAtmosphere, createCanopyShade } from './gunma-atmosphere.js?v=20261127-1';
@@ -59,7 +59,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   const TOUGE_COURSE = COURSE_KEY === 'gunma' || COURSE_KEY === 'moor' || NEO_COURSE || FUJI_COURSE || AKAGI_COURSE;
   // 地図を見るための視点(ホイールで遠くまで引ける・真上まで振れる・指している所の座標)。日本橋・湘南・富士
   const MAP_VIEW_COURSE = OSM_COURSE || FUJI_COURSE || AKAGI_COURSE;
-  const WIDE_ZOOM_COURSE = MAP_VIEW_COURSE || COURSE_KEY === 'tokyo';   // マウスホイールで全体が見えるところまで引ける(首都高速も)
+  const WIDE_ZOOM_COURSE = MAP_VIEW_COURSE || COURSE_KEY === 'tokyo' || COURSE_KEY === 'gunma';   // マウスホイールで全体が見えるところまで引ける(首都高速・ぐんまーも)
   // 海岸線とルート66: 直線の区間をつなぐコース。CPU車の走らせ方を共有する。
   const STRAIGHT_SEQUENCE_COURSE = COURSE_KEY === 'sea' || COURSE_KEY === 'route66';
   const DEBUG_MAP = pageQuery.get('debugMap') === '1';
@@ -11365,6 +11365,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
     miniMap.img = c; miniMap.frame = f;
   }
   function cycleMiniMap() {
+    if (miniMapKind() === 'none') { miniMapBeep(); return; }
     miniMap.mode = (miniMap.mode + 1) % 3;
     if (!miniMap.el) {
       const el = document.createElement('div'); el.id = 'mini-map';
@@ -11393,10 +11394,34 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   // follow: 自車を横の中央・上から 2/3 に固定し、進む向きが上になるよう地図を回す(前 200m・後ろ 100m)。fuji: コース全体を写真の向きで
   const MINIMAP_FOLLOW = new Set(['akagi', 'haruna', 'tsukuba', 'tokyo', 'gunma']);
   const MINIMAP_BG = '#050c09', MINIMAP_ROAD = '#3df0b4';   // 古いモニター風: 黒い画面に、緑の発光色だけ(道路も自車も同じ色)
-  function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE ? 'fuji' : 'photo'; }
+  const MINIMAP_NONE = new Set(['forest', 'sea', 'neo', 'route66', 'moor']);   // 地図なし(Q はビープ音だけ)
+  function miniMapKind() { return MINIMAP_FOLLOW.has(COURSE_KEY) ? 'follow' : FUJI_COURSE || COURSE_KEY === 'indy' ? 'fuji' : MINIMAP_NONE.has(COURSE_KEY) ? 'none' : 'photo'; }
+  let beepCtx = null;
+  function miniMapBeep() {   // 地図のないマップで Q: 短いビープ音
+    try { beepCtx ||= new (window.AudioContext || window.webkitAudioContext)(); const t = beepCtx.currentTime, o = beepCtx.createOscillator(), g = beepCtx.createGain(); o.type = 'square'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.01); g.gain.setValueAtTime(0.12, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); o.connect(g).connect(beepCtx.destination); o.start(t); o.stop(t + 0.18); } catch { }
+    document.body.dataset.miniMapBeep = String(Date.now());
+  }
   // 道路の線(世界座標)。峠: コースの中心線だけ(脇道は描かない)。首都高速: 路面の三角形
   function roadMapShapes() {
     const lines = [], tris = [];
+    if (COURSE_KEY === 'indy') {   // インディ: バンクのまん中の線(CPU 車が走る線)を 1 本線で
+      const lane = buildIndyCpuLane(buildIndyBankedRoute(), INDY_CPU_CENTER_OFFSET);
+      if (lane.length > 2) { const pts = lane.map((p) => [p.x, p.z]); pts.push(pts[0]); lines.push({ pts, w: 9 }); return { lines, tris }; }
+    }
+    if (MAP_CONFIG.miniMapOval) {   // インディ: 路面の外形を offset m ずらした楕円の 1 本線
+      const { material, offset } = MAP_CONFIG.miniMapOval, v = new THREE.Vector3(), P = [];
+      scene.traverse((o) => { if (!o.isMesh || o.isInstancedMesh || !(Array.isArray(o.material) ? o.material : [o.material]).some((q) => q?.name === material)) return; const pos = o.geometry.getAttribute('position'); for (let k = 0; k < pos.count; k++) { v.fromBufferAttribute(pos, k).applyMatrix4(o.matrixWorld); P.push([v.x, v.z]); } });
+      P.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+      for (const p of P) { while (lo.length > 1 && cr(lo.at(-2), lo.at(-1), p) <= 0) lo.pop(); lo.push(p); }
+      for (const p of [...P].reverse()) { while (up.length > 1 && cr(up.at(-2), up.at(-1), p) <= 0) up.pop(); up.push(p); }
+      const hull = lo.slice(0, -1).concat(up.slice(0, -1)), cx = hull.reduce((a, p) => a + p[0], 0) / hull.length, cz = hull.reduce((a, p) => a + p[1], 0) / hull.length;
+      // 外形を細かく区切って、それぞれ外向き(となりの点どうしの向きに直角)に offset m ずらす
+      const fine = []; for (let i = 0; i < hull.length; i++) { const a = hull[i], b = hull[(i + 1) % hull.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 4)); for (let k = 0; k < n; k++) fine.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); }
+      const out = fine.map((p, i) => { const a = fine[(i - 1 + fine.length) % fine.length], b = fine[(i + 1) % fine.length]; let nx = b[1] - a[1], nz = -(b[0] - a[0]); const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l; if (nx * (p[0] - cx) + nz * (p[1] - cz) < 0) { nx = -nx; nz = -nz; } return [p[0] + nx * offset, p[1] + nz * offset]; });
+      out.push(out[0]); lines.push({ pts: out, w: 9 });
+      return { lines, tris };
+    }
     if (gunmaCourse?.route?.length) {
       lines.push({ pts: gunmaCourse.route.map((p) => [p.x, p.z]), w: 9 });
     } else {
@@ -11449,7 +11474,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   }
   function layoutRoadMap(kind) {
     if (miniMap.mode && !miniMap.road) {
-      miniMap.road = buildRoadMapImage(kind === 'fuji' ? fujiMapRotation() : 0);
+      miniMap.road = buildRoadMapImage(FUJI_COURSE ? fujiMapRotation() : kind === 'fuji' ? 1e-9 : 0);   // 全体図(rot ≠ 0)は 1 本線
       const el = miniMap.el; el.style.pointerEvents = 'auto'; el.style.background = MINIMAP_BG;
       el.style.border = '6px solid #2a2c2a'; el.style.borderRadius = '10px'; el.style.boxShadow = 'inset 0 0 22px rgba(61,240,180,0.18)';
       for (const e of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'dblclick']) el.addEventListener(e, (ev) => ev.stopPropagation());   // 地図の上ではカメラを動かさない
@@ -11690,8 +11715,8 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       target.z + Math.cos(a) * cp * cam.dist
     );
     camera.lookAt(target);
-    if (COURSE_KEY === 'tokyo') {   // 首都高速: 引いたぶんだけ遠くまで描き、霞も遠ざける(全体が見えるように)
-      const far = Math.max(1200, cam.dist * 3 + 800);
+    if (COURSE_KEY === 'tokyo' || COURSE_KEY === 'gunma') {   // 首都高速・ぐんまー: 引いたぶんだけ遠くまで描き、霞も遠ざける(全体が見えるように)
+      const far = Math.max(COURSE_KEY === 'gunma' ? 2200 : 1200, cam.dist * 3 + 800);
       if (Math.abs(camera.far - far) > 1) { camera.far = far; camera.updateProjectionMatrix(); }
       if (scene.fog?.isFog) { const e = Math.max(0, cam.dist - 12); scene.fog.near = 130 + e * 2; scene.fog.far = 480 + e * 4; }
     }
@@ -11845,7 +11870,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
       if (gunmaAtmosphere) {
         gunmaCourse.mistTime.value += dt;
         gunmaCanopy?.update(dt, weatherDuskLevel());
-        gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView);
+        gunmaAtmosphere.update(dt, camera, gunmaCourse.mistColor, topView || (COURSE_KEY === 'gunma' && cam.dist > 150));   // ぐんまー: 大きく引いたら雲海・モヤを消す(地図全体が見えるように)
         if (moorScenery) moorScenery.visible = !topView;
         if (gunmaRoadsideForest) {
           gunmaRoadsideForest.visible = !topView;
