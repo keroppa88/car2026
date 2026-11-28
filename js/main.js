@@ -11410,7 +11410,7 @@ import { createRoute66Scenery } from './route66-scenery.js?v=20261128-1';
   }
   function cycleMiniMap() {
     if (miniMapKind() === 'none') { miniMapBeep(); return; }
-    miniMap.mode = (miniMap.mode + 1) % 3;
+    miniMap.mode = miniMap.mode ? 0 : 1;   // Q: 出す ⇔ 消す(大きく表示する段はなし)
     if (!miniMap.el) {
       const el = document.createElement('div'); el.id = 'mini-map';
       el.style.cssText = 'position:fixed;z-index:40;pointer-events:none;border:2px solid rgba(255,255,255,0.7);border-radius:6px;overflow:hidden;box-sizing:border-box;';
